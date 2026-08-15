@@ -1,6 +1,12 @@
-﻿namespace MSA.IdentityService
+﻿using Microsoft.EntityFrameworkCore;
+
+namespace MSA.IdentityService
 {
-    public class ApplicationDbContext : Dbcontext
+    public class ApplicationDbContext : DbContext
     {
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+            : base(options)
+        {
+        }
     }
 }

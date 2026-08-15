@@ -1,8 +1,9 @@
 <Project>
-	<Import Condition="Exists('$(MSBuildThisFileDirectory)..\..\Shared\GlobalUsings.$(MSBuildProjectName).props')"
-			Project="$(MSBuildThisFileDirectory)..\..\Shared\GlobalUsings.$(MSBuildProjectName).props" />
+	<Import Condition="Exists('$(MSBuildThisFileDirectory)src\Shared\GlobalUsings.$(MSBuildProjectName).props')"
+			Project="$(MSBuildThisFileDirectory)src\Shared\GlobalUsings.$(MSBuildProjectName).props" />
 	<ItemGroup>
-		<None Include="$(MSBuildThisFileDirectory)..\..\Shared\GlobalUsings.$(MSBuildProjectName).props">
+		<None Condition="Exists('$(MSBuildThisFileDirectory)src\Shared\GlobalUsings.$(MSBuildProjectName).props')"
+			  Include="$(MSBuildThisFileDirectory)src\Shared\GlobalUsings.$(MSBuildProjectName).props">
 			<LinkBase>Properties\GlobalUsings</LinkBase>
 		</None>
 	</ItemGroup>

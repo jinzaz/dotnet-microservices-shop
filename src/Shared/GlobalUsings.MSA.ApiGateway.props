@@ -1,5 +1,16 @@
 <Project>
-	<!-- 全局 using | Global usings -->
+	<!-- 全局 using | Global usings for ApiGateway -->
 	<ItemGroup>
+		<Using Include="System" />
+		<Using Include="System.Net.Http" />
+		<Using Include="System.Threading.Tasks" />
+		<Using Include="Microsoft.AspNetCore.Builder" />
+		<Using Include="Microsoft.AspNetCore.Hosting" />
+		<Using Include="Microsoft.Extensions.DependencyInjection" />
+		<Using Include="Microsoft.Extensions.Hosting" />
+		<Using Include="Microsoft.Extensions.Logging" />
+		<Using Include="Yarp.ReverseProxy" />
+		<Using Include="OpenIddict.Validation.AspNetCore" />
+		<Using Include="OpenTelemetry.Trace" />
 	</ItemGroup>
 </Project>
