@@ -1,37 +1,93 @@
+using Microsoft.AspNetCore.RateLimiting;
+using Polly;
+using Polly.Timeout;
+using Yarp.ReverseProxy.Configuration;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
+using Microsoft.Extensions.Http;
+using MSA.ApiGateway;
+// OpenTelemetry removed from inline initialization to avoid package resolution issues here
+
+using OpenTelemetry.Trace;
+using OpenTelemetry.Resources;
+using Consul;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-//builder.Services.AddControllers();
+// OpenTelemetry tracing: 请在有可用 OpenTelemetry 包时启用并配置导出器（Console/OTLP 等）。
 
-builder.Services.AddReverseProxy()
-    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+// Rate limiting (token bucket)
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("Global", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter("global", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 100,
+            Window = TimeSpan.FromSeconds(1),
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 0
+        }));
+});
 
+// Register Polly policies to be applied to HttpClients used by YARP via IHttpMessageHandlerBuilderFilter
+builder.Services.AddSingleton<IHttpMessageHandlerBuilderFilter, PollyHttpMessageHandlerBuilderFilter>();
+
+// Add OpenIddict validation (for downstream tokens)
 builder.Services
     .AddOpenIddict()
     .AddValidation(options =>
     {
-        // OpenIddict Server 地址
-
-        options.SetIssuer(
-            "https://auth.example.com/");
-
-        // Access Token 的 Audience
-
+        options.SetIssuer("https://auth.example.com/");
         options.AddAudiences("api");
-
-        // 获取 OpenIddict Server 的 metadata / keys
-
         options.UseSystemNetHttp();
-
-        // ASP.NET Core Authentication integration
-
         options.UseAspNetCore();
     });
+
+// Use YARP and load static config; dynamic service discovery can be plugged in separately
+builder.Services.AddReverseProxy()
+    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+
+// OpenTelemetry tracing
+builder.Services.AddOpenTelemetryTracing(otelBuilder =>
+{
+    var svcName = builder.Environment.ApplicationName ?? "MSA.ApiGateway";
+    otelBuilder
+        .SetResourceBuilder(OpenTelemetry.Resources.ResourceBuilder.CreateDefault().AddService(svcName))
+        .AddAspNetCoreInstrumentation();
+
+    // http client instrumentation if available
+    try { otelBuilder.AddHttpClientInstrumentation(); } catch { }
+
+    var otlp = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
+    var enableConsole = bool.TryParse(builder.Configuration["OpenTelemetry:EnableConsoleExporter"], out var b) && b;
+    if (!string.IsNullOrEmpty(otlp))
+    {
+        otelBuilder.AddOtlpExporter(o => o.Endpoint = new Uri(otlp));
+    }
+    if (enableConsole)
+    {
+        otelBuilder.AddConsoleExporter();
+    }
+});
+
+// Consul client & dynamic YARP config provider
+builder.Services.AddSingleton<IConsulClient>(sp => new ConsulClient(cfg =>
+{
+    var address = builder.Configuration["Consul:Address"] ?? "http://localhost:8500";
+    cfg.Address = new Uri(address);
+}));
+
+builder.Services.AddSingleton<ConsulProxyConfigProvider>();
+builder.Services.AddSingleton<Yarp.ReverseProxy.Configuration.IProxyConfigProvider>(sp => sp.GetRequiredService<ConsulProxyConfigProvider>());
+builder.Services.AddHostedService<ConsulRefreshHostedService>();
 
 var app = builder.Build();
 
 app.UseHttpsRedirection();
+
+app.UseRateLimiter();
 
 app.UseAuthentication();
 

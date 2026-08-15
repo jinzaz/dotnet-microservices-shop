@@ -1,0 +1,6 @@
+<Project>
+	<!-- 全局 using | Global usings -->
+	<!-- 全局 using | Global usings for OrderService -->
+	<ItemGroup>
+	</ItemGroup>
+</Project>
