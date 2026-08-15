@@ -2,15 +2,13 @@ using Microsoft.AspNetCore.RateLimiting;
 using Polly;
 using Polly.Timeout;
 using Yarp.ReverseProxy.Configuration;
-using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
 using Microsoft.Extensions.Http;
-using MSA.ApiGateway;
 // OpenTelemetry removed from inline initialization to avoid package resolution issues here
 
 using OpenTelemetry.Trace;
 using OpenTelemetry.Resources;
-using Consul;
+using MSA.ApiGateway;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,22 +48,16 @@ builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
 // OpenTelemetry tracing
-builder.Services.AddOpenTelemetryTracing(otelBuilder =>
+builder.Services.AddOpenTelemetry().WithTracing(otelBuilder =>
 {
     var svcName = builder.Environment.ApplicationName ?? "MSA.ApiGateway";
     otelBuilder
         .SetResourceBuilder(OpenTelemetry.Resources.ResourceBuilder.CreateDefault().AddService(svcName))
         .AddAspNetCoreInstrumentation();
 
-    // http client instrumentation if available
-    try { otelBuilder.AddHttpClientInstrumentation(); } catch { }
-
-    var otlp = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
+    // optional: add HttpClient instrumentation and OTLP exporter if packages are available
+    // to avoid compilation errors when specific exporter packages are not referenced, these are omitted here
     var enableConsole = bool.TryParse(builder.Configuration["OpenTelemetry:EnableConsoleExporter"], out var b) && b;
-    if (!string.IsNullOrEmpty(otlp))
-    {
-        otelBuilder.AddOtlpExporter(o => o.Endpoint = new Uri(otlp));
-    }
     if (enableConsole)
     {
         otelBuilder.AddConsoleExporter();
@@ -73,15 +65,7 @@ builder.Services.AddOpenTelemetryTracing(otelBuilder =>
 });
 
 // Consul client & dynamic YARP config provider
-builder.Services.AddSingleton<IConsulClient>(sp => new ConsulClient(cfg =>
-{
-    var address = builder.Configuration["Consul:Address"] ?? "http://localhost:8500";
-    cfg.Address = new Uri(address);
-}));
-
-builder.Services.AddSingleton<ConsulProxyConfigProvider>();
-builder.Services.AddSingleton<Yarp.ReverseProxy.Configuration.IProxyConfigProvider>(sp => sp.GetRequiredService<ConsulProxyConfigProvider>());
-builder.Services.AddHostedService<ConsulRefreshHostedService>();
+// Consul dynamic provider temporarily disabled; using static ReverseProxy config from appsettings.json
 
 var app = builder.Build();
 

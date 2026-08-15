@@ -17,5 +17,8 @@
 		<Using Include="System.Security.Claims" />
 		<Using Include="Microsoft.IdentityModel.Tokens" />
 		<Using Include="MSA.IdentityService" />
+
+		<Using Include="OpenTelemetry" />
+		<Using Include="OpenTelemetry.Trace" />
 	</ItemGroup>
 </Project>

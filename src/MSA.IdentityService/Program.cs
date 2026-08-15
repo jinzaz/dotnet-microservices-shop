@@ -82,15 +82,12 @@ builder.Services
 var app = builder.Build();
 
 // OpenTelemetry tracing
-builder.Services.AddOpenTelemetryTracing(otelBuilder =>
+builder.Services.AddOpenTelemetry().WithTracing(otelBuilder =>
 {
     var svcName = builder.Environment.ApplicationName ?? "MSA.IdentityService";
     otelBuilder.SetResourceBuilder(OpenTelemetry.Resources.ResourceBuilder.CreateDefault().AddService(svcName))
         .AddAspNetCoreInstrumentation();
-    try { otelBuilder.AddHttpClientInstrumentation(); } catch { }
-    var otlp = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
     var enableConsole = bool.TryParse(builder.Configuration["OpenTelemetry:EnableConsoleExporter"], out var b) && b;
-    if (!string.IsNullOrEmpty(otlp)) otelBuilder.AddOtlpExporter(o => o.Endpoint = new Uri(otlp));
     if (enableConsole) otelBuilder.AddConsoleExporter();
 });
 

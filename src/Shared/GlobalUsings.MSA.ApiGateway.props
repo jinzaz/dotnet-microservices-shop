@@ -2,6 +2,7 @@
 	<!-- 全局 using | Global usings for ApiGateway -->
 	<ItemGroup>
 		<Using Include="System" />
+		<Using Include="System.Collections.Generic" />
 		<Using Include="System.Net.Http" />
 		<Using Include="System.Threading.Tasks" />
 		<Using Include="Microsoft.AspNetCore.Builder" />
@@ -10,7 +11,14 @@
 		<Using Include="Microsoft.Extensions.Hosting" />
 		<Using Include="Microsoft.Extensions.Logging" />
 		<Using Include="Yarp.ReverseProxy" />
+		<Using Include="Yarp.ReverseProxy.Configuration" />
+		<Using Include="Microsoft.AspNetCore.RateLimiting" />
+		<Using Include="Polly" />
+		<Using Include="Microsoft.Extensions.Http" />
+		<Using Include="Consul" />
+
 		<Using Include="OpenIddict.Validation.AspNetCore" />
+		<Using Include="OpenTelemetry" />
 		<Using Include="OpenTelemetry.Trace" />
 	</ItemGroup>
 </Project>

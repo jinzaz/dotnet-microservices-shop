@@ -18,8 +18,8 @@ namespace MSA.ApiGateway
 
                 // Add a delegating handler that applies Polly policies
                 // Configure a combined policy: timeout + circuit breaker
-                var policy = Policy.TimeoutAsync<HttpResponseMessage>(TimeSpan.FromSeconds(10), TimeoutStrategy.Pessimistic)
-                    .WrapAsync(Policy<HttpResponseMessage>
+                var policy = Polly.Policy.TimeoutAsync<HttpResponseMessage>(TimeSpan.FromSeconds(10), TimeoutStrategy.Pessimistic)
+                    .WrapAsync(Polly.Policy<HttpResponseMessage>
                         .Handle<Exception>()
                         .CircuitBreakerAsync(3, TimeSpan.FromSeconds(30)));
 

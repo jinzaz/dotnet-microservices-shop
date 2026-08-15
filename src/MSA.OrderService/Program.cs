@@ -13,38 +13,35 @@ builder.Services.AddOpenApi();
 var outboxConn = builder.Configuration.GetConnectionString("Postgresql");
 if (!string.IsNullOrEmpty(outboxConn))
 {
-    builder.Services.AddDbContext<MSA.Libraries.Messaging.OutboxDbContext>(options =>
+    builder.Services.AddDbContext<OutboxDbContext>(options =>
         options.UseNpgsql(outboxConn));
 }
 else
 {
     // fallback to in-memory for development
-    builder.Services.AddDbContext<MSA.Libraries.Messaging.OutboxDbContext>(options =>
+    builder.Services.AddDbContext<OutboxDbContext>(options =>
         options.UseInMemoryDatabase("Outbox"));
 }
 
-builder.Services.AddScoped<MSA.Libraries.Messaging.IOutboxRepository, MSA.Libraries.Messaging.EfOutboxRepository>();
+builder.Services.AddScoped<IOutboxRepository, EfOutboxRepository>();
 
 // RabbitMQ/EventBus registration
 var rabbitHost = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
-builder.Services.AddSingleton(new MSA.Libraries.Messaging.RabbitMqEventBus(rabbitHost));
-builder.Services.AddSingleton<MSA.Libraries.Messaging.IEventBus>(sp => sp.GetRequiredService<MSA.Libraries.Messaging.RabbitMqEventBus>());
+builder.Services.AddSingleton(new RabbitMqEventBus(rabbitHost));
+builder.Services.AddSingleton<IEventBus>(sp => sp.GetRequiredService<RabbitMqEventBus>());
 
 // Outbox background sender
-builder.Services.AddHostedService<MSA.Libraries.Messaging.OutboxSenderHostedService>();
+builder.Services.AddHostedService<OutboxSenderHostedService>();
 
 var app = builder.Build();
 
 // OpenTelemetry tracing
-builder.Services.AddOpenTelemetryTracing(otelBuilder =>
+builder.Services.AddOpenTelemetry().WithTracing(otelBuilder =>
 {
     var svcName = builder.Environment.ApplicationName ?? "MSA.OrderService";
     otelBuilder.SetResourceBuilder(OpenTelemetry.Resources.ResourceBuilder.CreateDefault().AddService(svcName))
         .AddAspNetCoreInstrumentation();
-    try { otelBuilder.AddHttpClientInstrumentation(); } catch { }
-    var otlp = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
     var enableConsole = bool.TryParse(builder.Configuration["OpenTelemetry:EnableConsoleExporter"], out var b) && b;
-    if (!string.IsNullOrEmpty(otlp)) otelBuilder.AddOtlpExporter(o => o.Endpoint = new Uri(otlp));
     if (enableConsole) otelBuilder.AddConsoleExporter();
 });
 

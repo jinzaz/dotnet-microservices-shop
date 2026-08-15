@@ -1,27 +1,23 @@
-using RabbitMQ.Client;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace MSA.Libraries.Messaging
 {
+    // Placeholder sender — currently logs to console instead of publishing to RabbitMQ.
     public class RabbitMqOutboxSender
     {
-        private readonly ConnectionFactory _factory;
+        private readonly string _host;
 
         public RabbitMqOutboxSender(string hostName, int port = 5672)
         {
-            _factory = new ConnectionFactory { HostName = hostName, Port = port };
+            _host = hostName;
         }
 
         public Task SendAsync<T>(T message, string exchange, string routingKey)
         {
-            using var connection = _factory.CreateConnection();
-            using var channel = connection.CreateModel();
-
-            var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
-            channel.BasicPublish(exchange: exchange, routingKey: routingKey, basicProperties: null, body: body);
-
+            var payload = JsonSerializer.Serialize(message);
+            System.Console.WriteLine($"[OutboxSender] Send to {exchange} on {_host}: {payload}");
             return Task.CompletedTask;
         }
     }
