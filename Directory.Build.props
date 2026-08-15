@@ -1,0 +1,17 @@
+<Project>
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<LangVersion>preview</LangVersion>
+		<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+	</PropertyGroup>
+
+
+
+
+
+	<!-- 👇 文件存在时 src\Shared\GlobalUsings.$(MSBuildProjectName).props 引入【全局命名空间引用】  -->
+	<Import Condition="Exists('$(MSBuildThisFileDirectory)GlobalUsings.MSBuildProjectName.props')" Project="$(MSBuildThisFileDirectory)GlobalUsings.MSBuildProjectName.props" />
+</Project>

@@ -2,13 +2,19 @@
   <Folder Name="/0.Root/" />
   <Folder Name="/1.Doc/" />
   <Folder Name="/2.Src/" />
-  <Folder Name="/2.Src/0.Root/" />
+  <Folder Name="/2.Src/0.Root/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="GlobalUsings.MSBuildProjectName.props" />
+    <File Path="NuGet.config" />
+  </Folder>
   <Folder Name="/2.Src/1.Libraries/" />
   <Folder Name="/2.Src/2.ApiService/">
-    <Project Path="src/ApiGateway/ApiGateway.csproj" Id="31f7e4be-36c1-4ebb-af61-603c1e2bd139" />
-    <Project Path="src/IdentityService/IdentityService.csproj" Id="77d3e573-0b9a-4c2e-b6f8-64ef0cecc951" />
+    <Project Path="src/MSA.ApiGateway/MSA.ApiGateway.csproj" Id="31f7e4be-36c1-4ebb-af61-603c1e2bd139" />
+    <Project Path="src/MSA.IdentityService/MSA.IdentityService.csproj" Id="77d3e573-0b9a-4c2e-b6f8-64ef0cecc951" />
   </Folder>
   <Folder Name="/2.Src/2.ApiService/Busiensses/">
-    <Project Path="src/OrderService/OrderService.csproj" Id="0e1fa2f9-ed25-4616-b033-53f2801f9348" />
+    <Project Path="src/MSA.OrderService/MSA.OrderService.csproj" Id="0e1fa2f9-ed25-4616-b033-53f2801f9348" />
   </Folder>
 </Solution>

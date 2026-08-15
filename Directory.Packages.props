@@ -1,0 +1,79 @@
+<Project>
+
+	<ItemGroup>
+
+		<PackageVersion
+		 Include="Microsoft.EntityFrameworkCore"
+		 Version="10.0.10" />
+
+		<PackageVersion
+		 Include="Npgsql.EntityFrameworkCore.PostgreSQL"
+		 Version="10.0.3" />
+
+		<PackageVersion
+		 Include="MediatR"
+		Version="13.0.0" />
+
+		<PackageVersion
+		 Include="Serilog.AspNetCore"
+		 Version="9.0.0" />
+
+		<PackageVersion
+		 Include="Swashbuckle.AspNetCore"
+		 Version="10.2.3" />
+
+		<PackageVersion
+		 Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets"
+		 Version="1.23.0" />
+
+		<PackageVersion
+		 Include="Microsoft.AspNetCore.OpenApi"
+		 Version="10.0.10" />
+		
+		<PackageVersion
+		 Include="Yarp.ReverseProxy"
+		 Version="2.3.0" />
+
+		<PackageVersion
+		 Include="OpenIddict"
+		 Version="7.6.0" />
+		
+		<PackageVersion
+		 Include="OpenIddict.Validation"
+		 Version="7.6.0" />
+		
+		<PackageVersion
+		 Include="OpenIddict.Validation.AspNetCore"
+		 Version="7.6.0" />
+		
+		<PackageVersion
+		 Include="OpenIddict.Validation.SystemNetHttp"
+		 Version="7.6.0" />
+		
+		<PackageVersion
+		 Include="OpenIddict.Client"
+		 Version="7.6.0" />
+		
+		<PackageVersion
+		 Include="OpenIddict.Server"
+		 Version="7.6.0" />
+
+		<PackageVersion
+		 Include="OpenIddict.Server.AspNetCore"
+		 Version="7.6.0" />
+
+		<PackageVersion
+		 Include="OpenIddict.EntityFrameworkCore"
+		 Version="7.6.0" />
+	
+	
+		<PackageVersion
+		 Include="Microsoft.AspNetCore.Identity"
+		 Version="2.3.12" />
+	
+		<PackageVersion
+		 Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore"
+		 Version="10.0.10" />
+	</ItemGroup>
+
+</Project>
