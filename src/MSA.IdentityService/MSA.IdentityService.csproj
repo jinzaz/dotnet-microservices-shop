@@ -5,6 +5,7 @@
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
 		<DockerfileContext>..\..</DockerfileContext>
+		<DefineConstants>RABBITMQ</DefineConstants>
 	</PropertyGroup>
 
 	<ItemGroup Condition="'$(Configuration)'=='Debug'">

@@ -25,10 +25,12 @@ else
 
 builder.Services.AddScoped<IOutboxRepository, EfOutboxRepository>();
 
-// RabbitMQ/EventBus registration
+// RabbitMQ/EventBus registration via messaging extension (will register SagaCoordinator, repositories and eventbus)
 var rabbitHost = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
-builder.Services.AddSingleton(new RabbitMqEventBus(rabbitHost));
-builder.Services.AddSingleton<IEventBus>(sp => sp.GetRequiredService<RabbitMqEventBus>());
+builder.Services.AddMessagingWithSaga(opts => { opts.HostName = rabbitHost; opts.Exchange = "events"; opts.Port = 5672; });
+
+// register example saga handler (implemented in MSA.Messaging)
+builder.Services.AddSingleton<ISagaHandler, MSA.Libraries.Messaging.Handlers.OrderCreationSagaHandler>();
 
 // Outbox background sender
 builder.Services.AddHostedService<OutboxSenderHostedService>();

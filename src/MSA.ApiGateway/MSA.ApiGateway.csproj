@@ -4,6 +4,7 @@
     <UserSecretsId>c8a0345f-5e79-4bce-8308-02ae125513c5</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>..\..</DockerfileContext>
+	  <DefineConstants>RABBITMQ</DefineConstants>
   </PropertyGroup>
 
 	<ItemGroup Condition="'$(Configuration)'=='Debug'">

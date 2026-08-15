@@ -4,6 +4,7 @@
 		<UserSecretsId>c81110fe-f810-4b2c-bf0a-95681828b005</UserSecretsId>
 		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
 		<DockerfileContext>..\..</DockerfileContext>
+		<DefineConstants>RABBITMQ</DefineConstants>
 	</PropertyGroup>
 
 	<ItemGroup>
