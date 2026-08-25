@@ -19,9 +19,5 @@
 		<PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
 		<PackageReference Include="OpenTelemetry.Exporter.Console" />
 	</ItemGroup>
-	<ItemGroup>
-		<ProjectReference Include="..\MSA.Models\MSA.Models.csproj" />
-		<ProjectReference Include="..\MSA.Messaging\MSA.Messaging.csproj" />
-	</ItemGroup>
 
 </Project>

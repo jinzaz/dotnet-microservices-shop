@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+
+	<ItemGroup>
+		<PackageReference Include="MediatR" />
+		<PackageReference Include="RabbitMQ.Client" />
+		<PackageReference Include="Polly" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+		<PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+	</ItemGroup>
+
+
+	<ItemGroup>
+	  <ProjectReference Include="..\MSA.EventBus\MSA.EventBus.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Include="..\Shared\Extensions\ActivityExtensions.cs" Link="ActivityExtensions.cs" />
+	</ItemGroup>
+</Project>
