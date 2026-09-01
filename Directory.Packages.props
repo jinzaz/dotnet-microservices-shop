@@ -104,23 +104,23 @@
 
 		<PackageVersion
 		 Include="OpenTelemetry.Extensions.Hosting"
-		 Version="1.6.0" />
+		 Version="1.18.0" />
 
 		<PackageVersion
 		 Include="OpenTelemetry.Instrumentation.AspNetCore"
-		 Version="1.0.0-rc9" />
+		 Version="1.18.0" />
 
 		<PackageVersion
 		 Include="OpenTelemetry.Exporter.Console"
-		 Version="1.6.0" />
+		 Version="1.18.0" />
 
 		<PackageVersion
 		 Include="OpenTelemetry.Exporter.OpenTelemetryProtocol"
-		 Version="1.6.0" />
+		 Version="1.18.0" />
 
 		<PackageVersion
 		 Include="OpenTelemetry.Instrumentation.Http"
-		 Version="1.0.0-rc9" />
+		 Version="1.18.0" />
 
 		<PackageVersion
 		 Include="Microsoft.EntityFrameworkCore.InMemory"
