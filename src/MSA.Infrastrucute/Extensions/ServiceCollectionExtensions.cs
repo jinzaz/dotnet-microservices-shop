@@ -1,9 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using MediatR;
+using Microsoft.Extensions.DependencyInjection;
+using MSA.Infrastrucute.Mediator.Behaviors;
 
 namespace MSA.Infrastrucute.Extensions;
 
-internal class ServiceCollectionExtensions
+public static class ServiceCollectionExtensions
 {
+    public static IServiceCollection AddMsaApplicationPipeline(this IServiceCollection services)
+    {
+        services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
+        services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidatorBehavior<,>));
+        services.AddTransient(typeof(IPipelineBehavior<,>), typeof(TransactionBehavior<,>));
+        return services;
+    }
 }

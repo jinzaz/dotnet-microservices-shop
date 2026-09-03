@@ -37,8 +37,9 @@ builder.Services
     .AddOpenIddict()
     .AddValidation(options =>
     {
-        options.SetIssuer("https://auth.example.com/");
-        options.AddAudiences("api");
+        options.SetIssuer(builder.Configuration["Authentication:Issuer"]
+            ?? throw new InvalidOperationException("Authentication:Issuer is required."));
+        options.AddAudiences(builder.Configuration["Authentication:Audience"] ?? "api");
         options.UseSystemNetHttp();
         options.UseAspNetCore();
     });
@@ -74,8 +75,6 @@ app.UseHttpsRedirection();
 app.UseRateLimiter();
 
 app.UseAuthentication();
-
-app.UseAuthorization();
 
 app.MapReverseProxy();
 

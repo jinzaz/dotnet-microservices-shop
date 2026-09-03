@@ -1,17 +1,12 @@
-
 using Microsoft.Extensions.DependencyInjection;
-
 namespace MSA.Saga.Extensions;
-
 public static class ServiceCollectionExtensions
 {
-    /// <summary>
-    /// 注册 Saga 基础设施。默认使用内存仓储，生产环境请自行实现基于数据库的 ISagaRepository
-    /// 并用 services.AddSingleton&lt;ISagaRepository, YourEfSagaRepository&gt;() 覆盖。
-    /// </summary>
-    public static IServiceCollection AddSaga(this IServiceCollection services)
+    public static IServiceCollection AddSaga<TStore>(this IServiceCollection services, Action<SagaTimeoutOptions>? configure = null) where TStore : class, ISagaStore
     {
-        services.AddSingleton<ISagaRepository, InMemorySagaRepository>();
-        return services;
+        services.AddScoped<ISagaStore>(sp => sp.GetRequiredService<TStore>());
+        if (!services.Any(x => x.ServiceType == typeof(TimeProvider))) services.AddSingleton(TimeProvider.System);
+        services.AddOptions<SagaTimeoutOptions>().Configure(options => configure?.Invoke(options));
+        services.AddHostedService<SagaTimeoutService>(); return services;
     }
 }

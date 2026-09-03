@@ -4,7 +4,7 @@ using System.Text;
 
 namespace MSA.Infrastrucute.Abstractions;
 
-internal interface IUnitOfWork
+public interface IUnitOfWork
 {
     Task<bool> SaveEntitiesAsync(CancellationToken cancellationToken = default);
 }

@@ -10,8 +10,7 @@
 		<Using Include="Microsoft.Extensions.Logging" />
 		<Using Include="Microsoft.EntityFrameworkCore" />
 		<Using Include="Microsoft.AspNetCore.Mvc" />
-		<Using Include="MSA.Libraries.Messaging" />
-		<Using Include="MSA.Libraries.Models" />
+		<Using Include="MSA.EventBusOutbox" />
 		<Using Include="OpenTelemetry" />
 		<Using Include="OpenTelemetry.Trace" />
 	</ItemGroup>

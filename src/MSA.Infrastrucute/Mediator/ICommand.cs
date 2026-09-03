@@ -5,7 +5,11 @@ using System.Text;
 
 namespace MSA.Infrastrucute.Mediator;
 
+public interface ICommand
+{
+}
+
 public interface ICommand<out TResult>
-    : IRequest<TResult>
+    : IRequest<TResult>, ICommand
 {
 }

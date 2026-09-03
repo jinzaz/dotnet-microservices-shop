@@ -78,18 +78,17 @@ builder.Services
                .EnableAuthorizationEndpointPassthrough();
     });
 
-
-var app = builder.Build();
-
-// OpenTelemetry tracing
 builder.Services.AddOpenTelemetry().WithTracing(otelBuilder =>
 {
-    var svcName = builder.Environment.ApplicationName ?? "MSA.IdentityService";
-    otelBuilder.SetResourceBuilder(OpenTelemetry.Resources.ResourceBuilder.CreateDefault().AddService(svcName))
+    var serviceName = builder.Environment.ApplicationName ?? "MSA.IdentityService";
+    otelBuilder.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName))
         .AddAspNetCoreInstrumentation();
-    var enableConsole = bool.TryParse(builder.Configuration["OpenTelemetry:EnableConsoleExporter"], out var b) && b;
-    if (enableConsole) otelBuilder.AddConsoleExporter();
+    if (builder.Configuration.GetValue<bool>("OpenTelemetry:EnableConsoleExporter"))
+        otelBuilder.AddConsoleExporter();
 });
+
+
+var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 

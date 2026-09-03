@@ -10,7 +10,7 @@ namespace MSA.Infrastrucute.Events;
 
 public static class DomainEventMediatorExtension
 {
-    public static async Task DispatchDomainEventsAsync(this IMediator mediator, MSADbContext ctx)
+    public static async Task DispatchDomainEventsAsync(this IMediator mediator, MSADbContext ctx, CancellationToken cancellationToken = default)
     {
         var domainEntities = ctx.ChangeTracker
             .Entries<IEntity>()
@@ -24,6 +24,6 @@ public static class DomainEventMediatorExtension
             .ForEach(entity => entity.Entity.ClearDomainEvents());
 
         foreach (var domainEvent in domainEvents)
-            await mediator.Publish(domainEvent);
+            await mediator.Publish(domainEvent, cancellationToken);
     }
 }

@@ -1,66 +1,37 @@
-﻿using MediatR;
+using MediatR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace MSA.Infrastrucute.Mediator.Behaviors;
 
-public class TransactionBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse> where TRequest : IRequest<TResponse>
+public sealed class TransactionBehavior<TRequest, TResponse>(MSADbContext dbContext, ILogger<TransactionBehavior<TRequest, TResponse>> logger)
+    : IPipelineBehavior<TRequest, TResponse> where TRequest : IRequest<TResponse>
 {
-    private readonly ILogger<TransactionBehavior<TRequest, TResponse>> _logger;
-    private readonly MSADbContext _dbContext;
-    private readonly IOrderingIntegrationEventService _orderingIntegrationEventService; // outbox service
-
-    public TransactionBehavior(MSADbContext dbContext,
-        IOrderingIntegrationEventService orderingIntegrationEventService,
-        ILogger<TransactionBehavior<TRequest, TResponse>> logger)
-    {
-        _dbContext = dbContext ?? throw new ArgumentException(nameof(MSADbContext));
-        _orderingIntegrationEventService = orderingIntegrationEventService ?? throw new ArgumentException(nameof(orderingIntegrationEventService));
-        _logger = logger ?? throw new ArgumentException(nameof(ILogger));
-    }
-
     public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
     {
-        var response = default(TResponse);
-        var typeName = request.GetGenericTypeName();
+        if (request is not ICommand)
+            return await next();
+        if (dbContext.HasActiveTransaction)
+            return await next();
 
+        var requestName = typeof(TRequest).Name;
         try
         {
-            if (_dbContext.HasActiveTransaction)
+            TResponse response = default!;
+            await dbContext.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
             {
-                return await next();
-            }
-
-            var strategy = _dbContext.Database.CreateExecutionStrategy();
-
-            await strategy.ExecuteAsync(async () =>
-            {
-                Guid transactionId;
-
-                await using var transaction = await _dbContext.BeginTransactionAsync();
-                using (_logger.BeginScope(new List<KeyValuePair<string, object>> { new("TransactionContext", transaction.TransactionId) }))
-                {
-                    _logger.LogInformation("Begin transaction {TransactionId} for {CommandName} ({@Command})", transaction.TransactionId, typeName, request);
-
-                    response = await next();
-
-                    _logger.LogInformation("Commit transaction {TransactionId} for {CommandName}", transaction.TransactionId, typeName);
-
-                    await _dbContext.CommitTransactionAsync(transaction);
-
-                    transactionId = transaction.TransactionId;
-                }
-
-                await _orderingIntegrationEventService.PublishEventsThroughEventBusAsync(transactionId);
+                await using var transaction = await dbContext.BeginTransactionAsync(cancellationToken);
+                using var scope = logger.BeginScope(new Dictionary<string, object> { ["TransactionId"] = transaction.TransactionId });
+                logger.LogInformation("Beginning transaction for {RequestName}", requestName);
+                response = await next();
+                await dbContext.CommitTransactionAsync(transaction, cancellationToken);
+                logger.LogInformation("Committed transaction for {RequestName}", requestName);
             });
-
             return response;
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            _logger.LogError(ex, "Error Handling transaction for {CommandName} ({@Command})", typeName, request);
-
+            logger.LogError(exception, "Transaction failed for {RequestName}", requestName);
             throw;
         }
     }

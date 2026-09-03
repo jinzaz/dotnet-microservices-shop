@@ -9,7 +9,8 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
-		<PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+		<PackageReference Include="MediatR" />
+		<PackageReference Include="FluentValidation" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
 		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
@@ -18,6 +19,14 @@
 		<PackageReference Include="OpenTelemetry.Instrumentation.Http" />
 		<PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
 		<PackageReference Include="OpenTelemetry.Exporter.Console" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\MSA.EventBus\MSA.EventBus.csproj" />
+		<ProjectReference Include="..\MSA.EventBusOutbox\MSA.EventBusOutbox.csproj" />
+		<ProjectReference Include="..\MSA.EventBusRabbitMQ\MSA.EventBusRabbitMQ.csproj" />
+		<ProjectReference Include="..\MSA.Infrastrucute\MSA.Infrastrucute.csproj" />
+		<ProjectReference Include="..\MSA.Saga\MSA.Saga.csproj" />
 	</ItemGroup>
 
 </Project>
