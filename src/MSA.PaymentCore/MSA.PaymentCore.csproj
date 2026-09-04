@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Essensoft.Paylinks.Alipay.Client" />
+    <PackageReference Include="Essensoft.Paylinks.Alipay.Payments" />
+    <PackageReference Include="Essensoft.Paylinks.WeChatPay.Client" />
+    <PackageReference Include="Essensoft.Paylinks.WeChatPay.Payments" />
+  </ItemGroup>
+</Project>

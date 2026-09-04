@@ -7,17 +7,13 @@ namespace MSA.EventBus.Abstractions;
 /// </summary>
 public abstract class IntegrationEvent : IIntegrationEvent
 {
-    public Guid Id { get; private set; }
-    public DateTime CreationDate { get; private set; }
+    public Guid Id { get; init; } = Guid.NewGuid();
+    public DateTime CreationDate { get; init; } = DateTime.UtcNow;
 
     [JsonIgnore]
     public string EventType => GetType().Name;
 
-    protected IntegrationEvent()
-    {
-        Id = Guid.NewGuid();
-        CreationDate = DateTime.UtcNow;
-    }
+    protected IntegrationEvent() { }
 
     [JsonConstructor]
     protected IntegrationEvent(Guid id, DateTime creationDate)

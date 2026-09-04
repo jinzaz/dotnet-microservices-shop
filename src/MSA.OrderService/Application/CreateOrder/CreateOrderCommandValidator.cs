@@ -1,12 +1,1 @@
-using FluentValidation;
-namespace MSA.OrderService.Application.CreateOrder;
-public sealed class CreateOrderCommandValidator : AbstractValidator<CreateOrderCommand>
-{
-    public CreateOrderCommandValidator()
-    {
-        RuleFor(x => x.ProductId).NotEmpty().MaximumLength(100);
-        RuleFor(x => x.Quantity).GreaterThan(0);
-        RuleFor(x => x.Amount).GreaterThanOrEqualTo(0);
-        RuleFor(x => x.Currency).NotEmpty().Length(3);
-    }
-}
+using FluentValidation;namespace MSA.OrderService.Application.CreateOrder;public sealed class CreateOrderCommandValidator:AbstractValidator<CreateOrderCommand>{public CreateOrderCommandValidator(){RuleFor(x=>x.UserId).NotEmpty();RuleFor(x=>x.IdempotencyKey).NotEmpty().MaximumLength(100);RuleFor(x=>x.Items).NotEmpty().Must(x=>x.Count<=100);RuleForEach(x=>x.Items).ChildRules(i=>{i.RuleFor(x=>x.Sku).NotEmpty();i.RuleFor(x=>x.Quantity).InclusiveBetween(1,999);});RuleFor(x=>x.PaymentMethod).Must(x=>x is "Alipay" or "WeChatPay");}}

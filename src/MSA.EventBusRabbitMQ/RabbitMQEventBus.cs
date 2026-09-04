@@ -97,7 +97,7 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
 
             static void InjectTraceContextIntoBasicProperties(IBasicProperties props, string key, string value)
             {
-                props.Headers ??= new Dictionary<string, object>();
+                props.Headers ??= new Dictionary<string, object?>();
                 props.Headers[key] = value;
             }
 
@@ -123,14 +123,14 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
             }
             catch (Exception ex)
             {
-                activity.SetExceptionTags(ex);
+                activity?.SetExceptionTags(ex);
                 throw;
             }
 
         });
     }
 
-    private static void SetActivityContext(Activity activity, string routingKey, string operation)
+    private static void SetActivityContext(Activity? activity, string routingKey, string operation)
     {
         if (activity is not null)
         {
@@ -161,7 +161,7 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
         await channel.QueueDeclareAsync(_options.DeadLetterQueue, durable: true, exclusive: false, autoDelete: false, cancellationToken: cancellationToken);
         await channel.QueueBindAsync(_options.DeadLetterQueue, _options.DeadLetterExchange, routingKey: "", cancellationToken: cancellationToken);
 
-        var queueArgs = new Dictionary<string, object>
+        var queueArgs = new Dictionary<string, object?>
         {
             { "x-dead-letter-exchange", _options.DeadLetterExchange }
         };
@@ -174,9 +174,8 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
     {
         static IEnumerable<string> ExtractTraceContextFromBasicProperties(IReadOnlyBasicProperties props, string key)
         {
-            if (props.Headers.TryGetValue(key, out var value))
+            if (props.Headers is not null && props.Headers.TryGetValue(key, out var value) && value is byte[] bytes)
             {
-                var bytes = value as byte[];
                 return [Encoding.UTF8.GetString(bytes)];
             }
             return [];
@@ -214,7 +213,7 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
         {
             _logger.LogError(ex, "处理事件 '{EventName}' 失败，消息将进入死信队列: {Message}", eventName, message);
 
-            activity.SetExceptionTags(ex);
+            activity?.SetExceptionTags(ex);
             await _consumerChannel!.BasicNackAsync(eventArgs.DeliveryTag, multiple: false, requeue: false);
         }
     }
@@ -288,7 +287,7 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
 
                 if (!_persistentConnection.IsConnected)
                 {
-                    return;
+                    await _persistentConnection.TryConnectAsync(cancellationToken);
                 }
 
                 if (_logger.IsEnabled(LogLevel.Trace))
@@ -384,7 +383,8 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
     [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode", Justification = "See above.")]
     private IntegrationEvent DeserializeMessage(string message, Type eventType)
     {
-        return JsonSerializer.Deserialize(message, eventType, _subscriptionInfo.JsonSerializerOptions) as IntegrationEvent;
+        return JsonSerializer.Deserialize(message, eventType, _subscriptionInfo.JsonSerializerOptions) as IntegrationEvent
+            ?? throw new JsonException($"Message payload cannot be deserialized as {eventType.FullName}.");
     }
 
     [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",

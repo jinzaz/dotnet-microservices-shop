@@ -35,7 +35,6 @@ namespace MSA.ApiGateway
         public PolicyHttpMessageHandler(IAsyncPolicy<HttpResponseMessage> policy)
         {
             _policy = policy;
-            InnerHandler = new HttpClientHandler();
         }
 
         protected override async System.Threading.Tasks.Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, System.Threading.CancellationToken cancellationToken)

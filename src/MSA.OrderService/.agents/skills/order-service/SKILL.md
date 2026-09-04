@@ -11,4 +11,6 @@ The Ordering service owns order data and its PostgreSQL database. Store product 
 
 Write order state and outgoing events atomically through the same DbContext. Make creation idempotent using a client request/idempotency key. Reject invalid state transitions and use optimistic concurrency for competing updates.
 
+Never trust client-supplied product names or prices. Build order lines from the local Catalog event projection. A successful payment commits the reservation; inventory rejection, payment failure, and Saga timeout cancel and compensate. Scope customer queries to the token subject; only explicit operator/admin roles may read another user's order.
+
 `OrderDbContext` derives from `MSADbContext` and also implements the service-local Outbox and Saga stores. Controllers send commands and queries through MediatR. Command handlers never call `SaveChanges`; `TransactionBehavior` dispatches domain events and commits aggregate, outbox, and saga mutations together. Query handlers project no-tracking DTOs directly.

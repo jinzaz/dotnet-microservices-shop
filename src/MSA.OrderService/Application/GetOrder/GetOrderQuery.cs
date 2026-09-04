@@ -1,4 +1,1 @@
-using MSA.Infrastrucute.Mediator;
-namespace MSA.OrderService.Application.GetOrder;
-public sealed record OrderDto(Guid Id, string ProductId, int Quantity, decimal Amount, string Currency, DateTimeOffset CreatedOnUtc);
-public sealed record GetOrderQuery(Guid OrderId) : IQuery<OrderDto?>;
+using MSA.Infrastrucute.Mediator;namespace MSA.OrderService.Application.GetOrder;public sealed record OrderLineDto(string Sku,string ProductName,int Quantity,decimal UnitPrice);public sealed record OrderDto(Guid Id,string UserId,decimal Amount,string Currency,string Status,IReadOnlyList<OrderLineDto> Lines,DateTimeOffset CreatedOnUtc);public sealed record GetOrderQuery(Guid OrderId,string UserId,bool CanReadAll):IQuery<OrderDto?>;

@@ -1,20 +1,13 @@
 using MSA.Infrastrucute.Entities;
 namespace MSA.OrderService.Domain;
-public sealed class Order : AggregateRoot<Guid>
+public sealed class Order:AggregateRoot<Guid>
 {
-    private Order() { }
-    public Order(Guid id, string productId, int quantity, decimal amount, string currency)
-    {
-        if (id == Guid.Empty) throw new ArgumentException("Order id is required.", nameof(id));
-        if (string.IsNullOrWhiteSpace(productId)) throw new ArgumentException("Product is required.", nameof(productId));
-        if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
-        if (amount < 0) throw new ArgumentOutOfRangeException(nameof(amount));
-        if (string.IsNullOrWhiteSpace(currency) || currency.Length != 3) throw new ArgumentException("Currency must be an ISO 4217 code.", nameof(currency));
-        Id = id; ProductId = productId.Trim(); Quantity = quantity; Amount = amount; Currency = currency.ToUpperInvariant(); CreatedOnUtc = DateTimeOffset.UtcNow;
-    }
-    public string ProductId { get; private set; } = string.Empty;
-    public int Quantity { get; private set; }
-    public decimal Amount { get; private set; }
-    public string Currency { get; private set; } = string.Empty;
-    public DateTimeOffset CreatedOnUtc { get; private set; }
+ private Order(){}public Order(Guid id,string userId,string idempotencyKey,IEnumerable<OrderLine> lines,string currency){Id=id;UserId=userId;IdempotencyKey=idempotencyKey;Currency=currency;_lines.AddRange(lines);if(_lines.Count==0)throw new ArgumentException("Order requires items.");Amount=_lines.Sum(x=>x.UnitPrice*x.Quantity);Status=OrderStatus.Submitted;CreatedOnUtc=DateTimeOffset.UtcNow;}
+ private readonly List<OrderLine> _lines=[];public string UserId{get;private set;}="";public string IdempotencyKey{get;private set;}="";public decimal Amount{get;private set;}public string Currency{get;private set;}="CNY";public OrderStatus Status{get;private set;}public Guid? ReservationId{get;private set;}public Guid? PaymentId{get;private set;}public string? CancellationReason{get;private set;}public DateTimeOffset CreatedOnUtc{get;private set;}public long Version{get;private set;}public IReadOnlyCollection<OrderLine> Lines=>_lines;
+ public void InventoryReserved(Guid id){if(Status!=OrderStatus.Submitted)throw new InvalidOperationException("Order is not awaiting inventory.");ReservationId=id;Status=OrderStatus.AwaitingPayment;Version++;}
+ public void Confirm(Guid paymentId){if(Status!=OrderStatus.AwaitingPayment)throw new InvalidOperationException("Order is not awaiting payment.");PaymentId=paymentId;Status=OrderStatus.Confirmed;Version++;}
+ public void Cancel(string reason){if(Status is OrderStatus.Confirmed or OrderStatus.Cancelled)return;CancellationReason=reason;Status=OrderStatus.Cancelled;Version++;}
 }
+public sealed class OrderLine{private OrderLine(){}public OrderLine(string sku,string productName,int quantity,decimal unitPrice){if(quantity<=0)throw new ArgumentOutOfRangeException(nameof(quantity));Sku=sku;ProductName=productName;Quantity=quantity;UnitPrice=unitPrice;}public long Id{get;private set;}public string Sku{get;private set;}="";public string ProductName{get;private set;}="";public int Quantity{get;private set;}public decimal UnitPrice{get;private set;}}
+public sealed class OrderProductProjection{private OrderProductProjection(){}public OrderProductProjection(Guid productId,string sku,string name,decimal price,string currency,bool active){ProductId=productId;Sku=sku;Name=name;Price=price;Currency=currency;IsActive=active;UpdatedOnUtc=DateTimeOffset.UtcNow;}public Guid ProductId{get;private set;}public string Sku{get;private set;}="";public string Name{get;private set;}="";public decimal Price{get;private set;}public string Currency{get;private set;}="";public bool IsActive{get;private set;}public DateTimeOffset UpdatedOnUtc{get;private set;}public void Update(string name,decimal price,string currency,bool active){Name=name;Price=price;Currency=currency;IsActive=active;UpdatedOnUtc=DateTimeOffset.UtcNow;}}
+public enum OrderStatus{Submitted,AwaitingPayment,Confirmed,Cancelled}

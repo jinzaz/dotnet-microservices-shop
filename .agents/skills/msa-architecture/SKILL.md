@@ -19,6 +19,10 @@ Store a service's business tables, outbox rows, inbox rows, and sagas in the sam
 
 When adding a bounded context, start with Catalog, Inventory, Ordering, Payment, Basket, or Notification according to the actual use case. Add Shipping/Promotion/Review only when requirements justify them. Define event contracts and ownership before implementation.
 
+The checkout workflow is an Ordering-owned orchestration: `OrderSubmitted` asks Inventory to reserve, `InventoryReserved` asks Payment to collect, and Payment success makes Ordering emit both `CommitInventory` and `OrderConfirmed`. Inventory rejection, payment failure, or Saga timeout cancels the order and emits `ReleaseInventory` when a reservation exists. Notification reacts only to terminal order events. Keep every consumer idempotent through the service-local Inbox and publish every resulting cross-service event through the same local transaction and Outbox.
+
+`MSA.Contracts` owns transport-only integration event schemas; it must not contain aggregates or EF models. `MSA.PaymentCore` owns provider-neutral payment ports and Paylinks adapters; payment entities, callback endpoints, persistence, and workflow decisions stay in `MSA.PaymentService`.
+
 Preserve central package management in `Directory.Packages.props`, the .NET SDK pin in `global.json`, and per-project global usings under `src/Shared`. Never commit credentials; use environment variables or user secrets.
 
 Before finishing, build `MicroservicesArchitecture.slnx` and report remaining warnings or infrastructure prerequisites separately from compilation failures.

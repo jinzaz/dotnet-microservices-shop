@@ -35,7 +35,10 @@ public sealed class DefaultRabbitMQPersistentConnection : IRabbitMQPersistentCon
         if (!IsConnected)
             throw new InvalidOperationException("当前没有可用的 RabbitMQ 连接来创建 Channel");
 
-        return await _connection!.CreateChannelAsync(cancellationToken: cancellationToken);
+        var options = new CreateChannelOptions(
+            publisherConfirmationsEnabled: true,
+            publisherConfirmationTrackingEnabled: true);
+        return await _connection!.CreateChannelAsync(options, cancellationToken);
     }
 
     public async Task<bool> TryConnectAsync(CancellationToken cancellationToken = default)

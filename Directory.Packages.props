@@ -5,6 +5,7 @@
 		<PackageVersion
 		 Include="Microsoft.EntityFrameworkCore"
 		 Version="10.0.10" />
+		<PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10" />
 
 		<PackageVersion
 		 Include="Microsoft.EntityFrameworkCore.Abstractions"
@@ -138,6 +139,12 @@
 		<PackageVersion
 		 Include="Microsoft.Extensions.Hosting"
 		 Version="10.0.0" />
+
+		<PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.0" />
+		<PackageVersion Include="Essensoft.Paylinks.Alipay.Client" Version="5.0.4" />
+		<PackageVersion Include="Essensoft.Paylinks.Alipay.Payments" Version="5.0.4" />
+		<PackageVersion Include="Essensoft.Paylinks.WeChatPay.Client" Version="5.0.4" />
+		<PackageVersion Include="Essensoft.Paylinks.WeChatPay.Payments" Version="5.0.4" />
 	</ItemGroup>
 
 </Project>

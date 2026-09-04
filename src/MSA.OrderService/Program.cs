@@ -12,6 +12,8 @@ using MSA.OrderService.Application.CreateOrder;
 using MSA.OrderService.Domain;
 using MSA.OrderService.Infrastructure;
 using MSA.Saga.Extensions;
+using MSA.Contracts;
+using MSA.OrderService.Integration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,11 +35,19 @@ var rabbitHost = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
 builder.Services.AddRabbitMQEventBus(opts => { opts.HostName = rabbitHost; opts.ExchangeName = "events"; opts.Port = 5672; opts.UserName = builder.Configuration["RabbitMQ:User"] ?? "guest"; opts.Password = builder.Configuration["RabbitMQ:Password"] ?? "guest"; });
 builder.Services.AddOutbox<OrderDbContext>();
 builder.Services.AddSaga<OrderDbContext>();
+builder.Services.AddIntegrationEventHandler<ProductChangedIntegrationEvent, ProductChangedHandler>();
+builder.Services.AddIntegrationEventHandler<InventoryReservedIntegrationEvent, InventoryReservedHandler>();
+builder.Services.AddIntegrationEventHandler<InventoryRejectedIntegrationEvent, InventoryRejectedHandler>();
+builder.Services.AddIntegrationEventHandler<PaymentSucceededIntegrationEvent, PaymentSucceededHandler>();
+builder.Services.AddIntegrationEventHandler<PaymentFailedIntegrationEvent, PaymentFailedHandler>();
+builder.Services.AddScoped<ISagaTimeoutHandler, OrderSagaTimeoutHandler>();
+builder.Services.AddOpenIddict().AddValidation(o => { o.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/"); o.AddAudiences("api"); o.UseSystemNetHttp(); o.UseAspNetCore(); });
+builder.Services.AddAuthorization();
 
 builder.Services.AddOpenTelemetry().WithTracing(otelBuilder =>
 {
     var svcName = builder.Environment.ApplicationName ?? "MSA.OrderService";
-    otelBuilder.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(svcName)).AddAspNetCoreInstrumentation();
+    otelBuilder.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(svcName)).AddAspNetCoreInstrumentation().AddHttpClientInstrumentation().AddOtlpExporter();
     if (builder.Configuration.GetValue<bool>("OpenTelemetry:EnableConsoleExporter")) otelBuilder.AddConsoleExporter();
 });
 
@@ -51,7 +61,7 @@ if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 
 // Configure the HTTP request pipeline.
 app.UseHttpsRedirection();
-
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();

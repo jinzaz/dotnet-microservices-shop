@@ -20,10 +20,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRateLimiter(options =>
 {
     options.AddPolicy("Global", httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter("global", _ => new FixedWindowRateLimiterOptions
+        RateLimitPartition.GetTokenBucketLimiter(
+            httpContext.User.FindFirst("sub")?.Value ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            _ => new TokenBucketRateLimiterOptions
         {
-            PermitLimit = 100,
-            Window = TimeSpan.FromSeconds(1),
+            TokenLimit = 200,
+            TokensPerPeriod = 100,
+            ReplenishmentPeriod = TimeSpan.FromSeconds(1),
+            AutoReplenishment = true,
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
             QueueLimit = 0
         }));
@@ -54,7 +58,9 @@ builder.Services.AddOpenTelemetry().WithTracing(otelBuilder =>
     var svcName = builder.Environment.ApplicationName ?? "MSA.ApiGateway";
     otelBuilder
         .SetResourceBuilder(OpenTelemetry.Resources.ResourceBuilder.CreateDefault().AddService(svcName))
-        .AddAspNetCoreInstrumentation();
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddOtlpExporter();
 
     // optional: add HttpClient instrumentation and OTLP exporter if packages are available
     // to avoid compilation errors when specific exporter packages are not referenced, these are omitted here
@@ -76,6 +82,6 @@ app.UseRateLimiter();
 
 app.UseAuthentication();
 
-app.MapReverseProxy();
+app.MapReverseProxy().RequireRateLimiting("Global");
 
 app.Run();

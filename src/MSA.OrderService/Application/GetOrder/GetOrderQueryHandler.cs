@@ -1,8 +1,1 @@
-using MediatR;
-using Microsoft.EntityFrameworkCore;
-using MSA.OrderService.Infrastructure;
-namespace MSA.OrderService.Application.GetOrder;
-internal sealed class GetOrderQueryHandler(OrderDbContext dbContext) : IRequestHandler<GetOrderQuery, OrderDto?>
-{
-    public Task<OrderDto?> Handle(GetOrderQuery request, CancellationToken cancellationToken) => dbContext.Orders.AsNoTracking().Where(x => x.Id == request.OrderId).Select(x => new OrderDto(x.Id, x.ProductId, x.Quantity, x.Amount, x.Currency, x.CreatedOnUtc)).SingleOrDefaultAsync(cancellationToken);
-}
+using MediatR;using Microsoft.EntityFrameworkCore;using MSA.OrderService.Infrastructure;namespace MSA.OrderService.Application.GetOrder;internal sealed class GetOrderQueryHandler(OrderDbContext db):IRequestHandler<GetOrderQuery,OrderDto?>{public async Task<OrderDto?> Handle(GetOrderQuery r,CancellationToken ct){var o=await db.Orders.AsNoTracking().Include(x=>x.Lines).SingleOrDefaultAsync(x=>x.Id==r.OrderId&&(r.CanReadAll||x.UserId==r.UserId),ct);return o is null?null:new(o.Id,o.UserId,o.Amount,o.Currency,o.Status.ToString(),o.Lines.Select(x=>new OrderLineDto(x.Sku,x.ProductName,x.Quantity,x.UnitPrice)).ToArray(),o.CreatedOnUtc);}}

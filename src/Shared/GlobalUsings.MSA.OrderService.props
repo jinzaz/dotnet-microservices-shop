@@ -11,6 +11,7 @@
 		<Using Include="Microsoft.EntityFrameworkCore" />
 		<Using Include="Microsoft.AspNetCore.Mvc" />
 		<Using Include="MSA.EventBusOutbox" />
+		<Using Include="MSA.Saga" />
 		<Using Include="OpenTelemetry" />
 		<Using Include="OpenTelemetry.Trace" />
 	</ItemGroup>

@@ -5,6 +5,8 @@
 		<Using Include="System.Collections.Generic" />
 		<Using Include="System.Threading.Tasks" />
 		<Using Include="Microsoft.AspNetCore.Builder" />
+		<Using Include="Microsoft.AspNetCore" />
+		<Using Include="Microsoft.AspNetCore.Authentication" />
 		<Using Include="Microsoft.Extensions.DependencyInjection" />
 		<Using Include="Microsoft.Extensions.Configuration" />
 		<Using Include="Microsoft.Extensions.Hosting" />
