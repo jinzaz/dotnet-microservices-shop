@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 namespace MSA.Saga;
+
 internal sealed class SagaTimeoutService(IServiceScopeFactory scopes, TimeProvider clock, IOptions<SagaTimeoutOptions> options, ILogger<SagaTimeoutService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

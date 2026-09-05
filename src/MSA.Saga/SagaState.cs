@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 namespace MSA.Saga;
+
 public sealed class SagaState
 {
     private SagaState() { }

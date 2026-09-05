@@ -4,6 +4,7 @@ using MSA.EventBusOutbox;
 using MSA.Infrastrucute;
 using MSA.Saga;
 namespace MSA.Repositories.Persistence;
+
 public abstract class MessagingDbContext(DbContextOptions options, IMediator mediator) : MSADbContext(options, mediator), IOutboxStore, ISagaStore
 {
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();

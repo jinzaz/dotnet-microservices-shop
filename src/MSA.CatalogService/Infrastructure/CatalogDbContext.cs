@@ -1,5 +1,9 @@
-using MediatR; using Microsoft.EntityFrameworkCore; using MSA.CatalogService.Domain; using MSA.Repositories.Persistence;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
+using MSA.CatalogService.Domain;
+using MSA.Repositories.Persistence;
 namespace MSA.CatalogService.Infrastructure;
+
 public sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> options, IMediator mediator) : MessagingDbContext(options, mediator)
 {
     public DbSet<Product> Products => Set<Product>(); public DbSet<Category> Categories => Set<Category>();

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using MSA.EventBus.Abstractions;
 using System.Text.Json;
 namespace MSA.EventBusOutbox;
+
 internal sealed class OutboxProcessorService(IServiceScopeFactory scopes, TimeProvider clock, IOptions<OutboxProcessorOptions> options, ILogger<OutboxProcessorService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

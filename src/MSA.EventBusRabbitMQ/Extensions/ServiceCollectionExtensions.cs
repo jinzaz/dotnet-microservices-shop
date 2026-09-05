@@ -29,7 +29,7 @@ public static class ServiceCollectionExtensions
         {
             var factory = sp.GetRequiredService<IConnectionFactory>();
             var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DefaultRabbitMQPersistentConnection>>();
-             return new DefaultRabbitMQPersistentConnection(factory, logger, options.RetryCount);
+            return new DefaultRabbitMQPersistentConnection(factory, logger, options.RetryCount);
         });
 
         services.AddSingleton<RabbitMQTelemetry>();

@@ -1,4 +1,5 @@
 namespace MSA.EventBusOutbox;
+
 public interface IOutboxStore
 {
     void Add(OutboxMessage message);

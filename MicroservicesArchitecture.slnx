@@ -3,6 +3,7 @@
   <Folder Name="/1.Doc/" />
   <Folder Name="/2.Src/" />
   <Folder Name="/2.Src/0.Root/">
+    <File Path=".editorconfig" />
     <File Path="Directory.Build.props" />
     <File Path="Directory.Packages.props" />
     <File Path="global.json" />
@@ -10,25 +11,25 @@
     <File Path="NuGet.config" />
   </Folder>
   <Folder Name="/2.Src/1.Libraries/">
+    <Project Path="src/MSA.Contracts/MSA.Contracts.csproj" />
     <Project Path="src/MSA.EventBus/MSA.EventBus.csproj" Id="95fde12a-5ab9-4184-aace-8dff777978a8" />
     <Project Path="src/MSA.EventBusOutbox/MSA.EventBusOutbox.csproj" Id="bff37e24-c0f0-4a51-94ed-89a6ca9952a6" />
     <Project Path="src/MSA.EventBusRabbitMQ/MSA.EventBusRabbitMQ.csproj" Id="5c0d2a49-07fa-44c2-bcd9-945f629472a4" />
     <Project Path="src/MSA.Infrastrucute/MSA.Infrastrucute.csproj" Id="6e631722-bfd4-4246-aa72-1c0c4a870747" />
+    <Project Path="src/MSA.PaymentCore/MSA.PaymentCore.csproj" />
     <Project Path="src/MSA.Repositories/MSA.Repositories.csproj" Id="cacbc4f0-9817-44b5-b24d-73279cb64d9d" />
     <Project Path="src/MSA.Saga/MSA.Saga.csproj" Id="4629570d-3908-4595-8dcc-b9df0efdfec2" />
-    <Project Path="src/MSA.Contracts/MSA.Contracts.csproj" />
-    <Project Path="src/MSA.PaymentCore/MSA.PaymentCore.csproj" />
   </Folder>
   <Folder Name="/2.Src/2.ApiService/">
     <Project Path="src/MSA.ApiGateway/MSA.ApiGateway.csproj" Id="31f7e4be-36c1-4ebb-af61-603c1e2bd139" />
     <Project Path="src/MSA.IdentityService/MSA.IdentityService.csproj" Id="77d3e573-0b9a-4c2e-b6f8-64ef0cecc951" />
   </Folder>
   <Folder Name="/2.Src/2.ApiService/Busiensses/">
-    <Project Path="src/MSA.OrderService/MSA.OrderService.csproj" Id="0e1fa2f9-ed25-4616-b033-53f2801f9348" />
     <Project Path="src/MSA.CatalogService/MSA.CatalogService.csproj" />
     <Project Path="src/MSA.InventoryService/MSA.InventoryService.csproj" />
-    <Project Path="src/MSA.PaymentService/MSA.PaymentService.csproj" />
     <Project Path="src/MSA.NotificationService/MSA.NotificationService.csproj" />
+    <Project Path="src/MSA.OrderService/MSA.OrderService.csproj" Id="0e1fa2f9-ed25-4616-b033-53f2801f9348" />
+    <Project Path="src/MSA.PaymentService/MSA.PaymentService.csproj" />
   </Folder>
   <Folder Name="/3.Tests/">
     <Project Path="tests/MSA.FlashSaleTests/MSA.FlashSaleTests.csproj" />

@@ -1,4 +1,5 @@
 namespace MSA.Saga;
+
 public interface ISagaStore
 {
     void Add(SagaState state);

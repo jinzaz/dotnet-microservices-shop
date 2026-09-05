@@ -4,8 +4,12 @@ namespace MSA.Contracts;
 public sealed record OrderItemContract(string Sku, int Quantity, decimal UnitPrice);
 public sealed class OrderSubmittedIntegrationEvent : IntegrationEvent
 {
-    public required Guid OrderId { get; init; } public required string UserId { get; init; } public required IReadOnlyList<OrderItemContract> Items { get; init; }
-    public required decimal Amount { get; init; } public required string Currency { get; init; } public required string PaymentMethod { get; init; }
+    public required Guid OrderId { get; init; }
+    public required string UserId { get; init; }
+    public required IReadOnlyList<OrderItemContract> Items { get; init; }
+    public required decimal Amount { get; init; }
+    public required string Currency { get; init; }
+    public required string PaymentMethod { get; init; }
     public Guid? FlashSaleCampaignId { get; init; }
 }
 public sealed class InventoryReservedIntegrationEvent : IntegrationEvent { public required Guid OrderId { get; init; } public required Guid ReservationId { get; init; } public required decimal Amount { get; init; } public required string Currency { get; init; } public required string PaymentMethod { get; init; } }

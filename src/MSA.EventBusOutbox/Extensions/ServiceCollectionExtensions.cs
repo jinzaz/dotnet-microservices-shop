@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 namespace MSA.EventBusOutbox.Extensions;
+
 public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddOutbox<TStore>(this IServiceCollection services, Action<OutboxProcessorOptions>? configure = null) where TStore : class, IOutboxStore

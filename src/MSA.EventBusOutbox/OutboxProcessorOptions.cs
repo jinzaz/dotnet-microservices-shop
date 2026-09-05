@@ -1,4 +1,5 @@
 namespace MSA.EventBusOutbox;
+
 public sealed class OutboxProcessorOptions
 {
     public int BatchSize { get; set; } = 50;

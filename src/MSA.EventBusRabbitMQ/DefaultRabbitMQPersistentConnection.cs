@@ -1,4 +1,3 @@
-using System.IO;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Polly;
@@ -84,7 +83,7 @@ public sealed class DefaultRabbitMQPersistentConnection : IRabbitMQPersistentCon
         return TryConnectAsync();
     }
 
-    private  Task OnCallbackExceptionAsync(object? sender, CallbackExceptionEventArgs e)
+    private Task OnCallbackExceptionAsync(object? sender, CallbackExceptionEventArgs e)
     {
         if (_disposed) return Task.CompletedTask;
         return TryConnectAsync();
@@ -101,7 +100,7 @@ public sealed class DefaultRabbitMQPersistentConnection : IRabbitMQPersistentCon
         if (_disposed) return;
         _disposed = true;
 
-        if(_connection != null)
+        if (_connection != null)
         {
             try
             {

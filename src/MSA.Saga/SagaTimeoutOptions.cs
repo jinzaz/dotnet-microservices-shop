@@ -1,4 +1,5 @@
 namespace MSA.Saga;
+
 public sealed class SagaTimeoutOptions
 {
     public int BatchSize { get; set; } = 25;

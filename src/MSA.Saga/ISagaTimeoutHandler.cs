@@ -1,4 +1,5 @@
 namespace MSA.Saga;
+
 public interface ISagaTimeoutHandler
 {
     string SagaType { get; }

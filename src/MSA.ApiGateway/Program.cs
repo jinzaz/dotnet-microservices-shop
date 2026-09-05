@@ -23,14 +23,14 @@ builder.Services.AddRateLimiter(options =>
         RateLimitPartition.GetTokenBucketLimiter(
             httpContext.User.FindFirst("sub")?.Value ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
             _ => new TokenBucketRateLimiterOptions
-        {
-            TokenLimit = 200,
-            TokensPerPeriod = 100,
-            ReplenishmentPeriod = TimeSpan.FromSeconds(1),
-            AutoReplenishment = true,
-            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-            QueueLimit = 0
-        }));
+            {
+                TokenLimit = 200,
+                TokensPerPeriod = 100,
+                ReplenishmentPeriod = TimeSpan.FromSeconds(1),
+                AutoReplenishment = true,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
 });
 
 // Register Polly policies to be applied to HttpClients used by YARP via IHttpMessageHandlerBuilderFilter

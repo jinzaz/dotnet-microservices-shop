@@ -1,4 +1,5 @@
 namespace MSA.Repositories.Persistence;
+
 public sealed class InboxMessage
 {
     private InboxMessage() { }

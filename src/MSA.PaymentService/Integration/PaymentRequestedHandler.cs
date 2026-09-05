@@ -1,7 +1,16 @@
-using Microsoft.EntityFrameworkCore;using Microsoft.Extensions.Options;using MSA.Contracts;using MSA.EventBus.Abstractions;using MSA.EventBusOutbox;using MSA.PaymentCore;using MSA.PaymentService.Domain;using MSA.PaymentService.Infrastructure;using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using MSA.Contracts;
+using MSA.EventBus.Abstractions;
+using MSA.EventBusOutbox;
+using MSA.PaymentCore;
+using MSA.PaymentService.Domain;
+using MSA.PaymentService.Infrastructure;
+using System.Text.Json;
 namespace MSA.PaymentService.Integration;
-internal sealed class PaymentRequestedHandler(PaymentDbContext db,PaymentGatewayResolver gateways,IOptions<PaymentEndpointOptions> endpoints):IIntegrationEventHandler<PaymentRequestedIntegrationEvent>
+
+internal sealed class PaymentRequestedHandler(PaymentDbContext db, PaymentGatewayResolver gateways, IOptions<PaymentEndpointOptions> endpoints) : IIntegrationEventHandler<PaymentRequestedIntegrationEvent>
 {
- public async Task HandleAsync(PaymentRequestedIntegrationEvent e,CancellationToken ct=default){if(!await db.TryBeginMessageAsync(e.Id,nameof(PaymentRequestedHandler),ct))return;var payment=await db.Payments.SingleOrDefaultAsync(x=>x.OrderId==e.OrderId,ct);if(payment is null){var channel=Enum.Parse<PaymentChannel>(e.PaymentMethod,true);payment=new Payment(Guid.NewGuid(),e.OrderId,e.UserId,e.Amount,e.Currency,channel);db.Payments.Add(payment);var result=await gateways.Resolve(channel).CreateNativePaymentAsync(new(payment.MerchantTradeNo,payment.Amount,payment.Currency,$"Order {e.OrderId:N}",endpoints.Value.NotifyBaseUrl+$"/{channel.ToString().ToLowerInvariant()}",payment.ExpiresOnUtc),ct);payment.SetPaymentUrl(result.PaymentUrl);}await db.SaveEntitiesAsync(ct);}
+    public async Task HandleAsync(PaymentRequestedIntegrationEvent e, CancellationToken ct = default) { if (!await db.TryBeginMessageAsync(e.Id, nameof(PaymentRequestedHandler), ct)) return; var payment = await db.Payments.SingleOrDefaultAsync(x => x.OrderId == e.OrderId, ct); if (payment is null) { var channel = Enum.Parse<PaymentChannel>(e.PaymentMethod, true); payment = new Payment(Guid.NewGuid(), e.OrderId, e.UserId, e.Amount, e.Currency, channel); db.Payments.Add(payment); var result = await gateways.Resolve(channel).CreateNativePaymentAsync(new(payment.MerchantTradeNo, payment.Amount, payment.Currency, $"Order {e.OrderId:N}", endpoints.Value.NotifyBaseUrl + $"/{channel.ToString().ToLowerInvariant()}", payment.ExpiresOnUtc), ct); payment.SetPaymentUrl(result.PaymentUrl); } await db.SaveEntitiesAsync(ct); }
 }
-public sealed class PaymentEndpointOptions{public string NotifyBaseUrl{get;set;}="https://localhost:10005/api/payments/callbacks";}
+public sealed class PaymentEndpointOptions { public string NotifyBaseUrl { get; set; } = "https://localhost:10005/api/payments/callbacks"; }

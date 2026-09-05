@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 namespace MSA.EventBusOutbox;
+
 public sealed class OutboxMessage
 {
     private OutboxMessage() { }
