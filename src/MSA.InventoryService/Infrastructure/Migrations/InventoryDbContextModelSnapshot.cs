@@ -72,6 +72,107 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     b.ToTable("outbox_messages", (string)null);
                 });
 
+            modelBuilder.Entity("MSA.InventoryService.Domain.FlashSaleCampaign", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("BucketCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("ClosedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("EndsOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("PurchaseLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset>("StartsOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Strategy")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TotalQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "EndsOnUtc");
+
+                    b.ToTable("flash_sale_campaigns", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_flash_sale_campaigns_bucket_count", "\"BucketCount\" BETWEEN 1 AND 128 AND \"BucketCount\" * \"PurchaseLimit\" <= \"TotalQuantity\"");
+
+                            t.HasCheckConstraint("CK_flash_sale_campaigns_purchase_limit", "\"PurchaseLimit\" > 0 AND \"PurchaseLimit\" <= \"TotalQuantity\"");
+
+                            t.HasCheckConstraint("CK_flash_sale_campaigns_quantity", "\"TotalQuantity\" > 0");
+
+                            t.HasCheckConstraint("CK_flash_sale_campaigns_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.InventoryService.Domain.FlashSaleStockBucket", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AllocatedQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("BucketNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ReleasedQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ReservedQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SoldQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampaignId", "BucketNumber")
+                        .IsUnique();
+
+                    b.ToTable("flash_sale_stock_buckets", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_flash_sale_stock_buckets_allocated", "\"AllocatedQuantity\" > 0");
+
+                            t.HasCheckConstraint("CK_flash_sale_stock_buckets_counters", "\"ReservedQuantity\" >= 0 AND \"SoldQuantity\" >= 0 AND \"ReleasedQuantity\" >= 0 AND \"ReservedQuantity\" + \"SoldQuantity\" + \"ReleasedQuantity\" <= \"AllocatedQuantity\"");
+                        });
+                });
+
             modelBuilder.Entity("MSA.InventoryService.Domain.InventoryReservation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -81,18 +182,41 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("CreatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("FlashSaleCampaignId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("FlashSaleStockBucketId")
+                        .HasColumnType("bigint");
+
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
+                    b.Property<string>("UserId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("FlashSaleStockBucketId");
 
                     b.HasIndex("OrderId")
                         .IsUnique();
 
-                    b.ToTable("inventory_reservations", (string)null);
+                    b.HasIndex("FlashSaleCampaignId", "UserId")
+                        .IsUnique()
+                        .HasFilter("\"FlashSaleCampaignId\" IS NOT NULL");
+
+                    b.ToTable("inventory_reservations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_inventory_reservations_flash_sale_metadata", "(\"FlashSaleCampaignId\" IS NULL AND \"FlashSaleStockBucketId\" IS NULL AND \"UserId\" IS NULL) OR (\"FlashSaleCampaignId\" IS NOT NULL AND \"FlashSaleStockBucketId\" IS NOT NULL AND \"UserId\" IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("MSA.InventoryService.Domain.InventoryReservationLine", b =>
@@ -118,7 +242,10 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.HasIndex("ReservationId");
 
-                    b.ToTable("inventory_reservation_lines", (string)null);
+                    b.ToTable("inventory_reservation_lines", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_inventory_reservation_lines_quantity", "\"Quantity\" > 0");
+                        });
                 });
 
             modelBuilder.Entity("MSA.InventoryService.Domain.StockItem", b =>
@@ -147,7 +274,10 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     b.HasIndex("Sku")
                         .IsUnique();
 
-                    b.ToTable("stock_items", (string)null);
+                    b.ToTable("stock_items", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_stock_items_quantities", "\"OnHand\" >= 0 AND \"Reserved\" >= 0 AND \"Reserved\" <= \"OnHand\"");
+                        });
                 });
 
             modelBuilder.Entity("MSA.Repositories.Persistence.InboxMessage", b =>
@@ -220,11 +350,38 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     b.ToTable("saga_states", (string)null);
                 });
 
+            modelBuilder.Entity("MSA.InventoryService.Domain.FlashSaleStockBucket", b =>
+                {
+                    b.HasOne("MSA.InventoryService.Domain.FlashSaleCampaign", null)
+                        .WithMany("StockBuckets")
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.InventoryService.Domain.InventoryReservation", b =>
+                {
+                    b.HasOne("MSA.InventoryService.Domain.FlashSaleCampaign", null)
+                        .WithMany()
+                        .HasForeignKey("FlashSaleCampaignId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MSA.InventoryService.Domain.FlashSaleStockBucket", null)
+                        .WithMany()
+                        .HasForeignKey("FlashSaleStockBucketId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("MSA.InventoryService.Domain.InventoryReservationLine", b =>
                 {
                     b.HasOne("MSA.InventoryService.Domain.InventoryReservation", null)
                         .WithMany("Lines")
                         .HasForeignKey("ReservationId");
+                });
+
+            modelBuilder.Entity("MSA.InventoryService.Domain.FlashSaleCampaign", b =>
+                {
+                    b.Navigation("StockBuckets");
                 });
 
             modelBuilder.Entity("MSA.InventoryService.Domain.InventoryReservation", b =>

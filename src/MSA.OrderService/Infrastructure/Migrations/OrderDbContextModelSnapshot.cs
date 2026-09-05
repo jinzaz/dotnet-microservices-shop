@@ -72,6 +72,56 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.ToTable("outbox_messages", (string)null);
                 });
 
+            modelBuilder.Entity("MSA.OrderService.Domain.FlashSaleCampaignProjection", b =>
+                {
+                    b.Property<Guid>("CampaignId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ClosedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("EndsOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsOpen")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("PurchaseLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset>("StartsOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Strategy")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("CampaignId");
+
+                    b.HasIndex("IsOpen", "StartsOnUtc", "EndsOnUtc");
+
+                    b.ToTable("flash_sale_campaign_projections", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_flash_sale_campaign_projections_limit", "\"PurchaseLimit\" > 0");
+
+                            t.HasCheckConstraint("CK_flash_sale_campaign_projections_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
+                        });
+                });
+
             modelBuilder.Entity("MSA.OrderService.Domain.Order", b =>
                 {
                     b.Property<Guid>("Id")
@@ -92,6 +142,9 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)");
+
+                    b.Property<Guid?>("FlashSaleCampaignId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("IdempotencyKey")
                         .IsRequired()
@@ -117,10 +170,17 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("FlashSaleCampaignId", "UserId")
+                        .IsUnique()
+                        .HasFilter("\"FlashSaleCampaignId\" IS NOT NULL");
+
                     b.HasIndex("UserId", "IdempotencyKey")
                         .IsUnique();
 
-                    b.ToTable("orders", (string)null);
+                    b.ToTable("orders", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_orders_amount", "\"Amount\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("MSA.OrderService.Domain.OrderLine", b =>
@@ -155,7 +215,12 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasIndex("OrderId");
 
-                    b.ToTable("order_lines", (string)null);
+                    b.ToTable("order_lines", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_order_lines_quantity", "\"Quantity\" > 0");
+
+                            t.HasCheckConstraint("CK_order_lines_unit_price", "\"UnitPrice\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("MSA.OrderService.Domain.OrderProductProjection", b =>

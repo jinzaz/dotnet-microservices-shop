@@ -306,6 +306,11 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
                 await DoDeclareTopologyAsync();
 
                 await _consumerChannel.ExchangeDeclareAsync(_options.ExchangeName, _options.ExchangeType, durable: true, cancellationToken: cancellationToken);
+                await _consumerChannel.BasicQosAsync(
+                    prefetchSize: 0,
+                    prefetchCount: _options.PrefetchCount,
+                    global: false,
+                    cancellationToken: cancellationToken);
 
 
                 var consumer = new AsyncEventingBasicConsumer(_consumerChannel);

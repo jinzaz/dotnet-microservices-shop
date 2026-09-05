@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
 	<PropertyGroup>
 		<UserSecretsId>de3a96e1-b08a-4a50-8cf3-cb60a65d6e05</UserSecretsId>
@@ -29,6 +29,11 @@
 		<PackageReference Include="OpenTelemetry.Instrumentation.Http" />
 		<PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
 		<PackageReference Include="OpenTelemetry.Exporter.Console" />
+	</ItemGroup>
+
+
+	<ItemGroup>
+	  <ProjectReference Include="..\MSA.Infrastrucute\MSA.Infrastrucute.csproj" />
 	</ItemGroup>
 
 </Project>

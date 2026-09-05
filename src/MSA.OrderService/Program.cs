@@ -1,54 +1,109 @@
-using Microsoft.EntityFrameworkCore;
-
-using OpenTelemetry.Trace;
-using OpenTelemetry.Resources;
-using MSA.EventBus.DependencyInjection;
-using MSA.OrderService;
 using FluentValidation;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.EntityFrameworkCore;
+using MSA.Contracts;
+using MSA.EventBus.DependencyInjection;
 using MSA.EventBusOutbox.Extensions;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
+using MSA.OrderService.Application;
+using MSA.OrderService.Application.CreateFlashSaleOrder;
 using MSA.OrderService.Application.CreateOrder;
 using MSA.OrderService.Domain;
 using MSA.OrderService.Infrastructure;
-using MSA.Saga.Extensions;
-using MSA.Contracts;
 using MSA.OrderService.Integration;
+using MSA.OrderService.Middleware;
+using MSA.Saga.Extensions;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using System.Security.Claims;
+using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddOpenApi();
+builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+builder.Services.AddProblemDetails();
+builder.Services.AddHealthChecks()
+    .AddCheck<OrderDatabaseHealthCheck>("postgresql", tags: ["ready"]);
 
 var connectionString = builder.Configuration.GetConnectionString("Postgresql");
 if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
 builder.Services.AddDbContext<OrderDbContext>(options => options.UseNpgsql(connectionString));
-builder.Services.AddScoped<MSADbContext>(sp => sp.GetRequiredService<OrderDbContext>());
+builder.Services.AddScoped<MSADbContext>(services => services.GetRequiredService<OrderDbContext>());
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
-builder.Services.AddMediatR(configuration => configuration.RegisterServicesFromAssemblyContaining<CreateOrderCommand>());
+builder.Services.AddScoped<IOrderSubmissionLock, PostgresOrderSubmissionLock>();
+builder.Services.AddSingleton(TimeProvider.System);
+
+builder.Services.AddMediatR(configuration =>
+    configuration.RegisterServicesFromAssemblyContaining<CreateOrderCommand>());
 builder.Services.AddScoped<IValidator<CreateOrderCommand>, CreateOrderCommandValidator>();
+builder.Services.AddScoped<IValidator<CreateFlashSaleOrderCommand>, CreateFlashSaleOrderCommandValidator>();
 builder.Services.AddMsaApplicationPipeline();
 
-// RabbitMQ/EventBus registration via messaging extension (will register SagaCoordinator, repositories and eventbus)
-var rabbitHost = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
-builder.Services.AddRabbitMQEventBus(opts => { opts.HostName = rabbitHost; opts.ExchangeName = "events"; opts.Port = 5672; opts.UserName = builder.Configuration["RabbitMQ:User"] ?? "guest"; opts.Password = builder.Configuration["RabbitMQ:Password"] ?? "guest"; });
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("FlashSaleSubmission", httpContext =>
+        RateLimitPartition.GetTokenBucketLimiter(
+            httpContext.User.FindFirstValue("sub")
+                ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                ?? "anonymous",
+            _ => new TokenBucketRateLimiterOptions
+            {
+                TokenLimit = 5,
+                TokensPerPeriod = 2,
+                ReplenishmentPeriod = TimeSpan.FromSeconds(1),
+                AutoReplenishment = true,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+});
+
+builder.Services.AddRabbitMQEventBus(options =>
+{
+    options.HostName = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
+    options.ExchangeName = "events";
+    options.Port = 5672;
+    options.UserName = builder.Configuration["RabbitMQ:User"] ?? "guest";
+    options.Password = builder.Configuration["RabbitMQ:Password"] ?? "guest";
+    options.QueueName = "msa.ordering";
+});
 builder.Services.AddOutbox<OrderDbContext>();
 builder.Services.AddSaga<OrderDbContext>();
 builder.Services.AddIntegrationEventHandler<ProductChangedIntegrationEvent, ProductChangedHandler>();
+builder.Services.AddIntegrationEventHandler<FlashSaleCampaignOpenedIntegrationEvent, FlashSaleCampaignOpenedHandler>();
+builder.Services.AddIntegrationEventHandler<FlashSaleCampaignClosedIntegrationEvent, FlashSaleCampaignClosedHandler>();
 builder.Services.AddIntegrationEventHandler<InventoryReservedIntegrationEvent, InventoryReservedHandler>();
 builder.Services.AddIntegrationEventHandler<InventoryRejectedIntegrationEvent, InventoryRejectedHandler>();
 builder.Services.AddIntegrationEventHandler<PaymentSucceededIntegrationEvent, PaymentSucceededHandler>();
 builder.Services.AddIntegrationEventHandler<PaymentFailedIntegrationEvent, PaymentFailedHandler>();
 builder.Services.AddScoped<ISagaTimeoutHandler, OrderSagaTimeoutHandler>();
-builder.Services.AddOpenIddict().AddValidation(o => { o.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/"); o.AddAudiences("api"); o.UseSystemNetHttp(); o.UseAspNetCore(); });
+
+builder.Services.AddOpenIddict().AddValidation(options =>
+{
+    options.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/");
+    options.AddAudiences("api");
+    options.UseSystemNetHttp();
+    options.UseAspNetCore();
+});
 builder.Services.AddAuthorization();
 
-builder.Services.AddOpenTelemetry().WithTracing(otelBuilder =>
+builder.Services.AddOpenTelemetry().WithTracing(tracing =>
 {
-    var svcName = builder.Environment.ApplicationName ?? "MSA.OrderService";
-    otelBuilder.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(svcName)).AddAspNetCoreInstrumentation().AddHttpClientInstrumentation().AddOtlpExporter();
-    if (builder.Configuration.GetValue<bool>("OpenTelemetry:EnableConsoleExporter")) otelBuilder.AddConsoleExporter();
+    tracing
+        .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(builder.Environment.ApplicationName))
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddOtlpExporter();
+    if (builder.Configuration.GetValue<bool>("OpenTelemetry:EnableConsoleExporter"))
+        tracing.AddConsoleExporter();
 });
 
 var app = builder.Build();
@@ -59,11 +114,21 @@ if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
     await scope.ServiceProvider.GetRequiredService<OrderDbContext>().Database.MigrateAsync();
 }
 
-// Configure the HTTP request pipeline.
+app.UseExceptionHandler();
+app.UseStatusCodePages();
 app.UseHttpsRedirection();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
+if (app.Environment.IsDevelopment())
+    app.MapOpenApi();
+app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("ready")
+});
 app.MapControllers();
 
 app.Run();

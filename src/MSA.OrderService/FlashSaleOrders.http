@@ -1,0 +1,30 @@
+@orderUrl = http://localhost:12001
+@accessToken = replace-with-an-access-token
+@campaignId = 00000000-0000-0000-0000-000000000000
+@orderId = 00000000-0000-0000-0000-000000000000
+@idempotencyKey = buyer-42-phone-001-20260906
+
+### Submit a flash-sale order; repeat with the same key to receive the same order id
+POST {{orderUrl}}/api/flash-sales/{{campaignId}}/orders
+Authorization: Bearer {{accessToken}}
+Idempotency-Key: {{idempotencyKey}}
+Content-Type: application/json
+
+{
+  "quantity": 1,
+  "paymentMethod": "Alipay"
+}
+
+### Poll the existing order workflow until Confirmed or Cancelled
+GET {{orderUrl}}/api/orders/{{orderId}}
+Authorization: Bearer {{accessToken}}
+
+### Error path: missing Idempotency-Key returns validation problem details
+POST {{orderUrl}}/api/flash-sales/{{campaignId}}/orders
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "quantity": 1,
+  "paymentMethod": "Alipay"
+}

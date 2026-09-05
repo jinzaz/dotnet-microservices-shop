@@ -1,16 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using MSA.Infrastrucute;
 
 namespace MSA.IdentityService;
 
-public sealed class IdentityDesignTimeDbContextFactory : IDesignTimeDbContextFactory<ApplicationDbContext>
+public sealed class IdentityDesignTimeDbContextFactory : BaseDesignTimeDbContextFactory<ApplicationDbContext>
 {
-    public ApplicationDbContext CreateDbContext(string[] args)
+    protected override void ConfigureDbContext(DbContextOptionsBuilder options)
     {
-        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection") ?? "Host=localhost;Database=identity_design;Username=postgres;Password=design")
-            .UseOpenIddict()
-            .Options;
-        return new ApplicationDbContext(options);
+        options.UseOpenIddict();
     }
 }

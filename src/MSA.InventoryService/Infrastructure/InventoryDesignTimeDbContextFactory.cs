@@ -1,18 +1,19 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.DependencyInjection;
+using MSA.Infrastrucute;
 using MSA.InventoryService.Application;
 
 namespace MSA.InventoryService.Infrastructure;
 
-public sealed class InventoryDesignTimeDbContextFactory : IDesignTimeDbContextFactory<InventoryDbContext>
+public sealed class InventoryDesignTimeDbContextFactory : BaseDesignTimeDbContextFactory<InventoryDbContext>
 {
-    public InventoryDbContext CreateDbContext(string[] args)
+
+    protected override void ConfigureServices(IServiceCollection services)
     {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddMediatR(x => x.RegisterServicesFromAssemblyContaining<AddStockCommand>());
-        services.AddDbContext<InventoryDbContext>(x => x.UseNpgsql(Environment.GetEnvironmentVariable("ConnectionStrings__Postgresql") ?? "Host=localhost;Database=inventory_design;Username=postgres;Password=design"));
-        return services.BuildServiceProvider().GetRequiredService<InventoryDbContext>();
+        services.AddMediatR(config =>
+        {
+            config.RegisterServicesFromAssemblyContaining<AddStockCommand>();
+        });
     }
 }

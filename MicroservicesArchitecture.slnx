@@ -30,4 +30,7 @@
     <Project Path="src/MSA.PaymentService/MSA.PaymentService.csproj" />
     <Project Path="src/MSA.NotificationService/MSA.NotificationService.csproj" />
   </Folder>
+  <Folder Name="/3.Tests/">
+    <Project Path="tests/MSA.FlashSaleTests/MSA.FlashSaleTests.csproj" />
+  </Folder>
 </Solution>
