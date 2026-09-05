@@ -10,7 +10,7 @@ public sealed class CreateOrderCommandValidator : AbstractValidator<CreateOrderC
         RuleFor(command => command.IdempotencyKey).NotEmpty().MaximumLength(100);
         RuleFor(command => command.Items).NotEmpty().Must(items => items.Count <= 100);
         RuleFor(command => command.Items)
-            .Must(items => items.Select(item => item.Sku).Distinct(StringComparer.Ordinal).Count() == items.Count)
+            .Must(items => items.Select(item => item.Sku.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() == items.Count)
             .WithMessage("Duplicate SKU lines are not supported.");
         RuleForEach(command => command.Items).ChildRules(item =>
         {
@@ -18,5 +18,18 @@ public sealed class CreateOrderCommandValidator : AbstractValidator<CreateOrderC
             item.RuleFor(value => value.Quantity).InclusiveBetween(1, 999);
         });
         RuleFor(command => command.PaymentMethod).Must(value => value is "Alipay" or "WeChatPay");
+        RuleFor(command => command.CouponCodes)
+            .Must(codes => codes is null || codes.Count <= 5)
+            .WithMessage("At most five coupon codes can be applied.")
+            .Must(codes => codes is null
+                || codes.Where(code => !string.IsNullOrWhiteSpace(code))
+                    .Select(code => code.Trim().ToUpperInvariant())
+                    .Distinct(StringComparer.Ordinal)
+                    .Count() == codes.Count)
+            .WithMessage("Coupon codes must be non-empty and unique.");
+        RuleForEach(command => command.CouponCodes)
+            .NotEmpty()
+            .MaximumLength(80)
+            .When(command => command.CouponCodes is not null);
     }
 }

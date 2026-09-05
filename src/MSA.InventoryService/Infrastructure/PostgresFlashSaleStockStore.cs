@@ -80,8 +80,21 @@ internal sealed class PostgresFlashSaleStockStore(
             now,
             skipLocked: false,
             cancellationToken);
-        return fallbackBucketId.HasValue
-            ? FlashSaleReservationAttempt.Reserved(fallbackBucketId.Value)
+        if (fallbackBucketId.HasValue)
+            return FlashSaleReservationAttempt.Reserved(fallbackBucketId.Value);
+
+        // A bucketed pool can become fragmented even when its aggregate available
+        // quantity is sufficient. This locked slow path compacts only available
+        // allocation, then reserves from one bucket so the existing reservation
+        // model and fast path remain unchanged.
+        var compactedBucketId = await ReserveFragmentedPoolAsync(
+            campaignId,
+            quantity,
+            preferredBucket,
+            now,
+            cancellationToken);
+        return compactedBucketId.HasValue
+            ? FlashSaleReservationAttempt.Reserved(compactedBucketId.Value)
             : await GetRejectionAsync(campaignId, quantity, now, cancellationToken);
     }
 
@@ -178,6 +191,57 @@ internal sealed class PostgresFlashSaleStockStore(
 
         var result = await command.ExecuteScalarAsync(cancellationToken);
         return result is null or DBNull ? null : Convert.ToInt64(result);
+    }
+
+    private async Task<long?> ReserveFragmentedPoolAsync(
+        Guid campaignId,
+        int quantity,
+        int preferredBucket,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var campaign = await db.FlashSaleCampaigns
+            .FromSqlInterpolated($"SELECT * FROM flash_sale_campaigns WHERE \"Id\" = {campaignId} AND \"Status\" = 0 AND \"StartsOnUtc\" <= {now} AND \"EndsOnUtc\" > {now} FOR UPDATE")
+            .AsNoTracking()
+            .SingleOrDefaultAsync(cancellationToken);
+        if (campaign is null)
+            return null;
+
+        var buckets = await db.FlashSaleStockBuckets
+            .FromSqlInterpolated($"SELECT * FROM flash_sale_stock_buckets WHERE \"CampaignId\" = {campaignId} ORDER BY \"BucketNumber\" FOR UPDATE")
+            .ToListAsync(cancellationToken);
+        if (buckets.Sum(bucket => bucket.AvailableQuantity) < quantity)
+            return null;
+
+        var orderedBuckets = buckets
+            .OrderBy(
+                bucket => (bucket.BucketNumber - preferredBucket + campaign.BucketCount)
+                    % campaign.BucketCount)
+            .ToArray();
+        var target = orderedBuckets
+            .OrderByDescending(bucket => bucket.AvailableQuantity)
+            .ThenBy(
+                bucket => (bucket.BucketNumber - preferredBucket + campaign.BucketCount)
+                    % campaign.BucketCount)
+            .First();
+
+        var missingQuantity = quantity - target.AvailableQuantity;
+        foreach (var donor in orderedBuckets
+                     .Where(bucket => !ReferenceEquals(bucket, target) && bucket.AvailableQuantity > 0)
+                     .OrderByDescending(bucket => bucket.AvailableQuantity))
+        {
+            if (missingQuantity <= 0)
+                break;
+
+            var transferQuantity = Math.Min(donor.AvailableQuantity, missingQuantity);
+            donor.TransferAvailableTo(target, transferQuantity);
+            missingQuantity -= transferQuantity;
+        }
+
+        if (missingQuantity > 0 || !target.TryReserve(quantity))
+            throw new InvalidOperationException("Flash-sale bucket compaction did not preserve available inventory.");
+
+        return target.Id;
     }
 
     private async Task<FlashSaleReservationAttempt> GetRejectionAsync(

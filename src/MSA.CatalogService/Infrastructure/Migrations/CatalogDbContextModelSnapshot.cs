@@ -22,56 +22,81 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("MSA.CatalogService.Domain.CatalogAuditEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("AggregateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AggregateType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("DetailsJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("OccurredOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Actor", "OccurredOnUtc");
+
+                    b.HasIndex("AggregateType", "AggregateId", "OccurredOnUtc");
+
+                    b.ToTable("catalog_audit_entries", (string)null);
+                });
+
             modelBuilder.Entity("MSA.CatalogService.Domain.Category", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
-                    b.HasKey("Id");
-
-                    b.ToTable("categories", (string)null);
-                });
-
-            modelBuilder.Entity("MSA.CatalogService.Domain.Product", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("CategoryId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Currency")
+                    b.Property<string>("NormalizedCode")
                         .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)");
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
 
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
 
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Name")
+                    b.Property<string>("UpdatedBy")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
-
-                    b.Property<decimal>("Price")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<string>("Sku")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
 
                     b.Property<DateTimeOffset>("UpdatedOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -82,10 +107,471 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("NormalizedCode")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "Name", "Id");
+
+                    b.ToTable("categories", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_categories_audit", "\"Version\" > 0 AND \"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+
+                            t.HasCheckConstraint("CK_categories_normalized_code", "\"NormalizedCode\" = upper(trim(\"Code\"))");
+
+                            t.HasCheckConstraint("CK_categories_status", "\"Status\" BETWEEN 0 AND 2");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.Coupon", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AssignedUserId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("CodeDigest")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MaskedCode")
+                        .IsRequired()
+                        .HasMaxLength(124)
+                        .HasColumnType("character varying(124)");
+
+                    b.Property<int>("PerUserLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("PromotionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("QuotaStrategy")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("TotalLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ValidFromUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ValidUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CodeDigest")
+                        .IsUnique();
+
+                    b.HasIndex("PromotionId", "Status", "Id");
+
+                    b.HasIndex("Status", "ValidUntilUtc", "Id");
+
+                    b.ToTable("coupons", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_coupons_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+
+                            t.HasCheckConstraint("CK_coupons_code_digest", "\"CodeDigest\" ~ '^[0-9A-F]{64}$'");
+
+                            t.HasCheckConstraint("CK_coupons_per_user_limit", "\"PerUserLimit\" > 0 AND (\"TotalLimit\" IS NULL OR \"PerUserLimit\" <= \"TotalLimit\")");
+
+                            t.HasCheckConstraint("CK_coupons_quota_strategy", "\"QuotaStrategy\" IN (0, 1)");
+
+                            t.HasCheckConstraint("CK_coupons_revision", "\"Revision\" > 0 AND \"Version\" > 0");
+
+                            t.HasCheckConstraint("CK_coupons_status", "\"Status\" BETWEEN 0 AND 3");
+
+                            t.HasCheckConstraint("CK_coupons_total_limit", "\"TotalLimit\" IS NULL OR \"TotalLimit\" > 0");
+
+                            t.HasCheckConstraint("CK_coupons_window", "\"ValidFromUtc\" < \"ValidUntilUtc\"");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.CouponQuotaBucket", b =>
+                {
+                    b.Property<Guid>("CouponId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("BucketNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Capacity")
+                        .HasColumnType("integer");
+
+                    b.HasKey("CouponId", "BucketNumber");
+
+                    b.ToTable("coupon_quota_buckets", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_coupon_quota_buckets_capacity", "\"Capacity\" > 0");
+
+                            t.HasCheckConstraint("CK_coupon_quota_buckets_number", "\"BucketNumber\" BETWEEN 0 AND 127");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.Product", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ArchivedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("EffectiveOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("LifecycleStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("NormalizedSku")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTimeOffset?>("PublishedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset?>("UnpublishedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedSku")
+                        .IsUnique();
+
                     b.HasIndex("Sku")
                         .IsUnique();
 
-                    b.ToTable("products", (string)null);
+                    b.HasIndex("CategoryId", "LifecycleStatus", "Id");
+
+                    b.HasIndex("LifecycleStatus", "EffectiveOnUtc", "Id");
+
+                    b.ToTable("products", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_products_active_lifecycle", "(\"IsActive\" AND \"LifecycleStatus\" = 1 AND \"EffectiveOnUtc\" IS NOT NULL) OR (NOT \"IsActive\" AND \"LifecycleStatus\" <> 1)");
+
+                            t.HasCheckConstraint("CK_products_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+
+                            t.HasCheckConstraint("CK_products_currency", "\"Currency\" ~ '^[A-Z]{3}$'");
+
+                            t.HasCheckConstraint("CK_products_lifecycle", "\"LifecycleStatus\" BETWEEN 0 AND 3");
+
+                            t.HasCheckConstraint("CK_products_normalized_sku", "\"NormalizedSku\" = upper(trim(\"Sku\"))");
+
+                            t.HasCheckConstraint("CK_products_price", "\"Price\" >= 0");
+
+                            t.HasCheckConstraint("CK_products_revision", "\"Revision\" > 0 AND \"Version\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.Promotion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DefinitionChecksum")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("EndsOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExclusiveGroup")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("NormalizedCode")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("PublishedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("PublishedRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("StackPolicy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("StartsOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TriggerType")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedCode")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "StartsOnUtc", "EndsOnUtc");
+
+                    b.ToTable("promotions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_promotions_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+
+                            t.HasCheckConstraint("CK_promotions_normalized_code", "\"NormalizedCode\" = upper(trim(\"Code\"))");
+
+                            t.HasCheckConstraint("CK_promotions_priority", "\"Priority\" BETWEEN -1000000 AND 1000000");
+
+                            t.HasCheckConstraint("CK_promotions_published_snapshot", "\"Status\" = 0 OR (\"PublishedRevision\" IS NOT NULL AND length(\"DefinitionChecksum\") = 64)");
+
+                            t.HasCheckConstraint("CK_promotions_revision", "\"Revision\" > 0 AND \"Version\" > 0");
+
+                            t.HasCheckConstraint("CK_promotions_stack_policy", "\"StackPolicy\" IN (0, 1)");
+
+                            t.HasCheckConstraint("CK_promotions_status", "\"Status\" BETWEEN 0 AND 5");
+
+                            t.HasCheckConstraint("CK_promotions_trigger", "\"TriggerType\" IN (0, 1)");
+
+                            t.HasCheckConstraint("CK_promotions_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.PromotionBenefit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BenefitType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("ConfigurationJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("PromotionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BenefitType", "SchemaVersion");
+
+                    b.HasIndex("PromotionId", "Sequence")
+                        .IsUnique();
+
+                    b.ToTable("promotion_benefits", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_promotion_benefits_schema_version", "\"SchemaVersion\" > 0");
+
+                            t.HasCheckConstraint("CK_promotion_benefits_sequence", "\"Sequence\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.PromotionRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConfigurationJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("PromotionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RuleType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PromotionId", "Sequence")
+                        .IsUnique();
+
+                    b.HasIndex("RuleType", "SchemaVersion");
+
+                    b.ToTable("promotion_rules", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_promotion_rules_schema_version", "\"SchemaVersion\" > 0");
+
+                            t.HasCheckConstraint("CK_promotion_rules_sequence", "\"Sequence\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.PromotionTarget", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConfigurationJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<bool>("IsExcluded")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("PromotionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TargetKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PromotionId", "Sequence")
+                        .IsUnique();
+
+                    b.HasIndex("TargetType", "TargetKey", "IsExcluded");
+
+                    b.ToTable("promotion_targets", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_promotion_targets_schema_version", "\"SchemaVersion\" > 0");
+
+                            t.HasCheckConstraint("CK_promotion_targets_sequence", "\"Sequence\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("MSA.EventBusOutbox.OutboxMessage", b =>
@@ -206,6 +692,74 @@ namespace MSA.CatalogService.Infrastructure.Migrations
                     b.HasIndex("Status", "TimeoutOnUtc", "TimeoutLockedUntilUtc");
 
                     b.ToTable("saga_states", (string)null);
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.Coupon", b =>
+                {
+                    b.HasOne("MSA.CatalogService.Domain.Promotion", null)
+                        .WithMany()
+                        .HasForeignKey("PromotionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.CouponQuotaBucket", b =>
+                {
+                    b.HasOne("MSA.CatalogService.Domain.Coupon", null)
+                        .WithMany("QuotaBuckets")
+                        .HasForeignKey("CouponId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.Product", b =>
+                {
+                    b.HasOne("MSA.CatalogService.Domain.Category", null)
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.PromotionBenefit", b =>
+                {
+                    b.HasOne("MSA.CatalogService.Domain.Promotion", null)
+                        .WithMany("Benefits")
+                        .HasForeignKey("PromotionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.PromotionRule", b =>
+                {
+                    b.HasOne("MSA.CatalogService.Domain.Promotion", null)
+                        .WithMany("Rules")
+                        .HasForeignKey("PromotionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.PromotionTarget", b =>
+                {
+                    b.HasOne("MSA.CatalogService.Domain.Promotion", null)
+                        .WithMany("Targets")
+                        .HasForeignKey("PromotionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.Coupon", b =>
+                {
+                    b.Navigation("QuotaBuckets");
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.Promotion", b =>
+                {
+                    b.Navigation("Benefits");
+
+                    b.Navigation("Rules");
+
+                    b.Navigation("Targets");
                 });
 #pragma warning restore 612, 618
         }

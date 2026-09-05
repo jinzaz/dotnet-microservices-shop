@@ -6,4 +6,10 @@ public interface ISagaStore
     Task<SagaState?> FindAsync(Guid correlationId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SagaState>> ClaimDueTimeoutsAsync(Guid lockId, int batchSize, DateTimeOffset now, TimeSpan lockDuration, CancellationToken cancellationToken);
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
+    Task<ISagaTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
+}
+
+public interface ISagaTransaction : IAsyncDisposable
+{
+    Task CommitAsync(CancellationToken cancellationToken = default);
 }

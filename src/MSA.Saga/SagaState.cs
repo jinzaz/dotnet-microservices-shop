@@ -25,8 +25,38 @@ public sealed class SagaState
     public void ScheduleTimeout(DateTimeOffset dueOnUtc, DateTimeOffset now) { EnsureActive(); TimeoutOnUtc = dueOnUtc; TimeoutLockId = null; TimeoutLockedUntilUtc = null; UpdatedOnUtc = now; Version++; }
     public void ClaimTimeout(Guid lockId, DateTimeOffset until, DateTimeOffset now) { TimeoutLockId = lockId; TimeoutLockedUntilUtc = until; UpdatedOnUtc = now; Version++; }
     public void ClearTimeout(Guid lockId, DateTimeOffset now) { EnsureTimeoutLock(lockId); TimeoutOnUtc = null; TimeoutLockId = null; TimeoutLockedUntilUtc = null; UpdatedOnUtc = now; Version++; }
-    public void Complete(DateTimeOffset now) { Status = SagaStatus.Completed; TimeoutOnUtc = null; TimeoutLockId = null; TimeoutLockedUntilUtc = null; UpdatedOnUtc = now; Version++; }
-    public void Fail(string reason, DateTimeOffset now) { Status = SagaStatus.Failed; FailureReason = reason; TimeoutOnUtc = null; TimeoutLockId = null; TimeoutLockedUntilUtc = null; UpdatedOnUtc = now; Version++; }
+    public void Complete(DateTimeOffset now) { EnsureActive(); Status = SagaStatus.Completed; TimeoutOnUtc = null; TimeoutLockId = null; TimeoutLockedUntilUtc = null; UpdatedOnUtc = now; Version++; }
+    public void BeginCompensation(string state, string data, DateTimeOffset now)
+    {
+        // A compensation may have completed before an irreversible late event
+        // (for example a delayed payment callback) is observed. Re-open the
+        // compensation workflow so the newly discovered side effect can be
+        // undone as well; a successfully completed saga remains immutable.
+        if (Status == SagaStatus.Completed)
+            throw new InvalidOperationException($"Saga {CorrelationId} is terminal.");
+        ArgumentException.ThrowIfNullOrWhiteSpace(state);
+        State = state;
+        Data = data;
+        Status = SagaStatus.Compensating;
+        FailureReason = null;
+        TimeoutOnUtc = null;
+        TimeoutLockId = null;
+        TimeoutLockedUntilUtc = null;
+        UpdatedOnUtc = now;
+        Version++;
+    }
+    public void Compensate(DateTimeOffset now)
+    {
+        if (Status != SagaStatus.Compensating)
+            throw new InvalidOperationException($"Saga {CorrelationId} is not compensating.");
+        Status = SagaStatus.Compensated;
+        TimeoutOnUtc = null;
+        TimeoutLockId = null;
+        TimeoutLockedUntilUtc = null;
+        UpdatedOnUtc = now;
+        Version++;
+    }
+    public void Fail(string reason, DateTimeOffset now) { if (Status is SagaStatus.Completed or SagaStatus.Compensated) throw new InvalidOperationException($"Saga {CorrelationId} is terminal."); Status = SagaStatus.Failed; FailureReason = reason; TimeoutOnUtc = null; TimeoutLockId = null; TimeoutLockedUntilUtc = null; UpdatedOnUtc = now; Version++; }
     private void EnsureActive() { if (Status is SagaStatus.Completed or SagaStatus.Compensated or SagaStatus.Failed) throw new InvalidOperationException($"Saga {CorrelationId} is terminal."); }
     private void EnsureTimeoutLock(Guid lockId) { if (TimeoutLockId != lockId) throw new InvalidOperationException($"Saga {CorrelationId} timeout is not owned by lock {lockId}."); }
 }

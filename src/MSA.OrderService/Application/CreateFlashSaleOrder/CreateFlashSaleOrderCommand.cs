@@ -7,4 +7,5 @@ public sealed record CreateFlashSaleOrderCommand(
     string IdempotencyKey,
     Guid CampaignId,
     int Quantity,
-    string PaymentMethod) : ICommand<Guid>;
+    string PaymentMethod,
+    IReadOnlyList<string>? CouponCodes = null) : ICommand<Guid>;

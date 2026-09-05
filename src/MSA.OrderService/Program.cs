@@ -10,6 +10,7 @@ using MSA.Infrastrucute.Extensions;
 using MSA.OrderService.Application;
 using MSA.OrderService.Application.CreateFlashSaleOrder;
 using MSA.OrderService.Application.CreateOrder;
+using MSA.OrderService.Application.Pricing;
 using MSA.OrderService.Domain;
 using MSA.OrderService.Infrastructure;
 using MSA.OrderService.Integration;
@@ -39,7 +40,18 @@ builder.Services.AddDbContext<OrderDbContext>(options => options.UseNpgsql(conne
 builder.Services.AddScoped<MSADbContext>(services => services.GetRequiredService<OrderDbContext>());
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddScoped<IOrderSubmissionLock, PostgresOrderSubmissionLock>();
+builder.Services.AddScoped<IOrderPricingService, OrderPricingService>();
+builder.Services.AddScoped<ICouponRedemptionStore, PostgresCouponRedemptionStore>();
+builder.Services.AddScoped<IPromotionRuleEvaluator, MinimumOrderAmountRule>();
+builder.Services.AddScoped<IPromotionRuleEvaluator, MinimumItemQuantityRule>();
+builder.Services.AddScoped<IPromotionBenefitCalculator, PercentageOffBenefit>();
+builder.Services.AddScoped<IPromotionBenefitCalculator, FixedAmountOffBenefit>();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddOptions<OrderCheckoutOptions>()
+    .Bind(builder.Configuration.GetSection(OrderCheckoutOptions.SectionName))
+    .Validate(options => options.PaymentWindow >= TimeSpan.FromMinutes(1), "PaymentWindow must be at least one minute.")
+    .Validate(options => options.PaymentWindow <= TimeSpan.FromHours(24), "PaymentWindow cannot exceed 24 hours.")
+    .ValidateOnStart();
 
 builder.Services.AddMediatR(configuration =>
     configuration.RegisterServicesFromAssemblyContaining<CreateOrderCommand>());
@@ -69,21 +81,30 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddRabbitMQEventBus(options =>
 {
     options.HostName = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
-    options.ExchangeName = "events";
+    options.ExchangeName = builder.Configuration["RabbitMQ:ExchangeName"] ?? "msa.commerce.events";
     options.Port = 5672;
     options.UserName = builder.Configuration["RabbitMQ:User"] ?? "guest";
     options.Password = builder.Configuration["RabbitMQ:Password"] ?? "guest";
     options.QueueName = "msa.ordering";
+    options.DeadLetterExchange = $"{options.ExchangeName}.dlx";
+    options.DeadLetterQueue = $"{options.QueueName}.dlq";
 });
 builder.Services.AddOutbox<OrderDbContext>();
 builder.Services.AddSaga<OrderDbContext>();
 builder.Services.AddIntegrationEventHandler<ProductChangedIntegrationEvent, ProductChangedHandler>();
+builder.Services.AddIntegrationEventHandler<PromotionSnapshotChangedIntegrationEvent, PromotionSnapshotChangedHandler>();
+builder.Services.AddIntegrationEventHandler<CouponSnapshotChangedIntegrationEvent, CouponSnapshotChangedHandler>();
 builder.Services.AddIntegrationEventHandler<FlashSaleCampaignOpenedIntegrationEvent, FlashSaleCampaignOpenedHandler>();
 builder.Services.AddIntegrationEventHandler<FlashSaleCampaignClosedIntegrationEvent, FlashSaleCampaignClosedHandler>();
 builder.Services.AddIntegrationEventHandler<InventoryReservedIntegrationEvent, InventoryReservedHandler>();
 builder.Services.AddIntegrationEventHandler<InventoryRejectedIntegrationEvent, InventoryRejectedHandler>();
 builder.Services.AddIntegrationEventHandler<PaymentSucceededIntegrationEvent, PaymentSucceededHandler>();
 builder.Services.AddIntegrationEventHandler<PaymentFailedIntegrationEvent, PaymentFailedHandler>();
+builder.Services.AddIntegrationEventHandler<InventoryCommittedIntegrationEvent, InventoryCommittedHandler>();
+builder.Services.AddIntegrationEventHandler<InventoryReleasedIntegrationEvent, InventoryReleasedHandler>();
+builder.Services.AddIntegrationEventHandler<PaymentCancelledIntegrationEvent, PaymentCancelledHandler>();
+builder.Services.AddIntegrationEventHandler<PaymentRefundedIntegrationEvent, PaymentRefundedHandler>();
+builder.Services.AddIntegrationEventHandler<PaymentRefundFailedIntegrationEvent, PaymentRefundFailedHandler>();
 builder.Services.AddScoped<ISagaTimeoutHandler, OrderSagaTimeoutHandler>();
 
 builder.Services.AddOpenIddict().AddValidation(options =>

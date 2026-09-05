@@ -39,7 +39,18 @@ internal sealed class CloseFlashSaleCommandHandler(
         var now = clock.GetUtcNow();
         var releasedQuantity = campaign.Close(now);
         if (releasedQuantity > 0)
+        {
             stockItem.Release(releasedQuantity);
+            db.StockMovements.Add(StockMovement.Record(
+                stockItem,
+                StockMovementType.CampaignReleased,
+                onHandDelta: 0,
+                reservedDelta: -releasedQuantity,
+                StockMovementReferenceType.FlashSaleCampaign,
+                campaign.Id,
+                "Unused flash-sale inventory returned to the regular stock pool.",
+                now));
+        }
 
         var integrationEvent = new FlashSaleCampaignClosedIntegrationEvent
         {

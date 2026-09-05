@@ -3,6 +3,11 @@ namespace MSA.InventoryService.Application.FlashSales;
 public interface IInventoryTransactionLock
 {
     Task AcquireStockItemsAsync(IEnumerable<string> skus, CancellationToken cancellationToken);
+    Task AcquireStockAdjustmentAsync(
+        string sku,
+        string operatorId,
+        string idempotencyKey,
+        CancellationToken cancellationToken);
     Task AcquireOrderReservationAsync(Guid orderId, CancellationToken cancellationToken);
     Task AcquireFlashSaleBuyerAsync(Guid campaignId, string userId, CancellationToken cancellationToken);
 }

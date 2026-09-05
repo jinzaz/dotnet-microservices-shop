@@ -1,2 +1,12 @@
 using MSA.Infrastrucute.Mediator;
-namespace MSA.OrderService.Application.CreateOrder; public sealed record CreateOrderItem(string Sku, int Quantity); public sealed record CreateOrderCommand(string UserId, string IdempotencyKey, IReadOnlyList<CreateOrderItem> Items, string PaymentMethod) : ICommand<Guid>;
+
+namespace MSA.OrderService.Application.CreateOrder;
+
+public sealed record CreateOrderItem(string Sku, int Quantity);
+
+public sealed record CreateOrderCommand(
+    string UserId,
+    string IdempotencyKey,
+    IReadOnlyList<CreateOrderItem> Items,
+    string PaymentMethod,
+    IReadOnlyList<string>? CouponCodes = null) : ICommand<Guid>;

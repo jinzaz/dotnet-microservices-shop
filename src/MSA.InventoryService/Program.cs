@@ -31,8 +31,15 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddMediatR(configuration =>
     configuration.RegisterServicesFromAssemblyContaining<AddStockCommand>());
 builder.Services.AddScoped<IValidator<AddStockCommand>, AddStockValidator>();
+builder.Services.AddScoped<IValidator<AdjustStockCommand>, AdjustStockCommandValidator>();
 builder.Services.AddScoped<IValidator<CreateFlashSaleCommand>, CreateFlashSaleCommandValidator>();
 builder.Services.AddMsaApplicationPipeline();
+
+builder.Services.AddOptions<InventoryReservationOptions>()
+    .Bind(builder.Configuration.GetSection(InventoryReservationOptions.SectionName))
+    .Validate(options => options.RegularLifetime > TimeSpan.Zero, "RegularLifetime must be positive.")
+    .Validate(options => options.FlashSaleLifetime > TimeSpan.Zero, "FlashSaleLifetime must be positive.")
+    .ValidateOnStart();
 
 builder.Services.AddOptions<FlashSaleOptions>()
     .Bind(builder.Configuration.GetSection(FlashSaleOptions.SectionName))
@@ -52,9 +59,12 @@ builder.Services.AddStackExchangeRedisCache(options =>
 builder.Services.AddRabbitMQEventBus(options =>
 {
     options.HostName = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
+    options.ExchangeName = builder.Configuration["RabbitMQ:ExchangeName"] ?? "msa.commerce.events";
     options.UserName = builder.Configuration["RabbitMQ:User"] ?? "guest";
     options.Password = builder.Configuration["RabbitMQ:Password"] ?? "guest";
     options.QueueName = "msa.inventory";
+    options.DeadLetterExchange = $"{options.ExchangeName}.dlx";
+    options.DeadLetterQueue = $"{options.QueueName}.dlq";
     options.PrefetchCount = builder.Configuration.GetValue<ushort?>("RabbitMQ:PrefetchCount") ?? 64;
 });
 builder.Services.AddOutbox<InventoryDbContext>();

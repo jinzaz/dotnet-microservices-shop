@@ -33,7 +33,8 @@ public sealed class FlashSaleOrdersController(ISender sender) : ControllerBase
                 idempotencyKey,
                 campaignId,
                 request.Quantity,
-                request.PaymentMethod),
+                request.PaymentMethod,
+                request.CouponCodes),
             cancellationToken);
         return AcceptedAtAction(
             nameof(OrdersController.Get),
@@ -51,6 +52,9 @@ public sealed record CreateFlashSaleOrderRequest
 
     [Required]
     public required string PaymentMethod { get; init; }
+
+    [MaxLength(5)]
+    public IReadOnlyList<string>? CouponCodes { get; init; }
 }
 
 /// <summary>Order identifier accepted for asynchronous inventory reservation.</summary>

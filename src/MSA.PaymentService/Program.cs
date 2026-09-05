@@ -13,6 +13,9 @@ using MSA.PaymentService.Integration;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("Postgresql");
@@ -21,6 +24,11 @@ if (string.IsNullOrWhiteSpace(connectionString))
 
 builder.Services.AddDbContext<PaymentDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddScoped<MSADbContext>(services => services.GetRequiredService<PaymentDbContext>());
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddOptions<PaymentProcessingOptions>()
+    .Bind(builder.Configuration.GetSection("PaymentProcessing"))
+    .Validate(options => options.IsValid(), "Payment processing options are invalid.")
+    .ValidateOnStart();
 builder.Services.AddMediatR(configuration => configuration.RegisterServicesFromAssemblyContaining<ConfirmPaymentCommand>());
 builder.Services.AddMsaApplicationPipeline();
 builder.Services.Configure<PaylinksOptions>(builder.Configuration.GetSection("Paylinks"));
@@ -32,16 +40,23 @@ builder.Services.AddScoped<IPaymentGateway, WeChatPayGateway>();
 builder.Services.AddScoped<IPaymentNotificationVerifier, AlipayNotificationVerifier>();
 builder.Services.AddScoped<IPaymentNotificationVerifier, WeChatPayNotificationVerifier>();
 builder.Services.AddScoped<PaymentGatewayResolver>();
+builder.Services.AddScoped<PaymentProviderOperationStore>();
 builder.Services.AddRabbitMQEventBus(options =>
 {
     options.HostName = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
+    options.ExchangeName = builder.Configuration["RabbitMQ:ExchangeName"] ?? "msa.commerce.events";
     options.UserName = builder.Configuration["RabbitMQ:User"] ?? "guest";
     options.Password = builder.Configuration["RabbitMQ:Password"] ?? "guest";
     options.QueueName = "msa.payment";
+    options.DeadLetterExchange = $"{options.ExchangeName}.dlx";
+    options.DeadLetterQueue = $"{options.QueueName}.dlq";
 });
 builder.Services.AddOutbox<PaymentDbContext>();
 builder.Services.AddIntegrationEventHandler<PaymentRequestedIntegrationEvent, PaymentRequestedHandler>();
+builder.Services.AddIntegrationEventHandler<CancelPaymentRequestedIntegrationEvent, CancelPaymentRequestedHandler>();
+builder.Services.AddIntegrationEventHandler<RefundPaymentRequestedIntegrationEvent, RefundPaymentRequestedHandler>();
 builder.Services.AddHostedService<PaymentExpiryService>();
+builder.Services.AddHostedService<PaymentProviderOperationDispatcher>();
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
     options.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/");
@@ -96,7 +111,12 @@ app.MapPost("/api/payments/callbacks/alipay", async (
         verified.ProviderTransactionId,
         verified.Amount,
         verified.Currency,
-        PaymentChannel.Alipay), ct);
+        PaymentChannel.Alipay,
+        values.GetValueOrDefault("notify_id"),
+        ComputeSha256(string.Join(
+            '&',
+            values.OrderBy(value => value.Key, StringComparer.Ordinal)
+                .Select(value => $"{value.Key}={value.Value}")))), ct);
     return Results.Text("success");
 }).AllowAnonymous();
 
@@ -123,8 +143,28 @@ app.MapPost("/api/payments/callbacks/wechatpay", async (
         verified.ProviderTransactionId,
         verified.Amount,
         verified.Currency,
-        PaymentChannel.WeChatPay), ct);
+        PaymentChannel.WeChatPay,
+        TryReadNotificationId(body),
+        ComputeSha256(body)), ct);
     return Results.Json(new { code = "SUCCESS", message = "成功" });
 }).AllowAnonymous();
 
 app.Run();
+
+static string ComputeSha256(string value) =>
+    Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+
+static string? TryReadNotificationId(string body)
+{
+    try
+    {
+        using var document = JsonDocument.Parse(body);
+        return document.RootElement.TryGetProperty("id", out var id)
+            ? id.GetString()
+            : null;
+    }
+    catch (JsonException)
+    {
+        return null;
+    }
+}

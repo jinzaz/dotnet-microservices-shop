@@ -4,49 +4,48 @@ using MSA.OrderService.Infrastructure;
 
 namespace MSA.OrderService.Application.GetOrder;
 
-internal sealed class GetOrderQueryHandler(OrderDbContext db) : IRequestHandler<GetOrderQuery, OrderDto?>
+internal sealed class GetOrderQueryHandler(OrderDbContext db)
+    : IRequestHandler<GetOrderQuery, OrderDto?>
 {
-    public async Task<OrderDto?> Handle(GetOrderQuery request, CancellationToken cancellationToken)
-    {
-        var order = await db.Orders
+    public Task<OrderDto?> Handle(GetOrderQuery request, CancellationToken cancellationToken) =>
+        db.Orders
             .AsNoTracking()
             .Where(order =>
                 order.Id == request.OrderId
                 && (request.CanReadAll || order.UserId == request.UserId))
-            .Select(order => new
-            {
+            .Select(order => new OrderDto(
                 order.Id,
+                order.OrderNumber,
                 order.UserId,
                 order.FlashSaleCampaignId,
+                order.SubtotalAmount,
+                order.DiscountAmount,
                 order.Amount,
                 order.Currency,
-                order.Status,
-                order.ReservationId,
-                order.PaymentId,
-                order.CancellationReason,
-                Lines = order.Lines
-                    .Select(line => new OrderLineDto(
-                        line.Sku,
-                        line.ProductName,
-                        line.Quantity,
-                        line.UnitPrice))
-                    .ToArray(),
-                order.CreatedOnUtc
-            })
-            .SingleOrDefaultAsync(cancellationToken);
-        return order is null
-            ? null
-            : new OrderDto(
-                order.Id,
-                order.UserId,
-                order.FlashSaleCampaignId,
-                order.Amount,
-                order.Currency,
+                order.PaymentMethod,
                 order.Status.ToString(),
                 order.ReservationId,
                 order.PaymentId,
                 order.CancellationReason,
-                order.Lines,
-                order.CreatedOnUtc);
-    }
+                order.PricingSnapshotId,
+                order.PaymentDueOnUtc,
+                order.Lines.Select(line => new OrderLineDto(
+                    line.Sku,
+                    line.ProductName,
+                    line.Quantity,
+                    line.ListUnitPrice,
+                    line.UnitPrice,
+                    line.LineSubtotal,
+                    line.DiscountAmount,
+                    line.LineAmount)).ToArray(),
+                order.Discounts.Select(discount => new OrderDiscountDto(
+                    discount.PromotionId,
+                    discount.PromotionRevision,
+                    discount.CouponId,
+                    discount.SourceType,
+                    discount.Description,
+                    discount.Amount)).ToArray(),
+                order.CreatedOnUtc,
+                order.UpdatedOnUtc))
+            .SingleOrDefaultAsync(cancellationToken);
 }

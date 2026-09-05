@@ -13,12 +13,24 @@ internal sealed class PostgresInventoryTransactionLock(InventoryDbContext db) : 
     {
         var resourceKeys = skus
             .Where(sku => !string.IsNullOrWhiteSpace(sku))
-            .Select(sku => $"inventory-stock:{sku.Trim()}");
+            .Select(sku => $"inventory-stock:{sku.Trim().ToUpperInvariant()}");
         await AcquireAsync(resourceKeys, cancellationToken);
     }
 
     public Task AcquireOrderReservationAsync(Guid orderId, CancellationToken cancellationToken) =>
         AcquireAsync([$"inventory-order:{orderId:N}"], cancellationToken);
+
+    public Task AcquireStockAdjustmentAsync(
+        string sku,
+        string operatorId,
+        string idempotencyKey,
+        CancellationToken cancellationToken) =>
+        AcquireAsync(
+            [
+                $"inventory-adjustment:{operatorId.Trim()}:{idempotencyKey.Trim()}",
+                $"inventory-stock:{sku.Trim().ToUpperInvariant()}"
+            ],
+            cancellationToken);
 
     public Task AcquireFlashSaleBuyerAsync(
         Guid campaignId,

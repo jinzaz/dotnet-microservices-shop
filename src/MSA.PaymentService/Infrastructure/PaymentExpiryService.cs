@@ -1,18 +1,35 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using MSA.Contracts;
 using MSA.EventBusOutbox;
+using MSA.PaymentService.Domain;
 using System.Text.Json;
 
 namespace MSA.PaymentService.Infrastructure;
 
-internal sealed class PaymentExpiryService(IServiceScopeFactory scopeFactory, ILogger<PaymentExpiryService> logger) : BackgroundService
+internal sealed class PaymentExpiryService(
+    IServiceScopeFactory scopeFactory,
+    TimeProvider clock,
+    IOptions<PaymentProcessingOptions> configured,
+    ILogger<PaymentExpiryService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
+        using var timer = new PeriodicTimer(configured.Value.ExpiryPollingInterval, clock);
         do
         {
-            await ExpireBatchAsync(stoppingToken);
+            try
+            {
+                await ExpireBatchAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Payment expiry polling failed.");
+            }
         } while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
@@ -21,30 +38,53 @@ internal sealed class PaymentExpiryService(IServiceScopeFactory scopeFactory, IL
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PaymentDbContext>();
         var outbox = scope.ServiceProvider.GetRequiredService<IOutboxStore>();
+        var now = clock.GetUtcNow();
+        var batchSize = configured.Value.ExpiryBatchSize;
+
         await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         try
         {
             var payments = await db.Payments
-                .Where(x => x.Status == Domain.PaymentStatus.Pending && x.ExpiresOnUtc <= DateTimeOffset.UtcNow)
-                .OrderBy(x => x.ExpiresOnUtc)
-                .Take(100)
+                .FromSqlInterpolated(
+                    $"""
+                    SELECT payment.*
+                    FROM payments AS payment
+                    WHERE payment."Status" = {(int)PaymentStatus.Pending}
+                      AND payment."ExpiresOnUtc" <= {now}
+                    ORDER BY payment."ExpiresOnUtc", payment."Id"
+                    LIMIT {batchSize}
+                    FOR UPDATE SKIP LOCKED
+                    """)
+                .AsTracking()
                 .ToListAsync(cancellationToken);
 
             foreach (var payment in payments)
             {
                 const string reason = "Payment expired.";
-                if (!payment.Fail(reason))
+                var previousStatus = payment.Status;
+                if (!payment.Expire(now, reason))
                     continue;
-                var message = new PaymentFailedIntegrationEvent { OrderId = payment.OrderId, PaymentId = payment.Id, Reason = reason };
-                outbox.Add(OutboxMessage.Create(message.GetType().AssemblyQualifiedName!, JsonSerializer.Serialize(message, message.GetType())));
+
+                db.PaymentStatusHistory.Add(PaymentStatusHistory.Record(
+                    payment.Id,
+                    previousStatus,
+                    payment.Status,
+                    "PaymentExpired",
+                    now,
+                    reason));
+                var integrationEvent = new PaymentFailedIntegrationEvent
+                {
+                    OrderId = payment.OrderId,
+                    PaymentId = payment.Id,
+                    Reason = reason
+                };
+                outbox.Add(OutboxMessage.Create(
+                    integrationEvent.GetType().AssemblyQualifiedName!,
+                    JsonSerializer.Serialize(integrationEvent, integrationEvent.GetType()),
+                    now));
             }
 
             await db.CommitTransactionAsync(transaction, cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException exception)
-        {
-            await db.RollbackTransactionAsync(cancellationToken);
-            logger.LogDebug(exception, "Another payment worker expired the same batch.");
         }
         catch
         {

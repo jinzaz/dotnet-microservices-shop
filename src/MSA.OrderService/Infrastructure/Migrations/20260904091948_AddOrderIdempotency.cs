@@ -18,6 +18,14 @@ namespace MSA.OrderService.Infrastructure.Migrations
                 nullable: false,
                 defaultValue: "");
 
+            migrationBuilder.Sql(
+                """
+                UPDATE orders
+                SET "IdempotencyKey" = 'legacy:' || replace("Id"::text, '-', '')
+                WHERE trim("IdempotencyKey") = '';
+                ALTER TABLE orders ALTER COLUMN "IdempotencyKey" DROP DEFAULT;
+                """);
+
             migrationBuilder.CreateIndex(
                 name: "IX_orders_UserId_IdempotencyKey",
                 table: "orders",

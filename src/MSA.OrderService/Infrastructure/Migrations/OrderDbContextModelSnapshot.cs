@@ -72,6 +72,112 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.ToTable("outbox_messages", (string)null);
                 });
 
+            modelBuilder.Entity("MSA.OrderService.Domain.CouponProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AssignedUserId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("CodeDigest")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("MaskedCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<int>("PerUserLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("PromotionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("QuotaStrategy")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<long>("SourceRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<int?>("TotalLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ValidFromUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ValidUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CodeDigest")
+                        .IsUnique();
+
+                    b.HasIndex("PromotionId", "Status");
+
+                    b.ToTable("coupon_projections", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_coupon_projections_limits", "(\"TotalLimit\" IS NULL OR \"TotalLimit\" > 0) AND \"PerUserLimit\" > 0");
+
+                            t.HasCheckConstraint("CK_coupon_projections_window", "\"ValidFromUtc\" < \"ValidUntilUtc\"");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.OrderService.Domain.CouponQuotaBucket", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("BucketNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Capacity")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ConsumedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("CouponId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ReservedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CouponId", "BucketNumber")
+                        .IsUnique();
+
+                    b.ToTable("coupon_quota_buckets", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_coupon_quota_buckets_capacity", "\"Capacity\" > 0");
+
+                            t.HasCheckConstraint("CK_coupon_quota_buckets_counters", "\"ReservedCount\" >= 0 AND \"ConsumedCount\" >= 0 AND \"ReservedCount\" + \"ConsumedCount\" <= \"Capacity\"");
+                        });
+                });
+
             modelBuilder.Entity("MSA.OrderService.Domain.FlashSaleCampaignProjection", b =>
                 {
                     b.Property<Guid>("CampaignId")
@@ -133,7 +239,14 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .HasColumnType("numeric(18,2)");
 
                     b.Property<string>("CancellationReason")
-                        .HasColumnType("text");
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset?>("CancelledOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("ConfirmedOnUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("CreatedOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -143,6 +256,10 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)");
 
+                    b.Property<decimal>("DiscountAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
                     b.Property<Guid?>("FlashSaleCampaignId")
                         .HasColumnType("uuid");
 
@@ -151,8 +268,34 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("OrderNumber")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<DateTimeOffset>("PaymentDueOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid?>("PaymentId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("PaymentMethod")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("PricingSnapshotHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("PricingSnapshotId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RequestFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<Guid?>("ReservationId")
                         .HasColumnType("uuid");
@@ -160,9 +303,17 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
+                    b.Property<decimal>("SubtotalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("UserId")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
@@ -170,16 +321,149 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("OrderNumber")
+                        .IsUnique();
+
+                    b.HasIndex("FlashSaleCampaignId", "Status");
+
                     b.HasIndex("FlashSaleCampaignId", "UserId")
                         .IsUnique()
                         .HasFilter("\"FlashSaleCampaignId\" IS NOT NULL");
+
+                    b.HasIndex("Status", "CreatedOnUtc");
+
+                    b.HasIndex("UserId", "CreatedOnUtc");
 
                     b.HasIndex("UserId", "IdempotencyKey")
                         .IsUnique();
 
                     b.ToTable("orders", null, t =>
                         {
-                            t.HasCheckConstraint("CK_orders_amount", "\"Amount\" >= 0");
+                            t.HasCheckConstraint("CK_orders_amounts", "\"SubtotalAmount\" > 0 AND \"DiscountAmount\" >= 0 AND \"Amount\" > 0 AND \"Amount\" = \"SubtotalAmount\" - \"DiscountAmount\"");
+
+                            t.HasCheckConstraint("CK_orders_cancelled_fields", "\"Status\" <> 3 OR (\"CancellationReason\" IS NOT NULL AND \"CancelledOnUtc\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_orders_confirmed_fields", "\"Status\" <> 2 OR (\"ReservationId\" IS NOT NULL AND \"PaymentId\" IS NOT NULL AND \"ConfirmedOnUtc\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_orders_currency", "\"Currency\" ~ '^[A-Z]{3}$'");
+
+                            t.HasCheckConstraint("CK_orders_payment_due", "\"PaymentDueOnUtc\" > \"CreatedOnUtc\"");
+
+                            t.HasCheckConstraint("CK_orders_payment_method", "\"PaymentMethod\" IN ('Alipay', 'WeChatPay', 'Unknown')");
+
+                            t.HasCheckConstraint("CK_orders_snapshot_hashes", "\"RequestFingerprint\" ~ '^[0-9A-F]{64}$' AND \"PricingSnapshotHash\" ~ '^[0-9A-F]{64}$'");
+
+                            t.HasCheckConstraint("CK_orders_status", "\"Status\" BETWEEN 0 AND 3");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.OrderService.Domain.OrderCouponRedemption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CouponId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("DiscountAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTimeOffset>("ExpiresOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MaskedCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("QuotaBucketId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("QuotaBucketId");
+
+                    b.HasIndex("OrderId", "CouponId")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "ExpiresOnUtc");
+
+                    b.HasIndex("CouponId", "UserId", "Status");
+
+                    b.ToTable("order_coupon_redemptions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_order_coupon_redemptions_amount", "\"DiscountAmount\" > 0");
+
+                            t.HasCheckConstraint("CK_order_coupon_redemptions_status", "\"Status\" BETWEEN 0 AND 2");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.OrderService.Domain.OrderDiscount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid?>("CouponId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PromotionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("PromotionRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId", "PromotionId", "CouponId");
+
+                    b.ToTable("order_discounts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_order_discounts_amount", "\"Amount\" > 0");
                         });
                 });
 
@@ -191,7 +475,23 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
-                    b.Property<Guid?>("OrderId")
+                    b.Property<decimal>("DiscountAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("LineAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("LineSubtotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("ListUnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("OrderId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("ProductName")
@@ -213,13 +513,14 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OrderId");
+                    b.HasIndex("OrderId", "Sku")
+                        .IsUnique();
 
                     b.ToTable("order_lines", null, t =>
                         {
-                            t.HasCheckConstraint("CK_order_lines_quantity", "\"Quantity\" > 0");
+                            t.HasCheckConstraint("CK_order_lines_prices", "\"ListUnitPrice\" >= 0 AND \"UnitPrice\" >= 0 AND \"UnitPrice\" <= \"ListUnitPrice\" AND \"LineSubtotal\" = round(\"ListUnitPrice\" * \"Quantity\", 2) AND \"DiscountAmount\" = round((\"ListUnitPrice\" - \"UnitPrice\") * \"Quantity\", 2) AND \"LineAmount\" = round(\"UnitPrice\" * \"Quantity\", 2)");
 
-                            t.HasCheckConstraint("CK_order_lines_unit_price", "\"UnitPrice\" >= 0");
+                            t.HasCheckConstraint("CK_order_lines_quantity", "\"Quantity\" > 0");
                         });
                 });
 
@@ -229,16 +530,21 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("CategoryId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Currency")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<decimal>("Price")
                         .HasPrecision(18, 2)
@@ -246,7 +552,11 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.Property<string>("Sku")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<long>("SourceRevision")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTimeOffset>("UpdatedOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -256,7 +566,131 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.HasIndex("Sku")
                         .IsUnique();
 
-                    b.ToTable("product_projections", (string)null);
+                    b.HasIndex("IsActive", "CategoryId");
+
+                    b.ToTable("product_projections", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_product_projections_price", "\"Price\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.OrderService.Domain.OrderStatusHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int?>("FromStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("OccurredOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("ToStatus")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId", "OccurredOnUtc");
+
+                    b.ToTable("order_status_history", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_order_status_history_status", "(\"FromStatus\" IS NULL OR \"FromStatus\" BETWEEN 0 AND 3) AND \"ToStatus\" BETWEEN 0 AND 3");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.OrderService.Domain.PromotionProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BenefitsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("DefinitionChecksum")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("EndsOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExclusiveGroup")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RulesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<long>("SourceRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StackPolicy")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<DateTimeOffset>("StartsOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("TargetsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("TriggerType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "StartsOnUtc", "EndsOnUtc", "Priority");
+
+                    b.ToTable("promotion_projections", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_promotion_projections_revision", "\"SourceRevision\" >= 0");
+
+                            t.HasCheckConstraint("CK_promotion_projections_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
+                        });
                 });
 
             modelBuilder.Entity("MSA.Repositories.Persistence.InboxMessage", b =>
@@ -329,16 +763,74 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.ToTable("saga_states", (string)null);
                 });
 
+            modelBuilder.Entity("MSA.OrderService.Domain.CouponQuotaBucket", b =>
+                {
+                    b.HasOne("MSA.OrderService.Domain.CouponProjection", null)
+                        .WithMany("QuotaBuckets")
+                        .HasForeignKey("CouponId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.OrderService.Domain.OrderCouponRedemption", b =>
+                {
+                    b.HasOne("MSA.OrderService.Domain.CouponProjection", null)
+                        .WithMany()
+                        .HasForeignKey("CouponId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MSA.OrderService.Domain.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MSA.OrderService.Domain.CouponQuotaBucket", null)
+                        .WithMany()
+                        .HasForeignKey("QuotaBucketId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MSA.OrderService.Domain.OrderDiscount", b =>
+                {
+                    b.HasOne("MSA.OrderService.Domain.Order", null)
+                        .WithMany("Discounts")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("MSA.OrderService.Domain.OrderLine", b =>
                 {
                     b.HasOne("MSA.OrderService.Domain.Order", null)
                         .WithMany("Lines")
-                        .HasForeignKey("OrderId");
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.OrderService.Domain.OrderStatusHistory", b =>
+                {
+                    b.HasOne("MSA.OrderService.Domain.Order", null)
+                        .WithMany("StatusHistory")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.OrderService.Domain.CouponProjection", b =>
+                {
+                    b.Navigation("QuotaBuckets");
                 });
 
             modelBuilder.Entity("MSA.OrderService.Domain.Order", b =>
                 {
+                    b.Navigation("Discounts");
+
                     b.Navigation("Lines");
+
+                    b.Navigation("StatusHistory");
                 });
 #pragma warning restore 612, 618
         }

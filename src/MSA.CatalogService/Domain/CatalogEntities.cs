@@ -1,24 +1,162 @@
 using MSA.Infrastrucute.Entities;
+
 namespace MSA.CatalogService.Domain;
 
-public sealed class Category : AggregateRoot<Guid>
+public enum CategoryLifecycleStatus
 {
-    private Category() { }
-    public Category(Guid id, string name) { Id = id; Rename(name); }
-    public string Name { get; private set; } = string.Empty;
-    public void Rename(string name) { ArgumentException.ThrowIfNullOrWhiteSpace(name); Name = name.Trim(); }
+    Draft = 0,
+    Active = 1,
+    Archived = 2
 }
-public sealed class Product : AggregateRoot<Guid>
+
+public enum ProductLifecycleStatus
 {
-    private Product() { }
-    public Product(Guid id, Guid categoryId, string sku, string name, string description, decimal price, string currency)
-    { if (price < 0) throw new ArgumentOutOfRangeException(nameof(price)); Id = id; CategoryId = categoryId; Sku = Required(sku); Name = Required(name); Description = description.Trim(); Price = price; Currency = currency.ToUpperInvariant(); IsActive = true; UpdatedOnUtc = DateTimeOffset.UtcNow; }
-    public Guid CategoryId { get; private set; }
-    public string Sku { get; private set; } = string.Empty; public string Name { get; private set; } = string.Empty;
-    public string Description { get; private set; } = string.Empty; public decimal Price { get; private set; }
-    public string Currency { get; private set; } = "CNY"; public bool IsActive { get; private set; }
+    Draft = 0,
+    Published = 1,
+    Unpublished = 2,
+    Archived = 3
+}
+
+public enum PromotionTriggerType
+{
+    Automatic = 0,
+    Coupon = 1
+}
+
+public enum PromotionStatus
+{
+    Draft = 0,
+    Scheduled = 1,
+    Active = 2,
+    Paused = 3,
+    Ended = 4,
+    Archived = 5
+}
+
+public enum PromotionStackPolicy
+{
+    Stackable = 0,
+    Exclusive = 1
+}
+
+public enum CouponStatus
+{
+    Draft = 0,
+    Active = 1,
+    Disabled = 2,
+    Expired = 3
+}
+
+public enum CouponQuotaStrategy
+{
+    SingleRow = 0,
+    Bucketed = 1
+}
+
+/// <summary>
+/// Common audit and optimistic-concurrency state for Catalog aggregates.
+/// Business callers provide the actor and time so mutations remain deterministic.
+/// </summary>
+public abstract class AuditedCatalogAggregateRoot<TId> : AggregateRoot<TId>
+    where TId : notnull
+{
+    public DateTimeOffset CreatedOnUtc { get; private set; }
     public DateTimeOffset UpdatedOnUtc { get; private set; }
+    public string CreatedBy { get; private set; } = string.Empty;
+    public string UpdatedBy { get; private set; } = string.Empty;
     public long Version { get; private set; }
-    public void Update(string name, string description, decimal price, bool active) { if (price < 0) throw new ArgumentOutOfRangeException(nameof(price)); Name = Required(name); Description = description.Trim(); Price = price; IsActive = active; UpdatedOnUtc = DateTimeOffset.UtcNow; Version++; }
-    private static string Required(string value) { ArgumentException.ThrowIfNullOrWhiteSpace(value); return value.Trim(); }
+
+    protected void InitializeAudit(string actor, DateTimeOffset occurredOnUtc)
+    {
+        var normalizedActor = CatalogDomainGuard.Required(actor, nameof(actor), 200);
+        var utc = CatalogDomainGuard.Utc(occurredOnUtc);
+
+        CreatedBy = normalizedActor;
+        UpdatedBy = normalizedActor;
+        CreatedOnUtc = utc;
+        UpdatedOnUtc = utc;
+        Version = 1;
+    }
+
+    protected void Touch(string actor, DateTimeOffset occurredOnUtc)
+    {
+        var normalizedActor = CatalogDomainGuard.Required(actor, nameof(actor), 200);
+        var utc = CatalogDomainGuard.Utc(occurredOnUtc);
+        if (utc < UpdatedOnUtc)
+            throw new ArgumentOutOfRangeException(nameof(occurredOnUtc), "A change cannot predate the previous aggregate change.");
+
+        UpdatedBy = normalizedActor;
+        UpdatedOnUtc = utc;
+        checked
+        {
+            Version++;
+        }
+    }
+}
+
+public abstract class RevisionedCatalogAggregateRoot<TId> : AuditedCatalogAggregateRoot<TId>
+    where TId : notnull
+{
+    public long Revision { get; private set; }
+
+    protected void InitializeRevision() => Revision = 1;
+
+    protected void TouchRevision(string actor, DateTimeOffset occurredOnUtc)
+    {
+        Touch(actor, occurredOnUtc);
+        checked
+        {
+            Revision++;
+        }
+    }
+}
+
+internal static class CatalogDomainGuard
+{
+    public const string LegacyActor = "legacy-api";
+
+    public static Guid Required(Guid value, string parameterName)
+    {
+        if (value == Guid.Empty)
+            throw new ArgumentException("A non-empty identifier is required.", parameterName);
+        return value;
+    }
+
+    public static string Required(string value, string parameterName, int maximumLength)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value, parameterName);
+        var normalized = value.Trim();
+        if (normalized.Length > maximumLength)
+            throw new ArgumentOutOfRangeException(parameterName, $"Value cannot exceed {maximumLength} characters.");
+        return normalized;
+    }
+
+    public static string Optional(string? value, string parameterName, int maximumLength)
+    {
+        var normalized = value?.Trim() ?? string.Empty;
+        if (normalized.Length > maximumLength)
+            throw new ArgumentOutOfRangeException(parameterName, $"Value cannot exceed {maximumLength} characters.");
+        return normalized;
+    }
+
+    public static string? OptionalOrNull(string? value, string parameterName, int maximumLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        return Required(value, parameterName, maximumLength);
+    }
+
+    public static DateTimeOffset Utc(DateTimeOffset value) => value.ToUniversalTime();
+
+    public static void ValidWindow(
+        DateTimeOffset startsOnUtc,
+        DateTimeOffset endsOnUtc,
+        string startsParameterName,
+        string endsParameterName)
+    {
+        if (Utc(startsOnUtc) >= Utc(endsOnUtc))
+            throw new ArgumentException(
+                $"{endsParameterName} must be later than {startsParameterName}.",
+                endsParameterName);
+    }
 }

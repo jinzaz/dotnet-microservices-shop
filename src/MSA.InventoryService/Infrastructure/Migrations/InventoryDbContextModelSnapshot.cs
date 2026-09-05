@@ -167,9 +167,52 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.ToTable("flash_sale_stock_buckets", null, t =>
                         {
-                            t.HasCheckConstraint("CK_flash_sale_stock_buckets_allocated", "\"AllocatedQuantity\" > 0");
+                            t.HasCheckConstraint("CK_flash_sale_stock_buckets_allocated", "\"AllocatedQuantity\" >= 0");
 
                             t.HasCheckConstraint("CK_flash_sale_stock_buckets_counters", "\"ReservedQuantity\" >= 0 AND \"SoldQuantity\" >= 0 AND \"ReleasedQuantity\" >= 0 AND \"ReservedQuantity\" + \"SoldQuantity\" + \"ReleasedQuantity\" <= \"AllocatedQuantity\"");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.InventoryService.Domain.InventoryRequestDecision", b =>
+                {
+                    b.Property<Guid>("OrderId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("DecidedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .IsFixedLength();
+
+                    b.Property<Guid?>("ReservationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.HasKey("OrderId");
+
+                    b.HasIndex("ReservationId")
+                        .IsUnique()
+                        .HasFilter("\"ReservationId\" IS NOT NULL");
+
+                    b.HasIndex("Status", "DecidedOnUtc");
+
+                    b.ToTable("inventory_request_decisions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_inventory_request_decisions_hash", "char_length(\"RequestHash\") = 64");
+
+                            t.HasCheckConstraint("CK_inventory_request_decisions_result", "(\"Status\" = 0 AND \"ReservationId\" IS NOT NULL AND \"RejectionReason\" IS NULL) OR (\"Status\" = 1 AND \"ReservationId\" IS NULL AND \"RejectionReason\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_inventory_request_decisions_status", "\"Status\" BETWEEN 0 AND 1");
                         });
                 });
 
@@ -179,7 +222,13 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset?>("CommittedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("FlashSaleCampaignId")
@@ -191,8 +240,18 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset?>("ReleasedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
+
+                    b.Property<string>("TerminalReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("UserId")
                         .HasMaxLength(200)
@@ -213,9 +272,20 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("\"FlashSaleCampaignId\" IS NOT NULL");
 
+                    b.HasIndex("Status", "ExpiresOnUtc")
+                        .HasFilter("\"Status\" = 0");
+
+                    b.HasIndex("Status", "UpdatedOnUtc");
+
                     b.ToTable("inventory_reservations", null, t =>
                         {
                             t.HasCheckConstraint("CK_inventory_reservations_flash_sale_metadata", "(\"FlashSaleCampaignId\" IS NULL AND \"FlashSaleStockBucketId\" IS NULL AND \"UserId\" IS NULL) OR (\"FlashSaleCampaignId\" IS NOT NULL AND \"FlashSaleStockBucketId\" IS NOT NULL AND \"UserId\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_inventory_reservations_status", "\"Status\" BETWEEN 0 AND 2");
+
+                            t.HasCheckConstraint("CK_inventory_reservations_terminal_state", "(\"Status\" = 0 AND \"CommittedOnUtc\" IS NULL AND \"ReleasedOnUtc\" IS NULL AND \"TerminalReason\" IS NULL) OR (\"Status\" = 1 AND \"CommittedOnUtc\" IS NOT NULL AND \"ReleasedOnUtc\" IS NULL AND \"TerminalReason\" IS NULL) OR (\"Status\" = 2 AND \"CommittedOnUtc\" IS NULL AND \"ReleasedOnUtc\" IS NOT NULL AND \"TerminalReason\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_inventory_reservations_timestamps", "\"ExpiresOnUtc\" > \"CreatedOnUtc\" AND \"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
                         });
                 });
 
@@ -230,7 +300,7 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
 
-                    b.Property<Guid?>("ReservationId")
+                    b.Property<Guid>("ReservationId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Sku")
@@ -240,7 +310,8 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ReservationId");
+                    b.HasIndex("ReservationId", "Sku")
+                        .IsUnique();
 
                     b.ToTable("inventory_reservation_lines", null, t =>
                         {
@@ -277,6 +348,98 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     b.ToTable("stock_items", null, t =>
                         {
                             t.HasCheckConstraint("CK_stock_items_quantities", "\"OnHand\" >= 0 AND \"Reserved\" >= 0 AND \"Reserved\" <= \"OnHand\"");
+
+                            t.HasCheckConstraint("CK_stock_items_sku", "\"Sku\" = upper(trim(\"Sku\"))");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.InventoryService.Domain.StockMovement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("OccurredOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("OnHandAfter")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("OnHandDelta")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("OperatorId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid?>("ReferenceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ReferenceType")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RequestHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .IsFixedLength();
+
+                    b.Property<int>("ReservedAfter")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ReservedDelta")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<Guid>("StockItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OperatorId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+
+                    b.HasIndex("ReferenceType", "ReferenceId");
+
+                    b.HasIndex("Sku", "OccurredOnUtc");
+
+                    b.HasIndex("StockItemId", "OccurredOnUtc");
+
+                    b.HasIndex("Type", "ReferenceId", "StockItemId")
+                        .IsUnique()
+                        .HasFilter("\"ReferenceId\" IS NOT NULL");
+
+                    b.ToTable("stock_movements", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_stock_movements_balances", "\"OnHandAfter\" >= 0 AND \"ReservedAfter\" >= 0 AND \"ReservedAfter\" <= \"OnHandAfter\"");
+
+                            t.HasCheckConstraint("CK_stock_movements_delta", "\"OnHandDelta\" <> 0 OR \"ReservedDelta\" <> 0");
+
+                            t.HasCheckConstraint("CK_stock_movements_hash", "\"RequestHash\" IS NULL OR char_length(\"RequestHash\") = 64");
+
+                            t.HasCheckConstraint("CK_stock_movements_idempotency", "(\"IdempotencyKey\" IS NULL AND \"RequestHash\" IS NULL) OR (\"IdempotencyKey\" IS NOT NULL AND \"RequestHash\" IS NOT NULL AND \"OperatorId\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_stock_movements_reference", "(\"ReferenceType\" = 0 AND \"ReferenceId\" IS NULL) OR (\"ReferenceType\" <> 0 AND \"ReferenceId\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_stock_movements_reference_type", "\"ReferenceType\" BETWEEN 0 AND 2");
+
+                            t.HasCheckConstraint("CK_stock_movements_type", "\"Type\" BETWEEN 0 AND 6");
                         });
                 });
 
@@ -359,6 +522,14 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("MSA.InventoryService.Domain.InventoryRequestDecision", b =>
+                {
+                    b.HasOne("MSA.InventoryService.Domain.InventoryReservation", null)
+                        .WithOne()
+                        .HasForeignKey("MSA.InventoryService.Domain.InventoryRequestDecision", "ReservationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("MSA.InventoryService.Domain.InventoryReservation", b =>
                 {
                     b.HasOne("MSA.InventoryService.Domain.FlashSaleCampaign", null)
@@ -376,7 +547,18 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                 {
                     b.HasOne("MSA.InventoryService.Domain.InventoryReservation", null)
                         .WithMany("Lines")
-                        .HasForeignKey("ReservationId");
+                        .HasForeignKey("ReservationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.InventoryService.Domain.StockMovement", b =>
+                {
+                    b.HasOne("MSA.InventoryService.Domain.StockItem", null)
+                        .WithMany()
+                        .HasForeignKey("StockItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("MSA.InventoryService.Domain.FlashSaleCampaign", b =>

@@ -9,7 +9,7 @@ public class RabbitMQOptions
     public string VirtualHost { get; set; } = "/";
 
     /// <summary>交换机名称，同一业务域内的服务应共用</summary>
-    public string ExchangeName { get; set; } = "event_bus_exchange";
+    public string ExchangeName { get; set; } = "msa.commerce.events";
 
     /// <summary>交换机类型：direct（按事件名精确路由）或 topic（支持通配符）</summary>
     public string ExchangeType { get; set; } = "direct";
@@ -26,6 +26,6 @@ public class RabbitMQOptions
     public bool DurableQueue { get; set; } = true;
 
     /// <summary>死信交换机：处理失败(Nack且不重入队)的消息最终进入这里，供人工排查或重放</summary>
-    public string DeadLetterExchange { get; set; } = "event_bus_exchange.dlx";
+    public string DeadLetterExchange { get; set; } = "msa.commerce.events.dlx";
     public string DeadLetterQueue { get; set; } = "event_bus_queue.dlq";
 }

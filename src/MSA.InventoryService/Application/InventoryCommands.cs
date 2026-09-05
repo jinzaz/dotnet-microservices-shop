@@ -25,11 +25,12 @@ public sealed class AddStockValidator : AbstractValidator<AddStockCommand>
 internal sealed class AddStockHandler(
     InventoryDbContext db,
     IInventoryTransactionLock transactionLock,
-    InventoryCacheInvalidator cache) : IRequestHandler<AddStockCommand, Guid>
+    InventoryCacheInvalidator cache,
+    TimeProvider clock) : IRequestHandler<AddStockCommand, Guid>
 {
     public async Task<Guid> Handle(AddStockCommand request, CancellationToken cancellationToken)
     {
-        var sku = request.Sku.Trim();
+        var sku = request.Sku.Trim().ToUpperInvariant();
         await transactionLock.AcquireStockItemsAsync([sku], cancellationToken);
 
         var item = await db.StockItems.SingleOrDefaultAsync(value => value.Sku == sku, cancellationToken);
@@ -42,6 +43,16 @@ internal sealed class AddStockHandler(
         {
             item.Increase(request.Quantity);
         }
+
+        db.StockMovements.Add(StockMovement.Record(
+            item,
+            StockMovementType.StockAdded,
+            request.Quantity,
+            reservedDelta: 0,
+            StockMovementReferenceType.None,
+            referenceId: null,
+            "Stock added through the compatibility endpoint.",
+            clock.GetUtcNow()));
 
         await cache.RemoveStockAsync(sku, cancellationToken);
         return item.Id;
@@ -62,7 +73,7 @@ internal sealed class GetInventoryAvailabilityHandler(
         GetInventoryAvailabilityQuery request,
         CancellationToken cancellationToken)
     {
-        var sku = request.Sku.Trim();
+        var sku = request.Sku.Trim().ToUpperInvariant();
         var key = $"inventory:availability:{sku}";
         try
         {

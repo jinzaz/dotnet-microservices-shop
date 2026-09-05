@@ -4,6 +4,33 @@ public enum PaymentChannel { Alipay, WeChatPay }
 public sealed record CreatePaymentRequest(string MerchantTradeNo, decimal Amount, string Currency, string Subject, string NotifyUrl, DateTimeOffset ExpiresOnUtc);
 public sealed record CreatePaymentResult(string MerchantTradeNo, string PaymentUrl, PaymentChannel Channel);
 public interface IPaymentGateway { PaymentChannel Channel { get; } Task<CreatePaymentResult> CreateNativePaymentAsync(CreatePaymentRequest request, CancellationToken cancellationToken); }
+public sealed record CancelPaymentRequest(string MerchantTradeNo);
+public sealed record CancelPaymentResult(string MerchantTradeNo, PaymentChannel Channel);
+public interface IPaymentCancellationGateway
+{
+    Task<CancelPaymentResult> CancelPaymentAsync(
+        CancelPaymentRequest request,
+        CancellationToken cancellationToken);
+}
+public sealed record RefundPaymentRequest(
+    string MerchantTradeNo,
+    string ProviderTransactionId,
+    string MerchantRefundNo,
+    decimal RefundAmount,
+    decimal TotalAmount,
+    string Currency,
+    string Reason);
+public sealed record RefundPaymentResult(
+    string MerchantRefundNo,
+    string? ProviderRefundId,
+    PaymentChannel Channel,
+    bool Completed);
+public interface IPaymentRefundGateway
+{
+    Task<RefundPaymentResult> RefundPaymentAsync(
+        RefundPaymentRequest request,
+        CancellationToken cancellationToken);
+}
 public sealed record PaymentNotification(IReadOnlyDictionary<string, string> Parameters, string Body, string RequestId = "", string Serial = "", string Timestamp = "", string Nonce = "", string Signature = "", string SignatureType = "");
 public sealed record VerifiedPaymentNotification(string MerchantTradeNo, string ProviderTransactionId, bool Succeeded, decimal Amount, string Currency);
 public interface IPaymentNotificationVerifier { PaymentChannel Channel { get; } Task<VerifiedPaymentNotification> VerifyAsync(PaymentNotification notification, CancellationToken cancellationToken); }

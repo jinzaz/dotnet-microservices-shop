@@ -45,7 +45,7 @@ public sealed class FlashSaleCampaign : AggregateRoot<Guid>
         }
 
         Id = id;
-        Sku = sku.Trim();
+        Sku = sku.Trim().ToUpperInvariant();
         TotalQuantity = totalQuantity;
         StartsOnUtc = startsOnUtc;
         EndsOnUtc = endsOnUtc;
@@ -173,6 +173,22 @@ public sealed class FlashSaleStockBucket
         ReleasedQuantity = checked(ReleasedQuantity + quantity);
         Version++;
         return quantity;
+    }
+
+    internal void TransferAvailableTo(FlashSaleStockBucket target, int quantity)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        if (ReferenceEquals(this, target))
+            throw new InvalidOperationException("A stock bucket cannot transfer inventory to itself.");
+        if (CampaignId != target.CampaignId)
+            throw new InvalidOperationException("Stock can only move between buckets in the same campaign.");
+        if (quantity <= 0 || AvailableQuantity < quantity)
+            throw new InvalidOperationException("The source bucket does not have enough available inventory.");
+
+        AllocatedQuantity -= quantity;
+        target.AllocatedQuantity = checked(target.AllocatedQuantity + quantity);
+        Version++;
+        target.Version++;
     }
 
     private void EnsureReservedQuantity(int quantity)

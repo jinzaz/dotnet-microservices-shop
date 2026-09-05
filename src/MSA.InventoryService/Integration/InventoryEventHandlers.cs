@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using MSA.Contracts;
 using MSA.EventBus.Abstractions;
 using MSA.EventBusOutbox;
+using MSA.InventoryService.Application;
 using MSA.InventoryService.Application.FlashSales;
 using MSA.InventoryService.Domain;
 using MSA.InventoryService.Infrastructure;
@@ -15,14 +17,18 @@ internal sealed class OrderSubmittedHandler(
     IInventoryTransactionLock transactionLock,
     IFlashSaleStockStore flashSaleStock,
     InventoryCacheInvalidator cache,
+    IOptions<InventoryReservationOptions> reservationOptions,
     TimeProvider clock) : IIntegrationEventHandler<OrderSubmittedIntegrationEvent>
 {
+    private const string ConsumerId = "inventory.order-submitted.v1";
+
     public async Task HandleAsync(
         OrderSubmittedIntegrationEvent integrationEvent,
         CancellationToken cancellationToken = default)
     {
+        var requestHash = InventoryRequestHasher.Compute(integrationEvent);
         await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        if (!await db.TryBeginMessageAsync(integrationEvent.Id, nameof(OrderSubmittedHandler), cancellationToken))
+        if (!await db.TryBeginMessageAsync(integrationEvent.Id, ConsumerId, cancellationToken))
         {
             await db.RollbackTransactionAsync(cancellationToken);
             return;
@@ -33,24 +39,73 @@ internal sealed class OrderSubmittedHandler(
         try
         {
             await transactionLock.AcquireOrderReservationAsync(integrationEvent.OrderId, cancellationToken);
-            if (await db.Reservations.AsNoTracking().AnyAsync(
-                    reservation => reservation.OrderId == integrationEvent.OrderId,
-                    cancellationToken))
+            var existingDecision = await db.RequestDecisions
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    decision => decision.OrderId == integrationEvent.OrderId,
+                    cancellationToken);
+            if (existingDecision is not null)
             {
+                existingDecision.EnsureMatches(requestHash);
+                ReplayDecision(integrationEvent, existingDecision);
                 await db.CommitTransactionAsync(transaction, cancellationToken);
                 return;
             }
 
+            // Supports reservations created before the decision ledger was introduced.
+            // The order lock makes this a one-time, race-free adoption path.
+            var legacyReservationId = await db.Reservations
+                .AsNoTracking()
+                .Where(reservation => reservation.OrderId == integrationEvent.OrderId)
+                .Select(reservation => (Guid?)reservation.Id)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (legacyReservationId.HasValue)
+            {
+                var adoptedDecision = InventoryRequestDecision.Accept(
+                    integrationEvent.OrderId,
+                    requestHash,
+                    legacyReservationId.Value,
+                    clock.GetUtcNow());
+                db.RequestDecisions.Add(adoptedDecision);
+                ReplayDecision(integrationEvent, adoptedDecision);
+                await db.CommitTransactionAsync(transaction, cancellationToken);
+                return;
+            }
+
+            ReservationAttempt attempt;
             if (integrationEvent.FlashSaleCampaignId is Guid campaignId)
             {
-                flashSaleCacheId = campaignId;
-                await ReserveFlashSaleAsync(integrationEvent, campaignId, cancellationToken);
+                attempt = await ReserveFlashSaleAsync(integrationEvent, campaignId, cancellationToken);
             }
             else
             {
-                stockCacheSkus = await ReserveRegularStockAsync(integrationEvent, cancellationToken);
+                attempt = await ReserveRegularStockAsync(integrationEvent, cancellationToken);
             }
 
+            var decidedOnUtc = clock.GetUtcNow();
+            if (attempt.Reservation is not null)
+            {
+                db.RequestDecisions.Add(InventoryRequestDecision.Accept(
+                    integrationEvent.OrderId,
+                    requestHash,
+                    attempt.Reservation.Id,
+                    decidedOnUtc));
+                PublishReserved(integrationEvent, attempt.Reservation.Id);
+            }
+            else
+            {
+                var rejectionReason = attempt.RejectionReason
+                    ?? throw new InvalidOperationException("A rejected inventory attempt requires a reason.");
+                db.RequestDecisions.Add(InventoryRequestDecision.Reject(
+                    integrationEvent.OrderId,
+                    requestHash,
+                    rejectionReason,
+                    decidedOnUtc));
+                PublishRejected(integrationEvent.OrderId, rejectionReason);
+            }
+
+            stockCacheSkus = attempt.ChangedSkus;
+            flashSaleCacheId = attempt.ChangedCampaignId;
             await db.CommitTransactionAsync(transaction, cancellationToken);
         }
         catch
@@ -65,16 +120,13 @@ internal sealed class OrderSubmittedHandler(
             await cache.RemoveFlashSaleAsync(flashSaleCacheId.Value, cancellationToken);
     }
 
-    private async Task ReserveFlashSaleAsync(
+    private async Task<ReservationAttempt> ReserveFlashSaleAsync(
         OrderSubmittedIntegrationEvent integrationEvent,
         Guid campaignId,
         CancellationToken cancellationToken)
     {
         if (integrationEvent.Items.Count != 1)
-        {
-            PublishRejected(integrationEvent.OrderId, "A flash-sale order must contain exactly one item.");
-            return;
-        }
+            return ReservationAttempt.Rejected("A flash-sale order must contain exactly one item.");
 
         var line = integrationEvent.Items[0];
         var now = clock.GetUtcNow();
@@ -87,10 +139,7 @@ internal sealed class OrderSubmittedHandler(
             .Select(reservation => (Guid?)reservation.OrderId)
             .SingleOrDefaultAsync(cancellationToken);
         if (existingBuyerOrderId.HasValue)
-        {
-            PublishRejected(integrationEvent.OrderId, "This buyer has already submitted an order for the campaign.");
-            return;
-        }
+            return ReservationAttempt.Rejected("This buyer has already submitted an order for the campaign.");
 
         var attempt = await flashSaleStock.TryReserveAsync(
             campaignId,
@@ -99,11 +148,13 @@ internal sealed class OrderSubmittedHandler(
             integrationEvent.OrderId,
             cancellationToken);
         if (!attempt.Succeeded)
-        {
-            PublishRejected(integrationEvent.OrderId, attempt.RejectionReason ?? "Flash-sale inventory is unavailable.");
-            return;
-        }
+            return ReservationAttempt.Rejected(
+                attempt.RejectionReason ?? "Flash-sale inventory is unavailable.");
 
+        var expiresOnUtc = ResolveExpiry(
+            integrationEvent.PaymentDueOnUtc,
+            now,
+            reservationOptions.Value.FlashSaleLifetime);
         var reservation = InventoryReservation.CreateFlashSale(
             Guid.NewGuid(),
             integrationEvent.OrderId,
@@ -112,12 +163,13 @@ internal sealed class OrderSubmittedHandler(
             attempt.StockBucketId!.Value,
             line.Sku,
             line.Quantity,
-            now);
+            now,
+            expiresOnUtc);
         db.Reservations.Add(reservation);
-        PublishReserved(integrationEvent, reservation.Id);
+        return ReservationAttempt.Accepted(reservation, changedCampaignId: campaignId);
     }
 
-    private async Task<string[]> ReserveRegularStockAsync(
+    private async Task<ReservationAttempt> ReserveRegularStockAsync(
         OrderSubmittedIntegrationEvent integrationEvent,
         CancellationToken cancellationToken)
     {
@@ -134,22 +186,54 @@ internal sealed class OrderSubmittedHandler(
             .Where(item => skus.Contains(item.Sku))
             .ToDictionaryAsync(item => item.Sku, StringComparer.Ordinal, cancellationToken);
         if (requested.Any(pair => !stock.TryGetValue(pair.Key, out var item) || item.Available < pair.Value))
+            return ReservationAttempt.Rejected("Insufficient inventory.");
+
+        var reservationId = Guid.NewGuid();
+        var now = clock.GetUtcNow();
+        foreach (var pair in requested)
         {
-            PublishRejected(integrationEvent.OrderId, "Insufficient inventory.");
-            return skus;
+            stock[pair.Key].Reserve(pair.Value);
+            db.StockMovements.Add(StockMovement.Record(
+                stock[pair.Key],
+                StockMovementType.InventoryReserved,
+                onHandDelta: 0,
+                reservedDelta: pair.Value,
+                StockMovementReferenceType.Reservation,
+                reservationId,
+                "Inventory reserved for an order.",
+                now));
         }
 
-        foreach (var pair in requested)
-            stock[pair.Key].Reserve(pair.Value);
-
         var reservation = new InventoryReservation(
-            Guid.NewGuid(),
+            reservationId,
             integrationEvent.OrderId,
             requested.Select(pair => new InventoryReservationLine(pair.Key, pair.Value)),
-            clock.GetUtcNow());
+            now,
+            ResolveExpiry(
+                integrationEvent.PaymentDueOnUtc,
+                now,
+                reservationOptions.Value.RegularLifetime));
         db.Reservations.Add(reservation);
-        PublishReserved(integrationEvent, reservation.Id);
-        return skus;
+        return ReservationAttempt.Accepted(reservation, changedSkus: skus);
+    }
+
+    private void ReplayDecision(
+        OrderSubmittedIntegrationEvent source,
+        InventoryRequestDecision decision)
+    {
+        if (decision.IsAccepted)
+        {
+            PublishReserved(
+                source,
+                decision.ReservationId
+                ?? throw new InvalidOperationException("An accepted inventory decision is missing its reservation id."));
+            return;
+        }
+
+        PublishRejected(
+            source.OrderId,
+            decision.RejectionReason
+            ?? throw new InvalidOperationException("A rejected inventory decision is missing its reason."));
     }
 
     private void PublishReserved(OrderSubmittedIntegrationEvent source, Guid reservationId) =>
@@ -169,20 +253,47 @@ internal sealed class OrderSubmittedHandler(
         outbox.Add(OutboxMessage.Create(
             integrationEvent.GetType().AssemblyQualifiedName!,
             JsonSerializer.Serialize(integrationEvent, integrationEvent.GetType())));
+
+    private static DateTimeOffset ResolveExpiry(
+        DateTimeOffset? requestedExpiry,
+        DateTimeOffset now,
+        TimeSpan fallbackLifetime) =>
+        requestedExpiry.HasValue && requestedExpiry.Value > now
+            ? requestedExpiry.Value
+            : now.Add(fallbackLifetime);
+
+    private sealed record ReservationAttempt(
+        InventoryReservation? Reservation,
+        string? RejectionReason,
+        string[] ChangedSkus,
+        Guid? ChangedCampaignId)
+    {
+        public static ReservationAttempt Accepted(
+            InventoryReservation reservation,
+            string[]? changedSkus = null,
+            Guid? changedCampaignId = null) =>
+            new(reservation, null, changedSkus ?? [], changedCampaignId);
+
+        public static ReservationAttempt Rejected(string reason) =>
+            new(null, reason, [], null);
+    }
 }
 
 internal sealed class ReleaseInventoryHandler(
     InventoryDbContext db,
     IOutboxStore outbox,
     IInventoryTransactionLock transactionLock,
-    InventoryCacheInvalidator cache) : IIntegrationEventHandler<ReleaseInventoryIntegrationEvent>
+    InventoryCacheInvalidator cache,
+    TimeProvider clock) : IIntegrationEventHandler<ReleaseInventoryIntegrationEvent>
 {
+    private const string ConsumerId = "inventory.release-requested.v1";
+
     public async Task HandleAsync(
         ReleaseInventoryIntegrationEvent integrationEvent,
         CancellationToken cancellationToken = default)
     {
         await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        if (!await db.TryBeginMessageAsync(integrationEvent.Id, nameof(ReleaseInventoryHandler), cancellationToken))
+        if (!await db.TryBeginMessageAsync(integrationEvent.Id, ConsumerId, cancellationToken))
         {
             await db.RollbackTransactionAsync(cancellationToken);
             return;
@@ -192,26 +303,54 @@ internal sealed class ReleaseInventoryHandler(
         Guid? changedCampaignId = null;
         try
         {
-            var reservation = await InventoryRowLocks.LockReservationAsync(db, integrationEvent.ReservationId, cancellationToken);
-            if (reservation is not null && reservation.Status == ReservationStatus.Reserved)
+            var reservation = await InventoryRowLocks.LockReservationAsync(
+                db,
+                integrationEvent.ReservationId,
+                integrationEvent.OrderId,
+                cancellationToken);
+            if (reservation.Status == ReservationStatus.Reserved)
             {
+                var now = clock.GetUtcNow();
                 changedSkus = reservation.Lines.Select(line => line.Sku).Distinct(StringComparer.Ordinal).ToArray();
                 if (reservation.FlashSaleCampaignId is Guid campaignId)
                 {
                     changedCampaignId = campaignId;
-                    await ReleaseFlashSaleAsync(reservation, campaignId, cancellationToken);
+                    await ReleaseFlashSaleAsync(
+                        reservation,
+                        campaignId,
+                        integrationEvent.Reason,
+                        now,
+                        cancellationToken);
                 }
                 else
                 {
-                    await ReleaseRegularAsync(reservation, cancellationToken);
+                    await ReleaseRegularAsync(
+                        reservation,
+                        integrationEvent.Reason,
+                        now,
+                        cancellationToken);
                 }
 
-                reservation.TryRelease();
+                reservation.TryRelease(now, integrationEvent.Reason);
                 Publish(new InventoryReleasedIntegrationEvent
                 {
                     OrderId = integrationEvent.OrderId,
                     ReservationId = integrationEvent.ReservationId
                 });
+            }
+            else if (reservation.Status == ReservationStatus.Released)
+            {
+                // A semantic retry can carry a new message id. Re-emit the durable
+                // result so an Ordering saga can recover from a lost acknowledgement.
+                Publish(new InventoryReleasedIntegrationEvent
+                {
+                    OrderId = integrationEvent.OrderId,
+                    ReservationId = integrationEvent.ReservationId
+                });
+            }
+            else
+            {
+                throw new InvalidOperationException("Committed inventory cannot be released.");
             }
 
             await db.CommitTransactionAsync(transaction, cancellationToken);
@@ -231,6 +370,8 @@ internal sealed class ReleaseInventoryHandler(
     private async Task ReleaseFlashSaleAsync(
         InventoryReservation reservation,
         Guid campaignId,
+        string reason,
+        DateTimeOffset occurredOnUtc,
         CancellationToken cancellationToken)
     {
         var campaign = await InventoryRowLocks.LockCampaignAsync(db, campaignId, cancellationToken);
@@ -245,10 +386,21 @@ internal sealed class ReleaseInventoryHandler(
         await transactionLock.AcquireStockItemsAsync([line.Sku], cancellationToken);
         var stockItem = await db.StockItems.SingleAsync(item => item.Sku == line.Sku, cancellationToken);
         stockItem.Release(line.Quantity);
+        db.StockMovements.Add(StockMovement.Record(
+            stockItem,
+            StockMovementType.InventoryReleased,
+            onHandDelta: 0,
+            reservedDelta: -line.Quantity,
+            StockMovementReferenceType.Reservation,
+            reservation.Id,
+            reason,
+            occurredOnUtc));
     }
 
     private async Task ReleaseRegularAsync(
         InventoryReservation reservation,
+        string reason,
+        DateTimeOffset occurredOnUtc,
         CancellationToken cancellationToken)
     {
         var skus = reservation.Lines.Select(line => line.Sku).Distinct(StringComparer.Ordinal).ToArray();
@@ -257,7 +409,18 @@ internal sealed class ReleaseInventoryHandler(
             .Where(item => skus.Contains(item.Sku))
             .ToDictionaryAsync(item => item.Sku, StringComparer.Ordinal, cancellationToken);
         foreach (var line in reservation.Lines)
+        {
             stock[line.Sku].Release(line.Quantity);
+            db.StockMovements.Add(StockMovement.Record(
+                stock[line.Sku],
+                StockMovementType.InventoryReleased,
+                onHandDelta: 0,
+                reservedDelta: -line.Quantity,
+                StockMovementReferenceType.Reservation,
+                reservation.Id,
+                reason,
+                occurredOnUtc));
+        }
     }
 
     private void Publish(IntegrationEvent integrationEvent) =>
@@ -268,15 +431,19 @@ internal sealed class ReleaseInventoryHandler(
 
 internal sealed class CommitInventoryHandler(
     InventoryDbContext db,
+    IOutboxStore outbox,
     IInventoryTransactionLock transactionLock,
-    InventoryCacheInvalidator cache) : IIntegrationEventHandler<CommitInventoryIntegrationEvent>
+    InventoryCacheInvalidator cache,
+    TimeProvider clock) : IIntegrationEventHandler<CommitInventoryIntegrationEvent>
 {
+    private const string ConsumerId = "inventory.commit-requested.v1";
+
     public async Task HandleAsync(
         CommitInventoryIntegrationEvent integrationEvent,
         CancellationToken cancellationToken = default)
     {
         await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        if (!await db.TryBeginMessageAsync(integrationEvent.Id, nameof(CommitInventoryHandler), cancellationToken))
+        if (!await db.TryBeginMessageAsync(integrationEvent.Id, ConsumerId, cancellationToken))
         {
             await db.RollbackTransactionAsync(cancellationToken);
             return;
@@ -286,21 +453,49 @@ internal sealed class CommitInventoryHandler(
         Guid? changedCampaignId = null;
         try
         {
-            var reservation = await InventoryRowLocks.LockReservationAsync(db, integrationEvent.ReservationId, cancellationToken);
-            if (reservation is not null && reservation.Status == ReservationStatus.Reserved)
+            var reservation = await InventoryRowLocks.LockReservationAsync(
+                db,
+                integrationEvent.ReservationId,
+                integrationEvent.OrderId,
+                cancellationToken);
+            if (reservation.Status == ReservationStatus.Reserved)
             {
+                var now = clock.GetUtcNow();
                 changedSkus = reservation.Lines.Select(line => line.Sku).Distinct(StringComparer.Ordinal).ToArray();
                 if (reservation.FlashSaleCampaignId is Guid campaignId)
                 {
                     changedCampaignId = campaignId;
-                    await CommitFlashSaleAsync(reservation, campaignId, cancellationToken);
+                    await CommitFlashSaleAsync(reservation, campaignId, now, cancellationToken);
                 }
                 else
                 {
-                    await CommitRegularAsync(reservation, cancellationToken);
+                    await CommitRegularAsync(reservation, now, cancellationToken);
                 }
 
-                reservation.TryCommit();
+                reservation.TryCommit(now);
+                var committed = new InventoryCommittedIntegrationEvent
+                {
+                    OrderId = integrationEvent.OrderId,
+                    ReservationId = integrationEvent.ReservationId
+                };
+                outbox.Add(OutboxMessage.Create(
+                    committed.GetType().AssemblyQualifiedName!,
+                    JsonSerializer.Serialize(committed, committed.GetType())));
+            }
+            else if (reservation.Status == ReservationStatus.Committed)
+            {
+                var committed = new InventoryCommittedIntegrationEvent
+                {
+                    OrderId = integrationEvent.OrderId,
+                    ReservationId = integrationEvent.ReservationId
+                };
+                outbox.Add(OutboxMessage.Create(
+                    committed.GetType().AssemblyQualifiedName!,
+                    JsonSerializer.Serialize(committed, committed.GetType())));
+            }
+            else
+            {
+                throw new InvalidOperationException("Released inventory cannot be committed.");
             }
 
             await db.CommitTransactionAsync(transaction, cancellationToken);
@@ -320,6 +515,7 @@ internal sealed class CommitInventoryHandler(
     private async Task CommitFlashSaleAsync(
         InventoryReservation reservation,
         Guid campaignId,
+        DateTimeOffset occurredOnUtc,
         CancellationToken cancellationToken)
     {
         _ = await InventoryRowLocks.LockCampaignAsync(db, campaignId, cancellationToken);
@@ -330,10 +526,20 @@ internal sealed class CommitInventoryHandler(
         await transactionLock.AcquireStockItemsAsync([line.Sku], cancellationToken);
         var stockItem = await db.StockItems.SingleAsync(item => item.Sku == line.Sku, cancellationToken);
         stockItem.Commit(line.Quantity);
+        db.StockMovements.Add(StockMovement.Record(
+            stockItem,
+            StockMovementType.InventoryCommitted,
+            onHandDelta: -line.Quantity,
+            reservedDelta: -line.Quantity,
+            StockMovementReferenceType.Reservation,
+            reservation.Id,
+            "Reserved inventory committed after payment.",
+            occurredOnUtc));
     }
 
     private async Task CommitRegularAsync(
         InventoryReservation reservation,
+        DateTimeOffset occurredOnUtc,
         CancellationToken cancellationToken)
     {
         var skus = reservation.Lines.Select(line => line.Sku).Distinct(StringComparer.Ordinal).ToArray();
@@ -342,22 +548,35 @@ internal sealed class CommitInventoryHandler(
             .Where(item => skus.Contains(item.Sku))
             .ToDictionaryAsync(item => item.Sku, StringComparer.Ordinal, cancellationToken);
         foreach (var line in reservation.Lines)
+        {
             stock[line.Sku].Commit(line.Quantity);
+            db.StockMovements.Add(StockMovement.Record(
+                stock[line.Sku],
+                StockMovementType.InventoryCommitted,
+                onHandDelta: -line.Quantity,
+                reservedDelta: -line.Quantity,
+                StockMovementReferenceType.Reservation,
+                reservation.Id,
+                "Reserved inventory committed after payment.",
+                occurredOnUtc));
+        }
     }
 }
 
 internal static class InventoryRowLocks
 {
-    public static async Task<InventoryReservation?> LockReservationAsync(
+    public static async Task<InventoryReservation> LockReservationAsync(
         InventoryDbContext db,
         Guid reservationId,
+        Guid orderId,
         CancellationToken cancellationToken)
     {
         var reservation = await db.Reservations
-            .FromSqlInterpolated($"SELECT * FROM inventory_reservations WHERE \"Id\" = {reservationId} FOR UPDATE")
-            .SingleOrDefaultAsync(cancellationToken);
-        if (reservation is not null)
-            await db.Entry(reservation).Collection(value => value.Lines).LoadAsync(cancellationToken);
+            .FromSqlInterpolated($"SELECT * FROM inventory_reservations WHERE \"Id\" = {reservationId} AND \"OrderId\" = {orderId} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"Inventory reservation {reservationId} was not found for order {orderId}.");
+        await db.Entry(reservation).Collection(value => value.Lines).LoadAsync(cancellationToken);
         return reservation;
     }
 

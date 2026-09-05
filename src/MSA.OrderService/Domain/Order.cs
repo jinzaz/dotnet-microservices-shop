@@ -5,11 +5,14 @@ namespace MSA.OrderService.Domain;
 public sealed class Order : AggregateRoot<Guid>
 {
     private readonly List<OrderLine> _lines = [];
+    private readonly List<OrderDiscount> _discounts = [];
+    private readonly List<OrderStatusHistory> _statusHistory = [];
 
     private Order()
     {
     }
 
+    // Compatibility constructor for existing callers and stored orders.
     public Order(
         Guid id,
         string userId,
@@ -18,10 +21,50 @@ public sealed class Order : AggregateRoot<Guid>
         string currency,
         Guid? flashSaleCampaignId = null,
         DateTimeOffset? createdOnUtc = null)
+        : this(
+            id,
+            userId,
+            idempotencyKey,
+            $"legacy:{id:N}",
+            "Unknown",
+            lines,
+            [],
+            currency,
+            flashSaleCampaignId,
+            Guid.NewGuid(),
+            $"legacy:{id:N}",
+            (createdOnUtc ?? DateTimeOffset.UtcNow).AddMinutes(15),
+            createdOnUtc ?? DateTimeOffset.UtcNow)
     {
+    }
+
+    public Order(
+        Guid id,
+        string userId,
+        string idempotencyKey,
+        string requestFingerprint,
+        string paymentMethod,
+        IEnumerable<OrderLine> lines,
+        IEnumerable<OrderDiscount> discounts,
+        string currency,
+        Guid? flashSaleCampaignId,
+        Guid pricingSnapshotId,
+        string pricingSnapshotHash,
+        DateTimeOffset paymentDueOnUtc,
+        DateTimeOffset createdOnUtc)
+    {
+        if (id == Guid.Empty)
+            throw new ArgumentException("Order id is required.", nameof(id));
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(requestFingerprint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(paymentMethod);
         ArgumentException.ThrowIfNullOrWhiteSpace(currency);
+        ArgumentException.ThrowIfNullOrWhiteSpace(pricingSnapshotHash);
+        if (pricingSnapshotId == Guid.Empty)
+            throw new ArgumentException("Pricing snapshot id is required.", nameof(pricingSnapshotId));
+        if (paymentDueOnUtc <= createdOnUtc)
+            throw new ArgumentOutOfRangeException(nameof(paymentDueOnUtc));
 
         var orderLines = lines.ToArray();
         if (orderLines.Length == 0)
@@ -29,61 +72,151 @@ public sealed class Order : AggregateRoot<Guid>
         if (flashSaleCampaignId.HasValue && orderLines.Length != 1)
             throw new ArgumentException("A flash-sale order requires exactly one item.", nameof(lines));
 
+        var orderDiscounts = discounts.ToArray();
+        var subtotal = Money.Round(orderLines.Sum(line => line.LineSubtotal));
+        var discount = Money.Round(orderDiscounts.Sum(item => item.Amount));
+        if (subtotal <= 0)
+            throw new InvalidOperationException("Order subtotal must be positive.");
+        if (discount < 0 || discount >= subtotal)
+            throw new InvalidOperationException("Order discount must be non-negative and less than the subtotal.");
+
         Id = id;
-        UserId = userId;
-        IdempotencyKey = idempotencyKey;
-        Currency = currency;
+        OrderNumber = $"O{createdOnUtc:yyyyMMdd}{id:N}";
+        UserId = userId.Trim();
+        IdempotencyKey = idempotencyKey.Trim();
+        RequestFingerprint = requestFingerprint;
+        PaymentMethod = paymentMethod.Trim();
+        Currency = currency.Trim().ToUpperInvariant();
         FlashSaleCampaignId = flashSaleCampaignId;
+        PricingSnapshotId = pricingSnapshotId;
+        PricingSnapshotHash = pricingSnapshotHash;
+        PaymentDueOnUtc = paymentDueOnUtc;
         _lines.AddRange(orderLines);
-        Amount = _lines.Sum(line => line.UnitPrice * line.Quantity);
+        _discounts.AddRange(orderDiscounts);
+        SubtotalAmount = subtotal;
+        DiscountAmount = discount;
+        Amount = Money.Round(subtotal - discount);
         Status = OrderStatus.Submitted;
-        CreatedOnUtc = createdOnUtc ?? DateTimeOffset.UtcNow;
+        CreatedOnUtc = createdOnUtc;
+        UpdatedOnUtc = createdOnUtc;
+        _statusHistory.Add(OrderStatusHistory.Initial(id, createdOnUtc));
     }
 
+    public string OrderNumber { get; private set; } = string.Empty;
     public string UserId { get; private set; } = string.Empty;
     public string IdempotencyKey { get; private set; } = string.Empty;
+    public string RequestFingerprint { get; private set; } = string.Empty;
+    public string PaymentMethod { get; private set; } = string.Empty;
     public Guid? FlashSaleCampaignId { get; private set; }
+    public decimal SubtotalAmount { get; private set; }
+    public decimal DiscountAmount { get; private set; }
     public decimal Amount { get; private set; }
     public string Currency { get; private set; } = "CNY";
+    public Guid PricingSnapshotId { get; private set; }
+    public string PricingSnapshotHash { get; private set; } = string.Empty;
+    public DateTimeOffset PaymentDueOnUtc { get; private set; }
     public OrderStatus Status { get; private set; }
     public Guid? ReservationId { get; private set; }
     public Guid? PaymentId { get; private set; }
     public string? CancellationReason { get; private set; }
     public DateTimeOffset CreatedOnUtc { get; private set; }
+    public DateTimeOffset UpdatedOnUtc { get; private set; }
+    public DateTimeOffset? ConfirmedOnUtc { get; private set; }
+    public DateTimeOffset? CancelledOnUtc { get; private set; }
     public long Version { get; private set; }
     public IReadOnlyCollection<OrderLine> Lines => _lines;
+    public IReadOnlyCollection<OrderDiscount> Discounts => _discounts;
+    public IReadOnlyCollection<OrderStatusHistory> StatusHistory => _statusHistory;
 
-    public void InventoryReserved(Guid reservationId)
+    public void EnsureSameRequest(string requestFingerprint)
     {
+        if (!string.Equals(RequestFingerprint, requestFingerprint, StringComparison.Ordinal))
+            throw new InvalidOperationException("The idempotency key is already bound to a different order request.");
+    }
+
+    public void InventoryReserved(Guid reservationId, DateTimeOffset? changedOnUtc = null)
+    {
+        if (reservationId == Guid.Empty)
+            throw new ArgumentException("Reservation id is required.", nameof(reservationId));
         if (Status != OrderStatus.Submitted)
             throw new InvalidOperationException("Order is not awaiting inventory.");
+
         ReservationId = reservationId;
-        Status = OrderStatus.AwaitingPayment;
-        Version++;
+        TransitionTo(OrderStatus.AwaitingPayment, changedOnUtc ?? DateTimeOffset.UtcNow, null);
     }
 
-    public void Confirm(Guid paymentId)
+    public void Confirm(Guid paymentId) =>
+        Confirm(paymentId, Amount, Currency, PricingSnapshotHash, DateTimeOffset.UtcNow);
+
+    public void Confirm(
+        Guid paymentId,
+        decimal capturedAmount,
+        string currency,
+        string? pricingSnapshotHash,
+        DateTimeOffset changedOnUtc)
     {
+        if (paymentId == Guid.Empty)
+            throw new ArgumentException("Payment id is required.", nameof(paymentId));
         if (Status != OrderStatus.AwaitingPayment)
             throw new InvalidOperationException("Order is not awaiting payment.");
+        EnsurePaymentMatchesPriceSnapshot(capturedAmount, currency, pricingSnapshotHash);
+
         PaymentId = paymentId;
-        Status = OrderStatus.Confirmed;
-        Version++;
+        ConfirmedOnUtc = changedOnUtc;
+        TransitionTo(OrderStatus.Confirmed, changedOnUtc, null);
     }
 
-    public void Cancel(string reason)
+    public void EnsurePaymentMatchesPriceSnapshot(
+        decimal capturedAmount,
+        string currency,
+        string? pricingSnapshotHash)
     {
-        TryCancel(reason);
+        ArgumentException.ThrowIfNullOrWhiteSpace(currency);
+        if (Money.Round(capturedAmount) != Amount
+            || !string.Equals(Currency, currency, StringComparison.OrdinalIgnoreCase)
+            || pricingSnapshotHash is not null
+                && !string.Equals(PricingSnapshotHash, pricingSnapshotHash, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Captured payment does not match the immutable order price snapshot.");
+        }
     }
 
-    public bool TryCancel(string reason)
+    public void Cancel(string reason) => TryCancel(reason);
+
+    public bool TryCancel(
+        string reason,
+        DateTimeOffset? changedOnUtc = null,
+        string actor = "system")
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         if (Status is OrderStatus.Confirmed or OrderStatus.Cancelled)
             return false;
-        CancellationReason = reason;
-        Status = OrderStatus.Cancelled;
-        Version++;
+
+        var now = changedOnUtc ?? DateTimeOffset.UtcNow;
+        CancellationReason = reason.Trim();
+        CancelledOnUtc = now;
+        TransitionTo(OrderStatus.Cancelled, now, CancellationReason, actor);
         return true;
+    }
+
+    private void TransitionTo(
+        OrderStatus next,
+        DateTimeOffset changedOnUtc,
+        string? reason,
+        string actor = "system")
+    {
+        var previous = Status;
+        Status = next;
+        UpdatedOnUtc = changedOnUtc;
+        Version++;
+        _statusHistory.Add(new OrderStatusHistory(
+            Guid.NewGuid(),
+            Id,
+            previous,
+            next,
+            reason,
+            actor,
+            changedOnUtc));
     }
 }
 
@@ -94,132 +227,137 @@ public sealed class OrderLine
     }
 
     public OrderLine(string sku, string productName, int quantity, decimal unitPrice)
+        : this(sku, productName, quantity, unitPrice, unitPrice)
+    {
+    }
+
+    public OrderLine(
+        string sku,
+        string productName,
+        int quantity,
+        decimal listUnitPrice,
+        decimal unitPrice)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sku);
         ArgumentException.ThrowIfNullOrWhiteSpace(productName);
         if (quantity <= 0)
             throw new ArgumentOutOfRangeException(nameof(quantity));
-        if (unitPrice < 0)
+        if (listUnitPrice < 0 || unitPrice < 0 || unitPrice > listUnitPrice)
             throw new ArgumentOutOfRangeException(nameof(unitPrice));
 
-        Sku = sku;
-        ProductName = productName;
+        Sku = sku.Trim();
+        ProductName = productName.Trim();
         Quantity = quantity;
-        UnitPrice = unitPrice;
+        ListUnitPrice = Money.Round(listUnitPrice);
+        UnitPrice = Money.Round(unitPrice);
+        LineSubtotal = Money.Round(ListUnitPrice * quantity);
+        DiscountAmount = Money.Round((ListUnitPrice - UnitPrice) * quantity);
+        LineAmount = Money.Round(UnitPrice * quantity);
     }
 
     public long Id { get; private set; }
     public string Sku { get; private set; } = string.Empty;
     public string ProductName { get; private set; } = string.Empty;
     public int Quantity { get; private set; }
+    public decimal ListUnitPrice { get; private set; }
     public decimal UnitPrice { get; private set; }
+    public decimal LineSubtotal { get; private set; }
+    public decimal DiscountAmount { get; private set; }
+    public decimal LineAmount { get; private set; }
 }
 
-public sealed class OrderProductProjection
+public sealed class OrderDiscount
 {
-    private OrderProductProjection()
+    private OrderDiscount()
     {
     }
 
-    public OrderProductProjection(Guid productId, string sku, string name, decimal price, string currency, bool active)
+    public OrderDiscount(
+        Guid id,
+        Guid promotionId,
+        long promotionRevision,
+        Guid? couponId,
+        string sourceType,
+        string description,
+        decimal amount,
+        string snapshotJson)
     {
-        ProductId = productId;
-        Sku = sku;
-        Name = name;
-        Price = price;
-        Currency = currency;
-        IsActive = active;
-        UpdatedOnUtc = DateTimeOffset.UtcNow;
+        if (id == Guid.Empty || promotionId == Guid.Empty)
+            throw new ArgumentException("Discount and promotion ids are required.");
+        if (promotionRevision < 0)
+            throw new ArgumentOutOfRangeException(nameof(promotionRevision));
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(description);
+        ArgumentException.ThrowIfNullOrWhiteSpace(snapshotJson);
+        if (amount <= 0)
+            throw new ArgumentOutOfRangeException(nameof(amount));
+
+        Id = id;
+        PromotionId = promotionId;
+        PromotionRevision = promotionRevision;
+        CouponId = couponId;
+        SourceType = sourceType;
+        Description = description;
+        Amount = Money.Round(amount);
+        SnapshotJson = snapshotJson;
     }
 
-    public Guid ProductId { get; private set; }
-    public string Sku { get; private set; } = string.Empty;
-    public string Name { get; private set; } = string.Empty;
-    public decimal Price { get; private set; }
-    public string Currency { get; private set; } = string.Empty;
-    public bool IsActive { get; private set; }
-    public DateTimeOffset UpdatedOnUtc { get; private set; }
-
-    public void Update(string name, decimal price, string currency, bool active)
-    {
-        Name = name;
-        Price = price;
-        Currency = currency;
-        IsActive = active;
-        UpdatedOnUtc = DateTimeOffset.UtcNow;
-    }
+    public Guid Id { get; private set; }
+    public Guid PromotionId { get; private set; }
+    public long PromotionRevision { get; private set; }
+    public Guid? CouponId { get; private set; }
+    public string SourceType { get; private set; } = string.Empty;
+    public string Description { get; private set; } = string.Empty;
+    public decimal Amount { get; private set; }
+    public string SnapshotJson { get; private set; } = "{}";
 }
 
-public sealed class FlashSaleCampaignProjection
+public sealed class OrderStatusHistory
 {
-    private FlashSaleCampaignProjection()
+    private OrderStatusHistory()
     {
     }
 
-    public FlashSaleCampaignProjection(
-        Guid campaignId,
-        string sku,
-        DateTimeOffset startsOnUtc,
-        DateTimeOffset endsOnUtc,
-        int purchaseLimit,
-        string strategy,
-        DateTimeOffset updatedOnUtc)
+    public OrderStatusHistory(
+        Guid id,
+        Guid orderId,
+        OrderStatus? fromStatus,
+        OrderStatus toStatus,
+        string? reason,
+        string actor,
+        DateTimeOffset occurredOnUtc)
     {
-        CampaignId = campaignId;
-        ApplyOpen(sku, startsOnUtc, endsOnUtc, purchaseLimit, strategy, updatedOnUtc);
+        Id = id;
+        OrderId = orderId;
+        FromStatus = fromStatus;
+        ToStatus = toStatus;
+        Reason = reason;
+        Actor = actor;
+        OccurredOnUtc = occurredOnUtc;
     }
 
-    public Guid CampaignId { get; private set; }
-    public string Sku { get; private set; } = string.Empty;
-    public DateTimeOffset StartsOnUtc { get; private set; }
-    public DateTimeOffset EndsOnUtc { get; private set; }
-    public int PurchaseLimit { get; private set; }
-    public string Strategy { get; private set; } = string.Empty;
-    public bool IsOpen { get; private set; }
-    public DateTimeOffset UpdatedOnUtc { get; private set; }
-    public DateTimeOffset? ClosedOnUtc { get; private set; }
-    public long Version { get; private set; }
+    public Guid Id { get; private set; }
+    public Guid OrderId { get; private set; }
+    public OrderStatus? FromStatus { get; private set; }
+    public OrderStatus ToStatus { get; private set; }
+    public string? Reason { get; private set; }
+    public string Actor { get; private set; } = string.Empty;
+    public DateTimeOffset OccurredOnUtc { get; private set; }
 
-    public bool AcceptsOrders(DateTimeOffset now) => IsOpen && StartsOnUtc <= now && now < EndsOnUtc;
-
-    public void ApplyOpen(
-        string sku,
-        DateTimeOffset startsOnUtc,
-        DateTimeOffset endsOnUtc,
-        int purchaseLimit,
-        string strategy,
-        DateTimeOffset updatedOnUtc)
-    {
-        if (ClosedOnUtc.HasValue && ClosedOnUtc.Value >= updatedOnUtc)
-            return;
-
-        Sku = sku;
-        StartsOnUtc = startsOnUtc;
-        EndsOnUtc = endsOnUtc;
-        PurchaseLimit = purchaseLimit;
-        Strategy = strategy;
-        IsOpen = true;
-        ClosedOnUtc = null;
-        UpdatedOnUtc = updatedOnUtc;
-        Version++;
-    }
-
-    public void Close(DateTimeOffset closedOnUtc)
-    {
-        if (ClosedOnUtc.HasValue && ClosedOnUtc.Value >= closedOnUtc)
-            return;
-
-        IsOpen = false;
-        ClosedOnUtc = closedOnUtc;
-        UpdatedOnUtc = closedOnUtc;
-        Version++;
-    }
+    internal static OrderStatusHistory Initial(Guid orderId, DateTimeOffset now) =>
+        new(Guid.NewGuid(), orderId, null, OrderStatus.Submitted, null, "system", now);
 }
 
 public enum OrderStatus
 {
-    Submitted,
-    AwaitingPayment,
-    Confirmed,
-    Cancelled
+    Submitted = 0,
+    AwaitingPayment = 1,
+    Confirmed = 2,
+    Cancelled = 3
+}
+
+internal static class Money
+{
+    public static decimal Round(decimal value) =>
+        decimal.Round(value, 2, MidpointRounding.AwayFromZero);
 }

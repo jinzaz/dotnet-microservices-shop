@@ -67,7 +67,7 @@ internal sealed class CreateFlashSaleCommandHandler(
 {
     public async Task<Guid> Handle(CreateFlashSaleCommand request, CancellationToken cancellationToken)
     {
-        var sku = request.Sku.Trim();
+        var sku = request.Sku.Trim().ToUpperInvariant();
         await transactionLock.AcquireStockItemsAsync([sku], cancellationToken);
 
         var stockItem = await db.StockItems.SingleOrDefaultAsync(item => item.Sku == sku, cancellationToken)
@@ -96,6 +96,15 @@ internal sealed class CreateFlashSaleCommandHandler(
             now);
 
         db.FlashSaleCampaigns.Add(campaign);
+        db.StockMovements.Add(StockMovement.Record(
+            stockItem,
+            StockMovementType.CampaignAllocated,
+            onHandDelta: 0,
+            reservedDelta: request.TotalQuantity,
+            StockMovementReferenceType.FlashSaleCampaign,
+            campaign.Id,
+            "Inventory allocated to a flash-sale campaign.",
+            now));
 
         var integrationEvent = new FlashSaleCampaignOpenedIntegrationEvent
         {

@@ -2,21 +2,46 @@ using MSA.Infrastrucute.Mediator;
 
 namespace MSA.OrderService.Application.GetOrder;
 
-/// <summary>One immutable line in an order response.</summary>
-public sealed record OrderLineDto(string Sku, string ProductName, int Quantity, decimal UnitPrice);
+public sealed record OrderLineDto(
+    string Sku,
+    string ProductName,
+    int Quantity,
+    decimal ListUnitPrice,
+    decimal UnitPrice,
+    decimal LineSubtotal,
+    decimal DiscountAmount,
+    decimal LineAmount);
 
-/// <summary>Current state of an order and its asynchronous fulfillment workflow.</summary>
+public sealed record OrderDiscountDto(
+    Guid PromotionId,
+    long PromotionRevision,
+    Guid? CouponId,
+    string SourceType,
+    string Description,
+    decimal Amount);
+
 public sealed record OrderDto(
     Guid Id,
+    string OrderNumber,
     string UserId,
     Guid? FlashSaleCampaignId,
+    decimal SubtotalAmount,
+    decimal DiscountAmount,
     decimal Amount,
     string Currency,
+    string PaymentMethod,
     string Status,
     Guid? ReservationId,
     Guid? PaymentId,
     string? CancellationReason,
+    Guid PricingSnapshotId,
+    DateTimeOffset PaymentDueOnUtc,
     IReadOnlyList<OrderLineDto> Lines,
-    DateTimeOffset CreatedOnUtc);
+    IReadOnlyList<OrderDiscountDto> Discounts,
+    DateTimeOffset CreatedOnUtc,
+    DateTimeOffset UpdatedOnUtc);
 
-public sealed record GetOrderQuery(Guid OrderId, string UserId, bool CanReadAll) : IQuery<OrderDto?>;
+public sealed record GetOrderQuery(
+    Guid OrderId,
+    string UserId,
+    bool CanReadAll) : IQuery<OrderDto?>;

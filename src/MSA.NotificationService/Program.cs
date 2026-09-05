@@ -21,9 +21,12 @@ builder.Services.AddMsaApplicationPipeline();
 builder.Services.AddRabbitMQEventBus(options =>
 {
     options.HostName = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
+    options.ExchangeName = builder.Configuration["RabbitMQ:ExchangeName"] ?? "msa.commerce.events";
     options.UserName = builder.Configuration["RabbitMQ:User"] ?? "guest";
     options.Password = builder.Configuration["RabbitMQ:Password"] ?? "guest";
     options.QueueName = "msa.notification";
+    options.DeadLetterExchange = $"{options.ExchangeName}.dlx";
+    options.DeadLetterQueue = $"{options.QueueName}.dlq";
 });
 builder.Services.AddIntegrationEventHandler<OrderConfirmedIntegrationEvent, OrderConfirmedHandler>();
 builder.Services.AddIntegrationEventHandler<OrderCancelledIntegrationEvent, OrderCancelledHandler>();
