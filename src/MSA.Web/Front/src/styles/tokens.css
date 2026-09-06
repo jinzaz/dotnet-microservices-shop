@@ -1,0 +1,28 @@
+:root {
+  color-scheme: light;
+  --color-white: #ffffff;
+  --color-ink: #071a3d;
+  --color-ink-soft: #243556;
+  --color-muted: #66728a;
+  --color-subtle: #8c96a9;
+  --color-border: #dce2ea;
+  --color-border-strong: #c7d0dc;
+  --color-surface: #f6f8fb;
+  --color-surface-blue: #edf4fb;
+  --color-blue: #0b4dbf;
+  --color-blue-dark: #073f9e;
+  --color-accent: #ff3d12;
+  --color-accent-hover: #e82f08;
+  --color-danger: #d92d20;
+  --color-success: #14804a;
+  --shadow-soft: 0 16px 40px rgb(7 26 61 / 9%);
+  --shadow-float: 0 28px 70px rgb(7 26 61 / 18%);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --container: 1200px;
+  --header-height: 68px;
+  --font-sans: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  --transition-fast: 160ms ease;
+  --transition-base: 220ms ease;
+}

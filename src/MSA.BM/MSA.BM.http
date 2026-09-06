@@ -1,0 +1,6 @@
+@MSA.BM_HostAddress = http://localhost:5178
+
+GET {{MSA.BM_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

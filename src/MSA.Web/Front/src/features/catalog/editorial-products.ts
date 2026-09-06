@@ -1,0 +1,63 @@
+import type { DisplayProduct } from './types';
+
+export const productImages = [
+  '/images/product-pour-over.jpg',
+  '/images/product-charger.jpg',
+  '/images/product-backpack.jpg',
+  '/images/product-toothbrush.jpg',
+] as const;
+
+export const editorialProducts: DisplayProduct[] = [
+  {
+    id: 'editorial-pour-over',
+    categoryId: 'home',
+    sku: 'MSA-HOME-001',
+    name: '手冲咖啡套装',
+    description: '通透耐热玻璃与温润木环，让每天的冲煮多一点从容。',
+    price: 299,
+    currency: 'CNY',
+    isActive: true,
+    updatedOnUtc: '2026-09-01T00:00:00Z',
+    categoryLabel: '居家',
+    image: productImages[0],
+  },
+  {
+    id: 'editorial-charger',
+    categoryId: 'digital',
+    sku: 'MSA-DIGITAL-001',
+    name: '磁吸无线充电支架',
+    description: '稳固磁吸与舒适视角，把桌面整理得更轻松。',
+    price: 149,
+    currency: 'CNY',
+    isActive: true,
+    updatedOnUtc: '2026-09-02T00:00:00Z',
+    categoryLabel: '数码',
+    image: productImages[1],
+  },
+  {
+    id: 'editorial-backpack',
+    categoryId: 'travel',
+    sku: 'MSA-TRAVEL-001',
+    name: '轻量通勤双肩包',
+    description: '轻盈面料与有序分区，适合日常通勤和短途出行。',
+    price: 399,
+    currency: 'CNY',
+    isActive: true,
+    updatedOnUtc: '2026-09-03T00:00:00Z',
+    categoryLabel: '出行',
+    image: productImages[2],
+  },
+  {
+    id: 'editorial-toothbrush',
+    categoryId: 'life',
+    sku: 'MSA-LIFE-001',
+    name: '软毛竹柄牙刷套装',
+    description: '柔软刷毛与细腻竹柄，让早晚清洁更舒适。',
+    price: 39,
+    currency: 'CNY',
+    isActive: true,
+    updatedOnUtc: '2026-09-04T00:00:00Z',
+    categoryLabel: '生活',
+    image: productImages[3],
+  },
+];

@@ -22,6 +22,7 @@
   </Folder>
   <Folder Name="/2.Src/2.ApiService/">
     <Project Path="src/MSA.ApiGateway/MSA.ApiGateway.csproj" Id="31f7e4be-36c1-4ebb-af61-603c1e2bd139" />
+    <Project Path="src/MSA.BM/MSA.BM.csproj" Id="c322fc22-75ec-4893-bf01-ecae355813b1" />
     <Project Path="src/MSA.IdentityService/MSA.IdentityService.csproj" Id="77d3e573-0b9a-4c2e-b6f8-64ef0cecc951" />
   </Folder>
   <Folder Name="/2.Src/2.ApiService/Busiensses/">
