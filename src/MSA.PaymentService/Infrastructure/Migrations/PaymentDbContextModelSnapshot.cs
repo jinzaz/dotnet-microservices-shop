@@ -30,40 +30,49 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.Property<string>("EventType")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasComment("集成事件的契约类型名称");
 
                     b.Property<string>("LastError")
                         .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
+                        .HasColumnType("character varying(4000)")
+                        .HasComment("最近一次发布失败原因");
 
                     b.Property<Guid?>("LockId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("当前发布任务的租约标识");
 
                     b.Property<DateTimeOffset?>("LockedUntilUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("发布租约到期的 UTC 时间");
 
                     b.Property<DateTimeOffset>("NextAttemptOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("下一次允许尝试发布的 UTC 时间");
 
                     b.Property<DateTimeOffset>("OccurredOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Payload")
                         .IsRequired()
-                        .HasColumnType("jsonb");
+                        .HasColumnType("jsonb")
+                        .HasComment("待发布事件的 JSON 载荷");
 
                     b.Property<DateTimeOffset?>("ProcessedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("RetryCount")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("累计发布重试次数");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("消息发布状态");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("乐观并发版本号");
 
                     b.HasKey("Id");
 
@@ -80,10 +89,12 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.Property<decimal>("Amount")
                         .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("订单应支付金额");
 
                     b.Property<int>("Channel")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("支付渠道");
 
                     b.Property<DateTimeOffset?>("ClosedOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -94,22 +105,27 @@ namespace MSA.PaymentService.Infrastructure.Migrations
                     b.Property<string>("Currency")
                         .IsRequired()
                         .HasMaxLength(3)
-                        .HasColumnType("character varying(3)");
+                        .HasColumnType("character varying(3)")
+                        .HasComment("支付金额的三位币种代码");
 
                     b.Property<DateTimeOffset>("ExpiresOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("待支付单失效的 UTC 时间");
 
                     b.Property<string>("FailureReason")
                         .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                        .HasColumnType("character varying(2000)")
+                        .HasComment("最近一次支付或退款失败原因");
 
                     b.Property<string>("MerchantTradeNo")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("character varying(64)")
+                        .HasComment("提交给支付渠道的商户交易号");
 
                     b.Property<Guid>("OrderId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("支付单关联的订单标识，也是业务唯一键");
 
                     b.Property<DateTimeOffset?>("PaidOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -120,30 +136,37 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.Property<string>("PricingSnapshotHash")
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
+                        .HasColumnType("character varying(128)")
+                        .HasComment("订单侧定价快照的 SHA-256 摘要");
 
                     b.Property<Guid?>("PricingSnapshotId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("订单侧定价快照标识");
 
                     b.Property<string>("ProviderTransactionId")
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
+                        .HasColumnType("character varying(128)")
+                        .HasComment("支付渠道返回的交易标识");
 
                     b.Property<decimal>("RefundedAmount")
                         .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("累计退款成功金额");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("支付单业务状态");
 
                     b.Property<string>("UserId")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasColumnType("character varying(200)")
+                        .HasComment("付款用户标识");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("支付单乐观并发版本号");
 
                     b.HasKey("Id");
 
@@ -196,10 +219,12 @@ namespace MSA.PaymentService.Infrastructure.Migrations
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                        .HasColumnType("character varying(2000)")
+                        .HasComment("请求关闭支付单的业务原因");
 
                     b.Property<Guid>("RequestMessageId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("触发取消的集成事件标识，用于消息幂等");
 
                     b.Property<DateTimeOffset>("RequestedOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -225,35 +250,41 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.Property<decimal>("Amount")
                         .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("回调声明的支付金额");
 
                     b.Property<int>("Channel")
                         .HasColumnType("integer");
 
                     b.Property<string>("ConflictReason")
                         .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                        .HasColumnType("character varying(2000)")
+                        .HasComment("重复通知载荷冲突或金额校验失败原因");
 
                     b.Property<string>("Currency")
                         .IsRequired()
                         .HasMaxLength(3)
-                        .HasColumnType("character varying(3)");
+                        .HasColumnType("character varying(3)")
+                        .HasComment("回调声明的三位币种代码");
 
                     b.Property<string>("Fingerprint")
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character(64)")
-                        .IsFixedLength();
+                        .IsFixedLength()
+                        .HasComment("规范化回调载荷的 SHA-256 指纹");
 
                     b.Property<string>("MerchantTradeNo")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("character varying(64)")
+                        .HasComment("回调携带的商户交易号");
 
                     b.Property<string>("NotificationKey")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasColumnType("character varying(200)")
+                        .HasComment("渠道回调的业务去重键");
 
                     b.Property<Guid>("PaymentId")
                         .HasColumnType("uuid");
@@ -263,18 +294,21 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.Property<string>("ProviderNotificationId")
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
+                        .HasColumnType("character varying(128)")
+                        .HasComment("支付渠道的回调通知标识");
 
                     b.Property<string>("ProviderTransactionId")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
+                        .HasColumnType("character varying(128)")
+                        .HasComment("回调携带的渠道交易标识");
 
                     b.Property<DateTimeOffset>("ReceivedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("回调处理状态");
 
                     b.HasKey("Id");
 
@@ -310,10 +344,12 @@ namespace MSA.PaymentService.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<int>("AttemptCount")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("已执行的渠道调用次数");
 
                     b.Property<Guid?>("BusinessReferenceId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("退款操作关联的退款单标识");
 
                     b.Property<DateTimeOffset?>("CompletedOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -324,20 +360,25 @@ namespace MSA.PaymentService.Infrastructure.Migrations
                     b.Property<string>("IdempotencyKey")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("character varying(100)")
+                        .HasComment("渠道调用的稳定幂等键");
 
                     b.Property<string>("LastError")
                         .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
+                        .HasColumnType("character varying(4000)")
+                        .HasComment("最近一次渠道调用失败原因");
 
                     b.Property<Guid?>("LockId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("当前执行实例持有的租约标识");
 
                     b.Property<DateTimeOffset?>("LockedUntilUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("渠道操作租约到期的 UTC 时间");
 
                     b.Property<DateTimeOffset>("NextAttemptOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("下一次允许调用渠道的 UTC 时间");
 
                     b.Property<Guid>("PaymentId")
                         .HasColumnType("uuid");
@@ -347,17 +388,20 @@ namespace MSA.PaymentService.Infrastructure.Migrations
                         .HasColumnType("character varying(2000)");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("渠道操作调度状态");
 
                     b.Property<int>("Type")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("渠道操作类型：创建、关闭或退款");
 
                     b.Property<DateTimeOffset>("UpdatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("渠道操作乐观并发版本号");
 
                     b.HasKey("Id");
 
@@ -405,7 +449,8 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.Property<decimal>("Amount")
                         .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("本次申请退款金额");
 
                     b.Property<DateTimeOffset?>("CompletedOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -420,12 +465,14 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.Property<string>("FailureReason")
                         .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                        .HasColumnType("character varying(2000)")
+                        .HasComment("退款失败原因");
 
                     b.Property<string>("MerchantRefundNo")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("character varying(64)")
+                        .HasComment("提交给支付渠道的商户退款号");
 
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uuid");
@@ -435,7 +482,8 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.Property<string>("ProviderRefundId")
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
+                        .HasColumnType("character varying(128)")
+                        .HasComment("支付渠道返回的退款标识");
 
                     b.Property<string>("Reason")
                         .IsRequired()
@@ -443,20 +491,24 @@ namespace MSA.PaymentService.Infrastructure.Migrations
                         .HasColumnType("character varying(500)");
 
                     b.Property<Guid>("RefundRequestId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("上游退款请求的业务幂等标识");
 
                     b.Property<Guid>("RequestMessageId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("触发退款的集成事件标识");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("退款单业务状态");
 
                     b.Property<DateTimeOffset>("UpdatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("退款单乐观并发版本号");
 
                     b.HasKey("Id");
 
@@ -516,7 +568,8 @@ namespace MSA.PaymentService.Infrastructure.Migrations
                     b.Property<string>("ReasonCode")
                         .IsRequired()
                         .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
+                        .HasColumnType("character varying(80)")
+                        .HasComment("支付状态变更原因码");
 
                     b.Property<int>("ToStatus")
                         .HasColumnType("integer");
@@ -536,14 +589,17 @@ namespace MSA.PaymentService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.Repositories.Persistence.InboxMessage", b =>
                 {
                     b.Property<Guid>("MessageId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("已消费的集成事件标识");
 
                     b.Property<string>("Consumer")
                         .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
+                        .HasColumnType("character varying(300)")
+                        .HasComment("消费处理器的稳定名称");
 
                     b.Property<DateTimeOffset>("ProcessedOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("首次成功登记消费的 UTC 时间");
 
                     b.HasKey("MessageId", "Consumer");
 
@@ -554,47 +610,57 @@ namespace MSA.PaymentService.Infrastructure.Migrations
                 {
                     b.Property<Guid>("CorrelationId")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("跨服务流程的关联标识");
 
                     b.Property<DateTimeOffset>("CreatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Data")
                         .IsRequired()
-                        .HasColumnType("jsonb");
+                        .HasColumnType("jsonb")
+                        .HasComment("流程恢复与补偿所需的状态快照");
 
                     b.Property<string>("FailureReason")
                         .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
+                        .HasColumnType("character varying(4000)")
+                        .HasComment("流程失败或补偿失败原因");
 
                     b.Property<string>("SagaType")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasColumnType("character varying(200)")
+                        .HasComment("Saga 流程类型");
 
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("character varying(100)")
+                        .HasComment("当前业务步骤");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("Saga 执行状态");
 
                     b.Property<Guid?>("TimeoutLockId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("当前超时处理任务的租约标识");
 
                     b.Property<DateTimeOffset?>("TimeoutLockedUntilUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("超时处理租约到期的 UTC 时间");
 
                     b.Property<DateTimeOffset?>("TimeoutOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("触发超时处理的 UTC 时间");
 
                     b.Property<DateTimeOffset>("UpdatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("乐观并发版本号");
 
                     b.HasKey("CorrelationId");
 

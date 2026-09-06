@@ -276,7 +276,7 @@ internal sealed class PaymentProviderOperationDispatcher(
         Guid operationId,
         TimeSpan maximumDelay)
     {
-        // Deterministic jitter avoids synchronized retries without changing the provider idempotency key.
+        // 确定性抖动可错开多实例重试，同时不改变提交给支付渠道的幂等键。
         var jitterMilliseconds = Math.Abs((long)operationId.GetHashCode() % 1000);
         var exponent = Math.Min(Math.Max(attemptCount, 1), 20);
         var baseDelay = Math.Min(Math.Pow(2, exponent), maximumDelay.TotalSeconds);

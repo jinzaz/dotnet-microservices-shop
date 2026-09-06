@@ -25,4 +25,8 @@ The checkout workflow is an Ordering-owned orchestration: `OrderSubmitted` asks 
 
 Preserve central package management in `Directory.Packages.props`, the .NET SDK pin in `global.json`, and per-project global usings under `src/Shared`. Never commit credentials; use environment variables or user secrets.
 
+Persisted business fields must carry concise Chinese database comments through EF Core `HasComment`. Prioritize identifiers with business meaning, lifecycle/status fields, monetary or quantity fields, snapshots, idempotency/concurrency fields, and audit timestamps; omit comments that merely repeat an obvious CLR/property name. Generate migrations and model snapshots through `dotnet ef` so comments are applied to PostgreSQL, and keep the comment beside the relevant Fluent API mapping.
+
+Add concise Chinese comments to core business code only when they explain intent that the code cannot express by itself: aggregate invariants, state-transition preconditions, snapshot boundaries, idempotency decisions, concurrency locks, eventual-consistency behavior, timeout/retry policy, or compensation rules. Explain why the rule exists rather than narrating individual statements. Do not comment routine CRUD, straightforward validation, framework plumbing, or every branch, and update or remove a comment whenever the associated rule changes.
+
 Before finishing, build `MicroservicesArchitecture.slnx` and report remaining warnings or infrastructure prerequisites separately from compilation failures.

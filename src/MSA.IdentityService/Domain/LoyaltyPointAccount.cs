@@ -30,6 +30,7 @@ public sealed class LoyaltyPointAccount : AggregateRoot<string>
         if (delta == 0)
             throw new ArgumentOutOfRangeException(nameof(delta), "Point delta cannot be zero.");
 
+        // 余额、累计获得和累计消费必须在同一次聚合变更中推进，流水据此记录前后余额。
         long nextBalance;
         var nextLifetimeEarned = LifetimeEarned;
         var nextLifetimeSpent = LifetimeSpent;

@@ -30,40 +30,49 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.Property<string>("EventType")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasComment("集成事件的契约类型名称");
 
                     b.Property<string>("LastError")
                         .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
+                        .HasColumnType("character varying(4000)")
+                        .HasComment("最近一次发布失败原因");
 
                     b.Property<Guid?>("LockId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("当前发布任务的租约标识");
 
                     b.Property<DateTimeOffset?>("LockedUntilUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("发布租约到期的 UTC 时间");
 
                     b.Property<DateTimeOffset>("NextAttemptOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("下一次允许尝试发布的 UTC 时间");
 
                     b.Property<DateTimeOffset>("OccurredOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Payload")
                         .IsRequired()
-                        .HasColumnType("jsonb");
+                        .HasColumnType("jsonb")
+                        .HasComment("待发布事件的 JSON 载荷");
 
                     b.Property<DateTimeOffset?>("ProcessedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("RetryCount")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("累计发布重试次数");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("消息发布状态");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("乐观并发版本号");
 
                     b.HasKey("Id");
 
@@ -85,12 +94,14 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.Property<string>("CodeDigest")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("character varying(64)")
+                        .HasComment("标准化券码的 SHA-256 摘要");
 
                     b.Property<string>("MaskedCode")
                         .IsRequired()
                         .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
+                        .HasColumnType("character varying(80)")
+                        .HasComment("用于展示和审计的脱敏券码");
 
                     b.Property<int>("PerUserLimit")
                         .HasColumnType("integer");
@@ -101,10 +112,12 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.Property<string>("QuotaStrategy")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
+                        .HasColumnType("character varying(30)")
+                        .HasComment("券配额的单行或分桶并发策略");
 
                     b.Property<long>("SourceRevision")
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("已应用的优惠券业务修订号");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -150,20 +163,24 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.Property<int>("Capacity")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("本地配额桶可核销总量");
 
                     b.Property<int>("ConsumedCount")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("已由确认订单核销的数量");
 
                     b.Property<Guid>("CouponId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("ReservedCount")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("已为未完成订单预留的数量");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("配额桶乐观并发版本号");
 
                     b.HasKey("Id");
 
@@ -236,11 +253,13 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.Property<decimal>("Amount")
                         .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("最终应付金额");
 
                     b.Property<string>("CancellationReason")
                         .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
+                        .HasColumnType("character varying(1000)")
+                        .HasComment("订单取消原因");
 
                     b.Property<DateTimeOffset?>("CancelledOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -262,25 +281,29 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.Property<string>("Currency")
                         .IsRequired()
                         .HasMaxLength(3)
-                        .HasColumnType("character varying(3)");
+                        .HasColumnType("character varying(3)")
+                        .HasComment("订单金额的三位币种代码");
 
                     b.Property<DateTimeOffset?>("DeliveredOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<decimal>("DiscountAmount")
                         .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("订单优惠总额");
 
                     b.Property<Guid?>("FlashSaleCampaignId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("FulfillmentStatus")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("订单履约状态");
 
                     b.Property<string>("IdempotencyKey")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("character varying(100)")
+                        .HasComment("用户维度的下单幂等键");
 
                     b.Property<DateTimeOffset?>("InTransitOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -288,50 +311,62 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.Property<string>("OrderNumber")
                         .IsRequired()
                         .HasMaxLength(48)
-                        .HasColumnType("character varying(48)");
+                        .HasColumnType("character varying(48)")
+                        .HasComment("面向用户和运营的订单编号");
 
                     b.Property<DateTimeOffset>("PaymentDueOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("订单支付截止的 UTC 时间");
 
                     b.Property<Guid?>("PaymentId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("支付服务返回的支付单标识");
 
                     b.Property<string>("PaymentMethod")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("character varying(40)");
+                        .HasColumnType("character varying(40)")
+                        .HasComment("用户选择的支付方式");
 
                     b.Property<string>("PricingSnapshotHash")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("character varying(64)")
+                        .HasComment("商品与优惠定价快照的 SHA-256 摘要");
 
                     b.Property<Guid>("PricingSnapshotId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("本次定价快照标识");
 
                     b.Property<string>("RequestFingerprint")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("character varying(64)")
+                        .HasComment("原始下单请求的 SHA-256 指纹");
 
                     b.Property<Guid?>("ReservationId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("库存服务返回的预占标识");
 
                     b.Property<DateTimeOffset?>("ShippedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("SourceBasketId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("发起结算的购物车标识");
 
                     b.Property<long?>("SourceBasketVersion")
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("发起结算的购物车版本，用于结算幂等");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("订单交易状态");
 
                     b.Property<decimal>("SubtotalAmount")
                         .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("优惠前商品小计");
 
                     b.Property<string>("TrackingNumber")
                         .HasMaxLength(120)
@@ -343,11 +378,13 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.Property<string>("UserId")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasColumnType("character varying(200)")
+                        .HasComment("下单用户标识");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("订单乐观并发版本号");
 
                     b.HasKey("Id");
 
@@ -409,10 +446,12 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.Property<decimal>("DiscountAmount")
                         .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("该优惠券为订单抵扣的金额");
 
                     b.Property<DateTimeOffset>("ExpiresOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("未支付订单释放券配额的 UTC 时间");
 
                     b.Property<string>("MaskedCode")
                         .IsRequired()
@@ -423,10 +462,12 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<long?>("QuotaBucketId")
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("本次核销占用的配额桶标识");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("券配额的预留、核销或释放状态");
 
                     b.Property<DateTimeOffset>("UpdatedOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -438,7 +479,8 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("券核销记录乐观并发版本号");
 
                     b.HasKey("Id");
 
@@ -467,10 +509,12 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.Property<decimal>("Amount")
                         .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("该优惠在订单上的抵扣金额");
 
                     b.Property<Guid?>("CouponId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("优惠来源券标识；自动促销时为空");
 
                     b.Property<string>("Description")
                         .IsRequired()
@@ -484,11 +528,13 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<long>("PromotionRevision")
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("计算优惠时采用的促销修订号");
 
                     b.Property<string>("SnapshotJson")
                         .IsRequired()
-                        .HasColumnType("jsonb");
+                        .HasColumnType("jsonb")
+                        .HasComment("用于审计和复算的促销定义快照");
 
                     b.Property<string>("SourceType")
                         .IsRequired()
@@ -529,7 +575,8 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.Property<string>("IdempotencyKey")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("character varying(100)")
+                        .HasComment("履约操作幂等键");
 
                     b.Property<string>("Note")
                         .HasMaxLength(1000)
@@ -543,7 +590,8 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.Property<string>("RequestFingerprint")
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("character varying(64)")
+                        .HasComment("履约操作请求指纹");
 
                     b.Property<int>("ToStatus")
                         .HasColumnType("integer");
@@ -573,19 +621,23 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.Property<decimal>("DiscountAmount")
                         .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("订单行优惠金额");
 
                     b.Property<decimal>("LineAmount")
                         .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("订单行最终应付金额");
 
                     b.Property<decimal>("LineSubtotal")
                         .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("优惠前行小计");
 
                     b.Property<decimal>("ListUnitPrice")
                         .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("下单时的目录单价快照");
 
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uuid");
@@ -596,7 +648,8 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .HasColumnType("character varying(200)");
 
                     b.Property<int>("Quantity")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("下单商品数量");
 
                     b.Property<string>("Sku")
                         .IsRequired()
@@ -605,7 +658,8 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.Property<decimal>("UnitPrice")
                         .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("分摊优惠后的成交单价");
 
                     b.HasKey("Id");
 
@@ -644,7 +698,8 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.Property<decimal>("Price")
                         .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("下单侧使用的目录单价投影");
 
                     b.Property<string>("Sku")
                         .IsRequired()
@@ -725,7 +780,8 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.Property<string>("DefinitionChecksum")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("character varying(64)")
+                        .HasComment("促销定义快照的 SHA-256 校验值");
 
                     b.Property<DateTimeOffset>("EndsOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -747,7 +803,8 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .HasColumnType("jsonb");
 
                     b.Property<long>("SourceRevision")
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("已应用的促销业务修订号");
 
                     b.Property<string>("StackPolicy")
                         .IsRequired()
@@ -792,14 +849,17 @@ namespace MSA.OrderService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.Repositories.Persistence.InboxMessage", b =>
                 {
                     b.Property<Guid>("MessageId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("已消费的集成事件标识");
 
                     b.Property<string>("Consumer")
                         .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
+                        .HasColumnType("character varying(300)")
+                        .HasComment("消费处理器的稳定名称");
 
                     b.Property<DateTimeOffset>("ProcessedOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("首次成功登记消费的 UTC 时间");
 
                     b.HasKey("MessageId", "Consumer");
 
@@ -810,47 +870,57 @@ namespace MSA.OrderService.Infrastructure.Migrations
                 {
                     b.Property<Guid>("CorrelationId")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("跨服务流程的关联标识");
 
                     b.Property<DateTimeOffset>("CreatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Data")
                         .IsRequired()
-                        .HasColumnType("jsonb");
+                        .HasColumnType("jsonb")
+                        .HasComment("流程恢复与补偿所需的状态快照");
 
                     b.Property<string>("FailureReason")
                         .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
+                        .HasColumnType("character varying(4000)")
+                        .HasComment("流程失败或补偿失败原因");
 
                     b.Property<string>("SagaType")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasColumnType("character varying(200)")
+                        .HasComment("Saga 流程类型");
 
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("character varying(100)")
+                        .HasComment("当前业务步骤");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("Saga 执行状态");
 
                     b.Property<Guid?>("TimeoutLockId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("当前超时处理任务的租约标识");
 
                     b.Property<DateTimeOffset?>("TimeoutLockedUntilUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("超时处理租约到期的 UTC 时间");
 
                     b.Property<DateTimeOffset?>("TimeoutOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("触发超时处理的 UTC 时间");
 
                     b.Property<DateTimeOffset>("UpdatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("乐观并发版本号");
 
                     b.HasKey("CorrelationId");
 
@@ -918,7 +988,8 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                             b1.Property<Guid?>("SourceAddressId")
                                 .HasColumnType("uuid")
-                                .HasColumnName("ShippingAddressId");
+                                .HasColumnName("ShippingAddressId")
+                                .HasComment("用户地址簿中的来源地址标识");
 
                             b1.Property<string>("StreetLine1")
                                 .IsRequired()

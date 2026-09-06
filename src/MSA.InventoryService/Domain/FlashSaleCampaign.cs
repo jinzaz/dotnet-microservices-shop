@@ -57,6 +57,7 @@ public sealed class FlashSaleCampaign : AggregateRoot<Guid>
 
         var baseQuantity = totalQuantity / bucketCount;
         var remainder = totalQuantity % bucketCount;
+        // 将热点库存均匀拆分到多个桶，余数固定分配给前几个桶，保证总量精确且创建结果确定。
         for (var bucketNumber = 0; bucketNumber < bucketCount; bucketNumber++)
         {
             var allocated = baseQuantity + (bucketNumber < remainder ? 1 : 0);
@@ -177,6 +178,7 @@ public sealed class FlashSaleStockBucket
 
     internal void TransferAvailableTo(FlashSaleStockBucket target, int quantity)
     {
+        // 只转移尚未预占的配额，两个桶版本同时推进，供持久化层检测并发再平衡冲突。
         ArgumentNullException.ThrowIfNull(target);
         if (ReferenceEquals(this, target))
             throw new InvalidOperationException("A stock bucket cannot transfer inventory to itself.");

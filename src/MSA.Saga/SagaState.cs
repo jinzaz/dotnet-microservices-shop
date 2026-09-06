@@ -28,10 +28,8 @@ public sealed class SagaState
     public void Complete(DateTimeOffset now) { EnsureActive(); Status = SagaStatus.Completed; TimeoutOnUtc = null; TimeoutLockId = null; TimeoutLockedUntilUtc = null; UpdatedOnUtc = now; Version++; }
     public void BeginCompensation(string state, string data, DateTimeOffset now)
     {
-        // A compensation may have completed before an irreversible late event
-        // (for example a delayed payment callback) is observed. Re-open the
-        // compensation workflow so the newly discovered side effect can be
-        // undone as well; a successfully completed saga remains immutable.
+        // 补偿完成后仍可能观察到不可逆的迟到事件（例如延迟支付回调）；此时重新打开补偿流程，
+        // 以撤销新发现的副作用。正常完成的 Saga 仍保持不可变。
         if (Status == SagaStatus.Completed)
             throw new InvalidOperationException($"Saga {CorrelationId} is terminal.");
         ArgumentException.ThrowIfNullOrWhiteSpace(state);

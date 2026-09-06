@@ -54,8 +54,7 @@ public enum CouponQuotaStrategy
 }
 
 /// <summary>
-/// Common audit and optimistic-concurrency state for Catalog aggregates.
-/// Business callers provide the actor and time so mutations remain deterministic.
+/// 目录聚合共用的审计与乐观并发状态。操作者和时间由调用方传入，保证领域变更可复现、可测试。
 /// </summary>
 public abstract class AuditedCatalogAggregateRoot<TId> : AggregateRoot<TId>
     where TId : notnull
@@ -85,6 +84,7 @@ public abstract class AuditedCatalogAggregateRoot<TId> : AggregateRoot<TId>
         if (utc < UpdatedOnUtc)
             throw new ArgumentOutOfRangeException(nameof(occurredOnUtc), "A change cannot predate the previous aggregate change.");
 
+        // 聚合版本只随有效业务变更递增，是后台编辑冲突检测的统一依据。
         UpdatedBy = normalizedActor;
         UpdatedOnUtc = utc;
         checked

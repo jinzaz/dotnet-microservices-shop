@@ -52,8 +52,7 @@ internal sealed class OrderSubmittedHandler(
                 return;
             }
 
-            // Supports reservations created before the decision ledger was introduced.
-            // The order lock makes this a one-time, race-free adoption path.
+            // 兼容决策流水引入前创建的预占；订单锁保证该补登记路径只执行一次且无竞态。
             var legacyReservationId = await db.Reservations
                 .AsNoTracking()
                 .Where(reservation => reservation.OrderId == integrationEvent.OrderId)
@@ -340,8 +339,7 @@ internal sealed class ReleaseInventoryHandler(
             }
             else if (reservation.Status == ReservationStatus.Released)
             {
-                // A semantic retry can carry a new message id. Re-emit the durable
-                // result so an Ordering saga can recover from a lost acknowledgement.
+                // 语义重试可能携带新的消息标识；重发持久化决策，使订单 Saga 能从丢失的确认中恢复。
                 Publish(new InventoryReleasedIntegrationEvent
                 {
                     OrderId = integrationEvent.OrderId,

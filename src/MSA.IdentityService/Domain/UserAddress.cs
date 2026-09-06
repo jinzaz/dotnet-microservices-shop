@@ -64,6 +64,7 @@ public sealed class UserAddress : AggregateRoot<Guid>
 
     public void MakeDefault(DateTimeOffset now)
     {
+        // 同一用户唯一默认地址由数据库部分唯一索引兜底，聚合只负责保证候选地址仍然有效。
         EnsureActive();
         if (IsDefault)
             return;

@@ -50,7 +50,7 @@ public sealed class Coupon : RevisionedCatalogAggregateRoot<Guid>
 
     public Guid PromotionId { get; private set; }
 
-    /// <summary>SHA-256 of the normalized code. The redeemable code itself is never persisted.</summary>
+    /// <summary>标准化券码的 SHA-256 摘要；可核销券码明文永不落库。</summary>
     public string CodeDigest { get; private set; } = string.Empty;
 
     public string MaskedCode { get; private set; } = string.Empty;
@@ -326,7 +326,7 @@ public sealed class Coupon : RevisionedCatalogAggregateRoot<Guid>
 }
 
 /// <summary>
-/// Static quota topology published to Ordering. Runtime reservation/consumption counters are not Catalog state.
+/// 发布给订单服务的静态配额拓扑；运行时预留和核销计数不属于目录服务状态。
 /// </summary>
 public sealed class CouponQuotaBucket
 {

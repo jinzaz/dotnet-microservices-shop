@@ -54,6 +54,7 @@ internal sealed class CreateOrderCommandHandler(
         lockKeys.AddRange(couponDigests.Select(digest =>
             OrderSubmissionLockKeys.CouponUser(digest, request.UserId)));
 
+        // 同时锁住下单键、购物车版本和券用户配额，覆盖所有可能形成重复订单或超卖的业务键。
         await submissionLock.AcquireAsync(
             lockKeys,
             cancellationToken);
@@ -160,6 +161,7 @@ internal sealed class CreateOrderCommandHandler(
             now,
             cancellationToken);
 
+        // 订单、券配额、Saga 和 Outbox 由事务行为一次提交，避免任一跨服务步骤脱离本地事实。
         PublishOrderSubmitted(order);
         var saga = SagaState.Start(
             order.Id,

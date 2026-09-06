@@ -46,16 +46,21 @@ internal sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
         entity.HasIndex(value => new { value.ExpiresOnUtc, value.Id })
             .HasDatabaseName("IX_payments_pending_expiry")
             .HasFilter("\"Status\" = 0");
-        entity.Property(value => value.UserId).HasMaxLength(200);
-        entity.Property(value => value.Amount).HasPrecision(18, 2);
-        entity.Property(value => value.RefundedAmount).HasPrecision(18, 2);
-        entity.Property(value => value.Currency).HasMaxLength(3);
-        entity.Property(value => value.MerchantTradeNo).HasMaxLength(64);
-        entity.Property(value => value.ProviderTransactionId).HasMaxLength(128);
+        entity.Property(value => value.OrderId).HasComment("支付单关联的订单标识，也是业务唯一键");
+        entity.Property(value => value.UserId).HasMaxLength(200).HasComment("付款用户标识");
+        entity.Property(value => value.Amount).HasPrecision(18, 2).HasComment("订单应支付金额");
+        entity.Property(value => value.RefundedAmount).HasPrecision(18, 2).HasComment("累计退款成功金额");
+        entity.Property(value => value.Currency).HasMaxLength(3).HasComment("支付金额的三位币种代码");
+        entity.Property(value => value.Channel).HasComment("支付渠道");
+        entity.Property(value => value.Status).HasComment("支付单业务状态");
+        entity.Property(value => value.MerchantTradeNo).HasMaxLength(64).HasComment("提交给支付渠道的商户交易号");
+        entity.Property(value => value.ProviderTransactionId).HasMaxLength(128).HasComment("支付渠道返回的交易标识");
         entity.Property(value => value.PaymentUrl).HasMaxLength(4096);
-        entity.Property(value => value.FailureReason).HasMaxLength(2000);
-        entity.Property(value => value.PricingSnapshotHash).HasMaxLength(128);
-        entity.Property(value => value.Version).IsConcurrencyToken();
+        entity.Property(value => value.FailureReason).HasMaxLength(2000).HasComment("最近一次支付或退款失败原因");
+        entity.Property(value => value.ExpiresOnUtc).HasComment("待支付单失效的 UTC 时间");
+        entity.Property(value => value.PricingSnapshotId).HasComment("订单侧定价快照标识");
+        entity.Property(value => value.PricingSnapshotHash).HasMaxLength(128).HasComment("订单侧定价快照的 SHA-256 摘要");
+        entity.Property(value => value.Version).IsConcurrencyToken().HasComment("支付单乐观并发版本号");
     }
 }
 
@@ -103,10 +108,17 @@ internal sealed class PaymentProviderOperationConfiguration
         entity.HasIndex(value => new { value.LockedUntilUtc, value.Id })
             .HasDatabaseName("IX_payment_provider_operations_expired_lease")
             .HasFilter("\"Status\" = 1");
-        entity.Property(value => value.IdempotencyKey).HasMaxLength(100);
+        entity.Property(value => value.Type).HasComment("渠道操作类型：创建、关闭或退款");
+        entity.Property(value => value.IdempotencyKey).HasMaxLength(100).HasComment("渠道调用的稳定幂等键");
+        entity.Property(value => value.BusinessReferenceId).HasComment("退款操作关联的退款单标识");
+        entity.Property(value => value.Status).HasComment("渠道操作调度状态");
+        entity.Property(value => value.AttemptCount).HasComment("已执行的渠道调用次数");
+        entity.Property(value => value.NextAttemptOnUtc).HasComment("下一次允许调用渠道的 UTC 时间");
+        entity.Property(value => value.LockId).HasComment("当前执行实例持有的租约标识");
+        entity.Property(value => value.LockedUntilUtc).HasComment("渠道操作租约到期的 UTC 时间");
         entity.Property(value => value.Reason).HasMaxLength(2000);
-        entity.Property(value => value.LastError).HasMaxLength(4000);
-        entity.Property(value => value.Version).IsConcurrencyToken();
+        entity.Property(value => value.LastError).HasMaxLength(4000).HasComment("最近一次渠道调用失败原因");
+        entity.Property(value => value.Version).IsConcurrencyToken().HasComment("渠道操作乐观并发版本号");
     }
 }
 
@@ -141,14 +153,15 @@ internal sealed class PaymentNotificationConfiguration
             .IsUnique()
             .HasFilter("\"ProviderNotificationId\" IS NOT NULL");
         entity.HasIndex(value => new { value.PaymentId, value.ReceivedOnUtc });
-        entity.Property(value => value.NotificationKey).HasMaxLength(200);
-        entity.Property(value => value.ProviderNotificationId).HasMaxLength(128);
-        entity.Property(value => value.MerchantTradeNo).HasMaxLength(64);
-        entity.Property(value => value.ProviderTransactionId).HasMaxLength(128);
-        entity.Property(value => value.Amount).HasPrecision(18, 2);
-        entity.Property(value => value.Currency).HasMaxLength(3);
-        entity.Property(value => value.Fingerprint).HasMaxLength(64).IsFixedLength();
-        entity.Property(value => value.ConflictReason).HasMaxLength(2000);
+        entity.Property(value => value.NotificationKey).HasMaxLength(200).HasComment("渠道回调的业务去重键");
+        entity.Property(value => value.ProviderNotificationId).HasMaxLength(128).HasComment("支付渠道的回调通知标识");
+        entity.Property(value => value.MerchantTradeNo).HasMaxLength(64).HasComment("回调携带的商户交易号");
+        entity.Property(value => value.ProviderTransactionId).HasMaxLength(128).HasComment("回调携带的渠道交易标识");
+        entity.Property(value => value.Amount).HasPrecision(18, 2).HasComment("回调声明的支付金额");
+        entity.Property(value => value.Currency).HasMaxLength(3).HasComment("回调声明的三位币种代码");
+        entity.Property(value => value.Fingerprint).HasMaxLength(64).IsFixedLength().HasComment("规范化回调载荷的 SHA-256 指纹");
+        entity.Property(value => value.Status).HasComment("回调处理状态");
+        entity.Property(value => value.ConflictReason).HasMaxLength(2000).HasComment("重复通知载荷冲突或金额校验失败原因");
     }
 }
 
@@ -173,7 +186,7 @@ internal sealed class PaymentStatusHistoryConfiguration
             .HasForeignKey(value => value.PaymentId)
             .OnDelete(DeleteBehavior.Restrict);
         entity.HasIndex(value => new { value.PaymentId, value.OccurredOnUtc });
-        entity.Property(value => value.ReasonCode).HasMaxLength(80);
+        entity.Property(value => value.ReasonCode).HasMaxLength(80).HasComment("支付状态变更原因码");
         entity.Property(value => value.Details).HasMaxLength(2000);
     }
 }
@@ -214,13 +227,16 @@ internal sealed class PaymentRefundConfiguration : IEntityTypeConfiguration<Paym
             .HasDatabaseName("IX_payment_refunds_one_pending_per_payment")
             .HasFilter("\"Status\" = 0");
         entity.HasIndex(value => new { value.PaymentId, value.Status, value.CreatedOnUtc });
-        entity.Property(value => value.MerchantRefundNo).HasMaxLength(64);
-        entity.Property(value => value.Amount).HasPrecision(18, 2);
+        entity.Property(value => value.RefundRequestId).HasComment("上游退款请求的业务幂等标识");
+        entity.Property(value => value.RequestMessageId).HasComment("触发退款的集成事件标识");
+        entity.Property(value => value.MerchantRefundNo).HasMaxLength(64).HasComment("提交给支付渠道的商户退款号");
+        entity.Property(value => value.Amount).HasPrecision(18, 2).HasComment("本次申请退款金额");
         entity.Property(value => value.Currency).HasMaxLength(3);
         entity.Property(value => value.Reason).HasMaxLength(500);
-        entity.Property(value => value.ProviderRefundId).HasMaxLength(128);
-        entity.Property(value => value.FailureReason).HasMaxLength(2000);
-        entity.Property(value => value.Version).IsConcurrencyToken();
+        entity.Property(value => value.Status).HasComment("退款单业务状态");
+        entity.Property(value => value.ProviderRefundId).HasMaxLength(128).HasComment("支付渠道返回的退款标识");
+        entity.Property(value => value.FailureReason).HasMaxLength(2000).HasComment("退款失败原因");
+        entity.Property(value => value.Version).IsConcurrencyToken().HasComment("退款单乐观并发版本号");
     }
 }
 
@@ -236,6 +252,7 @@ internal sealed class PaymentCancellationIntentConfiguration
         entity.HasKey(value => value.OrderId);
         entity.HasIndex(value => value.RequestMessageId).IsUnique();
         entity.HasIndex(value => value.RequestedOnUtc);
-        entity.Property(value => value.Reason).HasMaxLength(2000);
+        entity.Property(value => value.RequestMessageId).HasComment("触发取消的集成事件标识，用于消息幂等");
+        entity.Property(value => value.Reason).HasMaxLength(2000).HasComment("请求关闭支付单的业务原因");
     }
 }

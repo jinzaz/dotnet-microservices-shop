@@ -164,6 +164,7 @@ public sealed class Payment : AggregateRoot<Guid>
 
     public bool MarkPaid(string providerTransactionId, DateTimeOffset now)
     {
+        // 渠道成功回调可能重复到达；相同交易号视为幂等，不允许另一个交易号覆盖已成功支付。
         ArgumentException.ThrowIfNullOrWhiteSpace(providerTransactionId);
         providerTransactionId = providerTransactionId.Trim();
 
@@ -229,6 +230,7 @@ public sealed class Payment : AggregateRoot<Guid>
 
     public bool RequestRefund(decimal amount)
     {
+        // 每次仅允许一个退款流程在途，累计成功退款不得超过原支付金额。
         if (amount <= 0)
             throw new ArgumentOutOfRangeException(nameof(amount));
         if (Status == PaymentStatus.Refunding)

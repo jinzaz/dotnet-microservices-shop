@@ -49,6 +49,7 @@ public sealed class StockItem : AggregateRoot<Guid>
 
     public void Reserve(int quantity)
     {
+        // 预占只冻结可售量，不立即扣减实物库存；订单确认后才由 Commit 完成扣减。
         if (quantity <= 0 || Available < quantity)
             throw new InvalidOperationException($"Insufficient inventory for {Sku}.");
         Reserved = checked(Reserved + quantity);
@@ -204,6 +205,7 @@ public sealed class InventoryReservation : AggregateRoot<Guid>
 
     public bool TryRelease(DateTimeOffset releasedOnUtc, string reason)
     {
+        // 终态转换采用 Try 语义，使重复的释放/补偿消息可以安全返回而不重复回补库存。
         if (Status != ReservationStatus.Reserved)
             return false;
 
@@ -227,6 +229,7 @@ public sealed class InventoryReservation : AggregateRoot<Guid>
 
     public bool TryCommit(DateTimeOffset committedOnUtc)
     {
+        // 已提交或已释放的预占均不可再次推进，保证库存终态转换幂等。
         if (Status != ReservationStatus.Reserved)
             return false;
         if (committedOnUtc < CreatedOnUtc)

@@ -192,8 +192,7 @@ internal sealed class CouponSnapshotChangedHandler(OrderDbContext db, IOutboxSto
             integrationEvent.QuotaStrategy,
             integrationEvent.Revision,
             occurredOnUtc);
-        // Published quota topology is immutable once Ordering has received it. Later
-        // revisions may disable or extend validity, but never reset used counters.
+        // 订单服务接收后的配额拓扑不可重建；后续修订可以停用或延长有效期，但不能重置已用计数。
     }
 }
 

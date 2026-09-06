@@ -123,6 +123,7 @@ public sealed class OrderPricingService(
         var claimedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var remaining = subtotal;
 
+        // 促销按优先级稳定计算；每步最多抵扣到剩余 0.01，确保订单始终保留正的应付金额。
         foreach (var promotion in promotions)
         {
             var promotionContext = ApplyTargets(promotion.TargetsJson, context);
@@ -197,6 +198,7 @@ public sealed class OrderPricingService(
             throw new InvalidOperationException("Not every requested coupon could be applied.");
 
         var discountTotal = Round(discounts.Sum(discount => discount.Amount));
+        // 快照摘要随订单固化，支付服务据此校验金额来自同一版商品和优惠定义。
         var snapshotHash = PricingSnapshotHash.Create(items, discounts, subtotal, discountTotal);
         return new OrderPricingResult(subtotal, discountTotal, discounts, appliedCoupons, snapshotHash);
     }

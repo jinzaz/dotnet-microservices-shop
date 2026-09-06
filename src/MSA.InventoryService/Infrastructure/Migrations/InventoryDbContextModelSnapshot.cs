@@ -30,40 +30,49 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.Property<string>("EventType")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasComment("集成事件的契约类型名称");
 
                     b.Property<string>("LastError")
                         .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
+                        .HasColumnType("character varying(4000)")
+                        .HasComment("最近一次发布失败原因");
 
                     b.Property<Guid?>("LockId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("当前发布任务的租约标识");
 
                     b.Property<DateTimeOffset?>("LockedUntilUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("发布租约到期的 UTC 时间");
 
                     b.Property<DateTimeOffset>("NextAttemptOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("下一次允许尝试发布的 UTC 时间");
 
                     b.Property<DateTimeOffset>("OccurredOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Payload")
                         .IsRequired()
-                        .HasColumnType("jsonb");
+                        .HasColumnType("jsonb")
+                        .HasComment("待发布事件的 JSON 载荷");
 
                     b.Property<DateTimeOffset?>("ProcessedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("RetryCount")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("累计发布重试次数");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("消息发布状态");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("乐观并发版本号");
 
                     b.HasKey("Id");
 
@@ -79,7 +88,8 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<int>("BucketCount")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("用于分散热点写入的库存桶数量");
 
                     b.Property<DateTimeOffset?>("ClosedOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -88,31 +98,39 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("EndsOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("活动结束的 UTC 时间");
 
                     b.Property<int>("PurchaseLimit")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("每个用户在本活动中的购买上限");
 
                     b.Property<string>("Sku")
                         .IsRequired()
                         .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
+                        .HasColumnType("character varying(80)")
+                        .HasComment("秒杀商品的标准化 SKU");
 
                     b.Property<DateTimeOffset>("StartsOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("活动开始的 UTC 时间");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("秒杀活动状态");
 
                     b.Property<int>("Strategy")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("秒杀库存采用单行或分桶策略");
 
                     b.Property<int>("TotalQuantity")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("活动分配的库存总量");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("秒杀活动乐观并发版本号");
 
                     b.HasKey("Id");
 
@@ -139,26 +157,32 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<int>("AllocatedQuantity")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("分配给该桶的库存总量");
 
                     b.Property<int>("BucketNumber")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("活动内的库存桶编号");
 
                     b.Property<Guid>("CampaignId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("ReleasedQuantity")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("活动关闭后不再销售的库存量");
 
                     b.Property<int>("ReservedQuantity")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("该桶已预占的库存量");
 
                     b.Property<int>("SoldQuantity")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("该桶已确认售出的库存量");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("库存桶乐观并发版本号");
 
                     b.HasKey("Id");
 
@@ -177,26 +201,31 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                 {
                     b.Property<Guid>("OrderId")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("订单标识，也是库存申请的业务幂等键");
 
                     b.Property<DateTimeOffset>("DecidedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("RejectionReason")
                         .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
+                        .HasColumnType("character varying(1000)")
+                        .HasComment("库存申请拒绝原因");
 
                     b.Property<string>("RequestHash")
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character(64)")
-                        .IsFixedLength();
+                        .IsFixedLength()
+                        .HasComment("库存申请载荷的 SHA-256 摘要");
 
                     b.Property<Guid?>("ReservationId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("申请成功后生成的预占标识");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("库存申请的持久化决策状态");
 
                     b.HasKey("OrderId");
 
@@ -223,43 +252,53 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset?>("CommittedOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("库存正式扣减的 UTC 时间");
 
                     b.Property<DateTimeOffset>("CreatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("ExpiresOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("预占自动释放的 UTC 截止时间");
 
                     b.Property<Guid?>("FlashSaleCampaignId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("秒杀活动标识；普通预占为空");
 
                     b.Property<long?>("FlashSaleStockBucketId")
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("秒杀库存桶标识；普通预占为空");
 
                     b.Property<Guid>("OrderId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("预占关联的订单标识，也是业务唯一键");
 
                     b.Property<DateTimeOffset?>("ReleasedOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("库存释放的 UTC 时间");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("预占状态：已预占、已提交或已释放");
 
                     b.Property<string>("TerminalReason")
                         .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
+                        .HasColumnType("character varying(1000)")
+                        .HasComment("预占释放的业务原因");
 
                     b.Property<DateTimeOffset>("UpdatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("UserId")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasColumnType("character varying(200)")
+                        .HasComment("秒杀预占所属用户；普通预占为空");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("预占乐观并发版本号");
 
                     b.HasKey("Id");
 
@@ -298,7 +337,8 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<int>("Quantity")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("该商品的预占数量");
 
                     b.Property<Guid>("ReservationId")
                         .HasColumnType("uuid");
@@ -306,7 +346,8 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     b.Property<string>("Sku")
                         .IsRequired()
                         .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
+                        .HasColumnType("character varying(80)")
+                        .HasComment("预占商品的标准化 SKU");
 
                     b.HasKey("Id");
 
@@ -326,19 +367,23 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<int>("OnHand")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("当前实物库存总量");
 
                     b.Property<int>("Reserved")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("已预占但尚未扣减的库存量");
 
                     b.Property<string>("Sku")
                         .IsRequired()
                         .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
+                        .HasColumnType("character varying(80)")
+                        .HasComment("标准化商品 SKU");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("库存乐观并发版本号");
 
                     b.HasKey("Id");
 
@@ -361,53 +406,65 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.Property<string>("IdempotencyKey")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("character varying(100)")
+                        .HasComment("人工调整等请求的业务幂等键");
 
                     b.Property<DateTimeOffset>("OccurredOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("OnHandAfter")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("变动后的实物库存余额");
 
                     b.Property<int>("OnHandDelta")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("实物库存变化量");
 
                     b.Property<string>("OperatorId")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasColumnType("character varying(200)")
+                        .HasComment("发起库存变动的主体标识");
 
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
+                        .HasColumnType("character varying(500)")
+                        .HasComment("库存变动原因");
 
                     b.Property<Guid?>("ReferenceId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("关联的预占或秒杀活动标识");
 
                     b.Property<int>("ReferenceType")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("关联业务单据类型");
 
                     b.Property<string>("RequestHash")
                         .HasMaxLength(64)
                         .HasColumnType("character(64)")
-                        .IsFixedLength();
+                        .IsFixedLength()
+                        .HasComment("幂等请求载荷的 SHA-256 摘要");
 
                     b.Property<int>("ReservedAfter")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("变动后的预占库存余额");
 
                     b.Property<int>("ReservedDelta")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("预占库存变化量");
 
                     b.Property<string>("Sku")
                         .IsRequired()
                         .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
+                        .HasColumnType("character varying(80)")
+                        .HasComment("发生库存变动的标准化 SKU");
 
                     b.Property<Guid>("StockItemId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("Type")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("库存变动业务类型");
 
                     b.HasKey("Id");
 
@@ -446,14 +503,17 @@ namespace MSA.InventoryService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.Repositories.Persistence.InboxMessage", b =>
                 {
                     b.Property<Guid>("MessageId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("已消费的集成事件标识");
 
                     b.Property<string>("Consumer")
                         .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
+                        .HasColumnType("character varying(300)")
+                        .HasComment("消费处理器的稳定名称");
 
                     b.Property<DateTimeOffset>("ProcessedOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("首次成功登记消费的 UTC 时间");
 
                     b.HasKey("MessageId", "Consumer");
 
@@ -464,47 +524,57 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                 {
                     b.Property<Guid>("CorrelationId")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("跨服务流程的关联标识");
 
                     b.Property<DateTimeOffset>("CreatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Data")
                         .IsRequired()
-                        .HasColumnType("jsonb");
+                        .HasColumnType("jsonb")
+                        .HasComment("流程恢复与补偿所需的状态快照");
 
                     b.Property<string>("FailureReason")
                         .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
+                        .HasColumnType("character varying(4000)")
+                        .HasComment("流程失败或补偿失败原因");
 
                     b.Property<string>("SagaType")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasColumnType("character varying(200)")
+                        .HasComment("Saga 流程类型");
 
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("character varying(100)")
+                        .HasComment("当前业务步骤");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasComment("Saga 执行状态");
 
                     b.Property<Guid?>("TimeoutLockId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("当前超时处理任务的租约标识");
 
                     b.Property<DateTimeOffset?>("TimeoutLockedUntilUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("超时处理租约到期的 UTC 时间");
 
                     b.Property<DateTimeOffset?>("TimeoutOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("触发超时处理的 UTC 时间");
 
                     b.Property<DateTimeOffset>("UpdatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("乐观并发版本号");
 
                     b.HasKey("CorrelationId");
 

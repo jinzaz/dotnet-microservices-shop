@@ -1,9 +1,7 @@
 namespace MSA.PaymentService.Domain;
 
 /// <summary>
-/// Durable order-level tombstone used when compensation arrives before the
-/// corresponding payment request. It prevents a late request from creating a
-/// new provider payment after Ordering has already cancelled the checkout.
+/// 订单级持久化取消墓碑：当补偿早于支付请求到达时，阻止迟到请求在订单已取消后创建渠道支付单。
 /// </summary>
 internal sealed class PaymentCancellationIntent
 {

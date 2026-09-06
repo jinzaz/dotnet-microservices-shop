@@ -6,7 +6,7 @@ public sealed class Category : AuditedCatalogAggregateRoot<Guid>
     {
     }
 
-    /// <summary>Compatibility constructor for the original Catalog API.</summary>
+    /// <summary>兼容旧版目录 API 的构造入口。</summary>
     public Category(Guid id, string name)
         : this(
             id,

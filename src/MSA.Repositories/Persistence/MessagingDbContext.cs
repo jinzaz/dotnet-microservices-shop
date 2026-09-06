@@ -14,9 +14,47 @@ public abstract class MessagingDbContext(DbContextOptions options, IMediator med
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<OutboxMessage>(e => { e.ToTable("outbox_messages"); e.HasKey(x => x.Id); e.Property(x => x.Version).IsConcurrencyToken(); e.Property(x => x.Payload).HasColumnType("jsonb"); e.Property(x => x.LastError).HasMaxLength(4000); e.HasIndex(x => new { x.Status, x.NextAttemptOnUtc, x.LockedUntilUtc }); });
-        modelBuilder.Entity<SagaState>(e => { e.ToTable("saga_states"); e.HasKey(x => x.CorrelationId); e.Property(x => x.Version).IsConcurrencyToken(); e.Property(x => x.Data).HasColumnType("jsonb"); e.Property(x => x.SagaType).HasMaxLength(200); e.Property(x => x.State).HasMaxLength(100); e.Property(x => x.FailureReason).HasMaxLength(4000); e.HasIndex(x => new { x.Status, x.TimeoutOnUtc, x.TimeoutLockedUntilUtc }); });
-        modelBuilder.Entity<InboxMessage>(e => { e.ToTable("inbox_messages"); e.HasKey(x => new { x.MessageId, x.Consumer }); e.Property(x => x.Consumer).HasMaxLength(300); });
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.ToTable("outbox_messages");
+            entity.HasKey(message => message.Id);
+            entity.Property(message => message.EventType).HasComment("集成事件的契约类型名称");
+            entity.Property(message => message.Payload).HasColumnType("jsonb").HasComment("待发布事件的 JSON 载荷");
+            entity.Property(message => message.Status).HasComment("消息发布状态");
+            entity.Property(message => message.RetryCount).HasComment("累计发布重试次数");
+            entity.Property(message => message.NextAttemptOnUtc).HasComment("下一次允许尝试发布的 UTC 时间");
+            entity.Property(message => message.LockId).HasComment("当前发布任务的租约标识");
+            entity.Property(message => message.LockedUntilUtc).HasComment("发布租约到期的 UTC 时间");
+            entity.Property(message => message.LastError).HasMaxLength(4000).HasComment("最近一次发布失败原因");
+            entity.Property(message => message.Version).IsConcurrencyToken().HasComment("乐观并发版本号");
+            entity.HasIndex(message => new { message.Status, message.NextAttemptOnUtc, message.LockedUntilUtc });
+        });
+
+        modelBuilder.Entity<SagaState>(entity =>
+        {
+            entity.ToTable("saga_states");
+            entity.HasKey(saga => saga.CorrelationId);
+            entity.Property(saga => saga.CorrelationId).HasComment("跨服务流程的关联标识");
+            entity.Property(saga => saga.SagaType).HasMaxLength(200).HasComment("Saga 流程类型");
+            entity.Property(saga => saga.State).HasMaxLength(100).HasComment("当前业务步骤");
+            entity.Property(saga => saga.Data).HasColumnType("jsonb").HasComment("流程恢复与补偿所需的状态快照");
+            entity.Property(saga => saga.Status).HasComment("Saga 执行状态");
+            entity.Property(saga => saga.TimeoutOnUtc).HasComment("触发超时处理的 UTC 时间");
+            entity.Property(saga => saga.TimeoutLockId).HasComment("当前超时处理任务的租约标识");
+            entity.Property(saga => saga.TimeoutLockedUntilUtc).HasComment("超时处理租约到期的 UTC 时间");
+            entity.Property(saga => saga.FailureReason).HasMaxLength(4000).HasComment("流程失败或补偿失败原因");
+            entity.Property(saga => saga.Version).IsConcurrencyToken().HasComment("乐观并发版本号");
+            entity.HasIndex(saga => new { saga.Status, saga.TimeoutOnUtc, saga.TimeoutLockedUntilUtc });
+        });
+
+        modelBuilder.Entity<InboxMessage>(entity =>
+        {
+            entity.ToTable("inbox_messages");
+            entity.HasKey(message => new { message.MessageId, message.Consumer });
+            entity.Property(message => message.MessageId).HasComment("已消费的集成事件标识");
+            entity.Property(message => message.Consumer).HasMaxLength(300).HasComment("消费处理器的稳定名称");
+            entity.Property(message => message.ProcessedOnUtc).HasComment("首次成功登记消费的 UTC 时间");
+        });
     }
     public async Task<bool> TryBeginMessageAsync(
         Guid messageId,
@@ -25,10 +63,8 @@ public abstract class MessagingDbContext(DbContextOptions options, IMediator med
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(consumer);
 
-        // The inbox entry is the consumer's lease for a message.  AnyAsync + Add has a
-        // race between replicas and is particularly dangerous when a handler performs
-        // an external side effect. PostgreSQL can make the decision atomically and the
-        // surrounding local transaction keeps it consistent with business data/outbox.
+        // Inbox 记录既是消费凭证也是幂等闸门；利用数据库唯一键原子抢占，避免多副本先查后写的竞态。
+        // 该写入与业务数据、Outbox 共用本地事务，确保“已消费”不会领先于业务结果提交。
         if (HasActiveTransaction && Database.IsNpgsql())
         {
             var affected = await Database.ExecuteSqlInterpolatedAsync($"""
@@ -78,6 +114,7 @@ public abstract class MessagingDbContext(DbContextOptions options, IMediator med
             return fallbackRows;
         }
 
+        // SKIP LOCKED 让多个发布实例分摊待处理消息，租约则允许崩溃实例的消息在超时后重新领取。
         await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
         var rows = await OutboxMessages
             .FromSqlInterpolated($"""
@@ -88,7 +125,7 @@ public abstract class MessagingDbContext(DbContextOptions options, IMediator med
                   AND (
                     "Status" = {(int)OutboxStatus.Pending}
                     OR ("Status" = {(int)OutboxStatus.Processing} AND "LockedUntilUtc" < {now})
-                  )
+                  ) 
                 ORDER BY "OccurredOnUtc", "Id"
                 FOR UPDATE SKIP LOCKED
                 LIMIT {batchSize}
@@ -131,6 +168,7 @@ public abstract class MessagingDbContext(DbContextOptions options, IMediator med
             return fallbackRows;
         }
 
+        // Saga 超时任务沿用相同的租约模型，保证同一流程不会被多个实例并发补偿。
         await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
         var rows = await SagaStates
             .FromSqlInterpolated($"""

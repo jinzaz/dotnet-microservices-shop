@@ -47,6 +47,7 @@ public sealed class BasketProductSnapshot
         if (sourceRevision < SourceRevision
             || sourceRevision == SourceRevision && effectiveOnUtc <= EffectiveOnUtc)
         {
+            // 同一商品只接受更新的修订，修订相同时用生效时间抵御重复或乱序事件。
             return false;
         }
 

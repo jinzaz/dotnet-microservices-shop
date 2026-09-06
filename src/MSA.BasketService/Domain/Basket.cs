@@ -70,6 +70,7 @@ public sealed class Basket : AggregateRoot<Guid>
         }
         else
         {
+            // 数量增加时同步刷新商品快照，避免结算继续使用早于本次选择的目录数据。
             var newQuantity = checked(existing.Quantity + quantity);
             ValidatePositiveQuantity(newQuantity, maximumLineQuantity);
             existing.SetQuantity(newQuantity, product, occurredOnUtc);
@@ -157,12 +158,14 @@ public sealed class Basket : AggregateRoot<Guid>
 
     private void EnsureExpectedVersion(long? expectedVersion)
     {
+        // expectedVersion 来自客户端读到的购物车版本，用于阻止多端编辑互相覆盖。
         if (expectedVersion.HasValue && expectedVersion.Value != Version)
             throw new BasketVersionConflictException(expectedVersion.Value, Version);
     }
 
     private void Touch(DateTimeOffset occurredOnUtc)
     {
+        // 消息可能乱序到达，但聚合更新时间不得回退；每次有效变更只推进一个版本。
         if (occurredOnUtc < UpdatedOnUtc)
             occurredOnUtc = UpdatedOnUtc;
         UpdatedOnUtc = occurredOnUtc;

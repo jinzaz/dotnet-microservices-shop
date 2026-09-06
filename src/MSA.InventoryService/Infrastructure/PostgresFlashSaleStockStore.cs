@@ -83,10 +83,8 @@ internal sealed class PostgresFlashSaleStockStore(
         if (fallbackBucketId.HasValue)
             return FlashSaleReservationAttempt.Reserved(fallbackBucketId.Value);
 
-        // A bucketed pool can become fragmented even when its aggregate available
-        // quantity is sufficient. This locked slow path compacts only available
-        // allocation, then reserves from one bucket so the existing reservation
-        // model and fast path remain unchanged.
+        // 分桶库存即使总可用量充足也可能碎片化；加锁慢路径只合并未预占配额，随后仍从单桶预占，
+        // 从而保持现有预占模型和快速路径不变。
         var compactedBucketId = await ReserveFragmentedPoolAsync(
             campaignId,
             quantity,

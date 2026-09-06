@@ -7,7 +7,7 @@ public sealed class Product : RevisionedCatalogAggregateRoot<Guid>
     }
 
     /// <summary>
-    /// Compatibility constructor for the original API. New products intentionally remain in Draft.
+    /// 兼容旧版 API 的构造入口；新商品仍然保持草稿状态，不会绕过发布流程。
     /// </summary>
     public Product(
         Guid id,
@@ -66,8 +66,7 @@ public sealed class Product : RevisionedCatalogAggregateRoot<Guid>
     public ProductLifecycleStatus LifecycleStatus { get; private set; }
 
     /// <summary>
-    /// Persisted lifecycle projection retained for efficient public-catalog queries and rolling compatibility.
-    /// The aggregate is the only writer and always keeps it in sync with LifecycleStatus.
+    /// 面向公共目录查询保留的生命周期投影；只允许聚合写入，并始终与 LifecycleStatus 同步。
     /// </summary>
     public bool IsActive { get; private set; }
 
@@ -201,7 +200,7 @@ public sealed class Product : RevisionedCatalogAggregateRoot<Guid>
         CompleteChange(actor, occurredOnUtc, "Archived");
     }
 
-    /// <summary>Compatibility mutation for the original PUT endpoint.</summary>
+    /// <summary>兼容旧版 PUT 接口的更新入口。</summary>
     public void Update(string name, string description, decimal price, bool active)
     {
         EnsureEditable();
@@ -263,6 +262,7 @@ public sealed class Product : RevisionedCatalogAggregateRoot<Guid>
 
     private void CompleteChange(string actor, DateTimeOffset occurredOnUtc, string change)
     {
+        // Revision 标识下游可见快照版本，Version 则服务于本库乐观并发；一次业务变更同时推进二者。
         TouchRevision(actor, occurredOnUtc);
         AddSnapshotChanged(change);
     }

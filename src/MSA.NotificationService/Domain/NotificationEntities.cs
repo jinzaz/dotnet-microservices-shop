@@ -14,9 +14,36 @@ public sealed class Notification : AggregateRoot<Guid>
     public Guid? LockId { get; private set; }
     public DateTimeOffset? LockedUntilUtc { get; private set; }
     public long Version { get; private set; }
-    public bool TryClaim(Guid lockId, DateTimeOffset now, TimeSpan lease) { if (Status == NotificationStatus.Sent || Status == NotificationStatus.Failed || NextAttemptOnUtc > now || (Status == NotificationStatus.Sending && LockedUntilUtc > now)) return false; Status = NotificationStatus.Sending; LockId = lockId; LockedUntilUtc = now.Add(lease); Version++; return true; }
+    public bool TryClaim(Guid lockId, DateTimeOffset now, TimeSpan lease)
+    {
+        // 发送中的通知只有在租约过期后才能被其他实例接管，避免并发重复投递。
+        if (Status == NotificationStatus.Sent
+            || Status == NotificationStatus.Failed
+            || NextAttemptOnUtc > now
+            || Status == NotificationStatus.Sending && LockedUntilUtc > now)
+        {
+            return false;
+        }
+
+        Status = NotificationStatus.Sending;
+        LockId = lockId;
+        LockedUntilUtc = now.Add(lease);
+        Version++;
+        return true;
+    }
     public void Sent(Guid lockId) { EnsureLock(lockId); Status = NotificationStatus.Sent; SentOnUtc = DateTimeOffset.UtcNow; LockId = null; LockedUntilUtc = null; Version++; }
-    public void Failed(Guid lockId, Exception e) { EnsureLock(lockId); RetryCount++; Status = RetryCount >= 10 ? NotificationStatus.Failed : NotificationStatus.Pending; NextAttemptOnUtc = DateTimeOffset.UtcNow.AddSeconds(Math.Min(Math.Pow(2, RetryCount), 300)); LastError = e.Message.Length <= 2000 ? e.Message : e.Message[..2000]; LockId = null; LockedUntilUtc = null; Version++; }
+    public void Failed(Guid lockId, Exception e)
+    {
+        EnsureLock(lockId);
+        RetryCount++;
+        Status = RetryCount >= 10 ? NotificationStatus.Failed : NotificationStatus.Pending;
+        // 指数退避上限为五分钟，兼顾瞬时故障恢复与下游保护。
+        NextAttemptOnUtc = DateTimeOffset.UtcNow.AddSeconds(Math.Min(Math.Pow(2, RetryCount), 300));
+        LastError = e.Message.Length <= 2000 ? e.Message : e.Message[..2000];
+        LockId = null;
+        LockedUntilUtc = null;
+        Version++;
+    }
     private void EnsureLock(Guid lockId) { if (LockId != lockId) throw new InvalidOperationException("Notification lease is not owned by this worker."); }
 }
 public sealed class NotificationTemplate : AggregateRoot<Guid> { private NotificationTemplate() { } public NotificationTemplate(Guid id, string code, string subject, string body) { Id = id; Code = code; Subject = subject; Body = body; } public string Code { get; private set; } = ""; public string Subject { get; private set; } = ""; public string Body { get; private set; } = ""; public bool IsActive { get; private set; } = true; }

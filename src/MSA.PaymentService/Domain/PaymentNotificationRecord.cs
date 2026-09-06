@@ -95,6 +95,7 @@ internal sealed class PaymentNotificationRecord
         decimal amount,
         string currency)
     {
+        // 指纹覆盖支付结果的关键字段，用于识别“相同通知键、不同业务载荷”的渠道异常。
         var canonical = string.Join(
             '\n',
             ((int)channel).ToString(CultureInfo.InvariantCulture),

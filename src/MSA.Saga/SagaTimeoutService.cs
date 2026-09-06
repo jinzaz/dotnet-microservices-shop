@@ -37,8 +37,7 @@ internal sealed class SagaTimeoutService(IServiceScopeFactory scopes, TimeProvid
             }
         }
 
-        // Use an isolated DbContext for every timeout. If one handler rolls back,
-        // its tracked mutations cannot leak into a later saga's commit.
+        // 每个超时任务使用独立 DbContext，避免某次回滚留下的跟踪状态泄漏到后续 Saga 提交。
         foreach (var correlationId in correlationIds)
         {
             using var handlingScope = scopes.CreateScope();

@@ -87,6 +87,7 @@ internal sealed class PaymentProviderOperation
 
     public void Claim(Guid lockId, DateTimeOffset lockedUntilUtc, DateTimeOffset now)
     {
+        // 只有待处理或租约过期的操作可被领取，防止多个后台实例同时调用外部支付渠道。
         if (Status != PaymentProviderOperationStatus.Pending
             && !(Status == PaymentProviderOperationStatus.Processing && LockedUntilUtc < now))
         {

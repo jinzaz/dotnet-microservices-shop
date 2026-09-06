@@ -2,7 +2,7 @@ using MSA.Infrastrucute.Entities;
 
 namespace MSA.InventoryService.Domain;
 
-/// <summary>An immutable audit entry for every change to a stock balance.</summary>
+/// <summary>库存余额每次变化对应的不可变审计流水。</summary>
 public sealed class StockMovement : Entity<Guid>
 {
     private StockMovement()

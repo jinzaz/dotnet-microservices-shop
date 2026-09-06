@@ -11,8 +11,7 @@ internal static class InventoryRequestHasher
     {
         ArgumentNullException.ThrowIfNull(integrationEvent);
 
-        // Line order is not business-significant. All values that affect either
-        // reservation or the resulting payment request remain part of the hash.
+        // 商品行顺序不影响业务语义；所有会影响库存预占或后续支付的值都必须参与摘要。
         var canonicalItems = integrationEvent.Items
             .OrderBy(item => item.Sku, StringComparer.Ordinal)
             .ThenBy(item => item.UnitPrice)

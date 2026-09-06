@@ -144,6 +144,7 @@ public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options,
         Guid orderId,
         CancellationToken cancellationToken)
     {
+        // 按订单维度获取事务级咨询锁，串行化“创建支付、取消、退款”等可能交叉到达的消息。
         var transaction = Database.CurrentTransaction
             ?? throw new InvalidOperationException("Payment order locks require an active transaction.");
         var connection = Database.GetDbConnection();

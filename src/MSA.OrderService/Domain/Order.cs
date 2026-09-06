@@ -13,7 +13,7 @@ public sealed class Order : AggregateRoot<Guid>
     {
     }
 
-    // Compatibility constructor for existing callers and stored orders.
+    // 兼容现有调用方和历史订单的构造入口。
     public Order(
         Guid id,
         string userId,
@@ -171,6 +171,7 @@ public sealed class Order : AggregateRoot<Guid>
 
     public void EnsureSameRequest(string requestFingerprint)
     {
+        // 幂等键只能绑定一份请求载荷，防止调用方误复用键而返回另一笔订单。
         if (!string.Equals(RequestFingerprint, requestFingerprint, StringComparison.Ordinal))
             throw new InvalidOperationException("The idempotency key is already bound to a different order request.");
     }
@@ -237,6 +238,7 @@ public sealed class Order : AggregateRoot<Guid>
         string actor = "system")
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        // 取消可能由库存拒绝、支付失败或 Saga 超时重复触发，终态重放应安全返回。
         if (Status is OrderStatus.Confirmed or OrderStatus.Cancelled)
             return false;
 
@@ -351,6 +353,7 @@ public sealed class Order : AggregateRoot<Guid>
 
     private bool IsFulfillmentOperationReplay(string idempotencyKey, string requestFingerprint)
     {
+        // 同一履约幂等键重放时必须携带相同请求，否则视为调用方冲突而非成功重试。
         var normalizedKey = Required(idempotencyKey, 100, nameof(idempotencyKey));
         var normalizedFingerprint = RequiredFingerprint(requestFingerprint);
         var existing = _fulfillmentStatusHistory.SingleOrDefault(history =>

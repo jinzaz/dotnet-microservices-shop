@@ -1,8 +1,7 @@
 namespace MSA.InventoryService.Domain;
 
 /// <summary>
-/// Durable result of handling an order submission. The order id is the business
-/// idempotency key; the request hash prevents a different payload from reusing it.
+/// 订单库存申请的持久化决策。订单标识是业务幂等键，请求摘要用于阻止同一键复用不同载荷。
 /// </summary>
 public sealed class InventoryRequestDecision
 {

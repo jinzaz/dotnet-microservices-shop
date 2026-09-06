@@ -208,8 +208,7 @@ public sealed class Promotion : RevisionedCatalogAggregateRoot<Guid>
     }
 
     /// <summary>
-    /// Replaces metadata and all typed components as one business revision. This is the preferred
-    /// operation for an admin edit screen because observers never see a partially revised definition.
+    /// 将元数据和全部类型化组件作为一个业务修订整体替换，避免观察者看到只更新一部分的促销定义。
     /// </summary>
     public void ReplaceDefinition(
         string name,
@@ -390,9 +389,7 @@ public sealed class Promotion : RevisionedCatalogAggregateRoot<Guid>
             throw new InvalidOperationException("A promotion requires at least one benefit before it can be published.");
 
         ValidateDefinition(_rules, _benefits, _targets);
-        // Ordering evaluates the validity window itself. Publishing must immediately
-        // make the snapshot eligible; otherwise a scheduled row could remain inert
-        // when no activation worker happens to run at StartsOnUtc.
+        // 订单服务会自行判断有效期，因此发布后快照必须立即可参与计算，不能依赖定时任务激活。
         Status = PromotionStatus.Active;
         PublishedOnUtc = utc;
         TouchRevision(actor, utc);
@@ -546,6 +543,7 @@ public sealed class Promotion : RevisionedCatalogAggregateRoot<Guid>
 
     private string CalculateDefinitionChecksum()
     {
+        // 先按稳定顺序生成规范定义，再计算摘要，供订单侧识别“同修订但内容不一致”的异常事件。
         var canonical = JsonSerializer.Serialize(new
         {
             Code = NormalizedCode,

@@ -56,7 +56,7 @@ internal sealed class NotificationDispatchService(
         }
         catch (DbUpdateConcurrencyException)
         {
-            // Another instance won the lease. The next poll reloads current state.
+            // 其他实例已抢到租约；本轮直接退出，下次轮询会重新加载最新状态。
             return;
         }
 

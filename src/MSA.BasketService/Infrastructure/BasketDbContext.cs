@@ -28,8 +28,9 @@ public sealed class BasketDbContext(
             });
             entity.HasKey(value => value.Id);
             entity.HasIndex(value => value.UserId).IsUnique();
-            entity.Property(value => value.UserId).HasMaxLength(200);
-            entity.Property(value => value.Version).IsConcurrencyToken();
+            entity.Property(value => value.UserId).HasMaxLength(200).HasComment("购物车所属用户标识");
+            entity.Property(value => value.UpdatedOnUtc).HasComment("购物车最后变更的 UTC 时间");
+            entity.Property(value => value.Version).IsConcurrencyToken().HasComment("购物车乐观并发版本号");
             entity.HasMany(value => value.Items)
                 .WithOne()
                 .HasForeignKey(value => value.BasketId)
@@ -60,10 +61,12 @@ public sealed class BasketDbContext(
             entity.HasKey(value => value.Id);
             entity.HasIndex(value => new { value.BasketId, value.Sku }).IsUnique();
             entity.HasIndex(value => new { value.BasketId, value.ProductId }).IsUnique();
-            entity.Property(value => value.Sku).HasMaxLength(80);
-            entity.Property(value => value.ProductNameAtSelection).HasMaxLength(200);
-            entity.Property(value => value.UnitPriceAtSelection).HasPrecision(18, 2);
-            entity.Property(value => value.CurrencyAtSelection).HasMaxLength(3).IsFixedLength();
+            entity.Property(value => value.Sku).HasMaxLength(80).HasComment("加入购物车时的标准化 SKU");
+            entity.Property(value => value.ProductNameAtSelection).HasMaxLength(200).HasComment("最近选择或增量更新时的商品名称快照");
+            entity.Property(value => value.UnitPriceAtSelection).HasPrecision(18, 2).HasComment("最近选择或增量更新时的商品单价快照");
+            entity.Property(value => value.CurrencyAtSelection).HasMaxLength(3).IsFixedLength().HasComment("商品价格快照的三位币种代码");
+            entity.Property(value => value.ProductRevisionAtSelection).HasComment("商品快照对应的目录修订号");
+            entity.Property(value => value.Quantity).HasComment("当前购买数量");
         });
 
         modelBuilder.Entity<BasketCoupon>(entity =>
@@ -72,7 +75,7 @@ public sealed class BasketDbContext(
                 table.HasCheckConstraint("CK_basket_coupons_code", "\"Code\" = upper(trim(\"Code\"))"));
             entity.HasKey(value => value.Id);
             entity.HasIndex(value => new { value.BasketId, value.Code }).IsUnique();
-            entity.Property(value => value.Code).HasMaxLength(80);
+            entity.Property(value => value.Code).HasMaxLength(80).HasComment("待在结算时校验的标准化优惠券码");
         });
 
         modelBuilder.Entity<BasketProductSnapshot>(entity =>
@@ -87,10 +90,12 @@ public sealed class BasketDbContext(
             entity.HasKey(value => value.ProductId);
             entity.HasIndex(value => value.Sku).IsUnique();
             entity.HasIndex(value => new { value.IsAvailable, value.Sku });
-            entity.Property(value => value.Sku).HasMaxLength(80);
-            entity.Property(value => value.Name).HasMaxLength(200);
-            entity.Property(value => value.Price).HasPrecision(18, 2);
-            entity.Property(value => value.Currency).HasMaxLength(3).IsFixedLength();
+            entity.Property(value => value.Sku).HasMaxLength(80).HasComment("目录服务发布的标准化 SKU");
+            entity.Property(value => value.Name).HasMaxLength(200).HasComment("目录商品名称的本地投影");
+            entity.Property(value => value.Price).HasPrecision(18, 2).HasComment("目录商品当前单价的本地投影");
+            entity.Property(value => value.Currency).HasMaxLength(3).IsFixedLength().HasComment("目录商品价格的三位币种代码");
+            entity.Property(value => value.IsAvailable).HasComment("目录商品当前是否允许加入购物车");
+            entity.Property(value => value.SourceRevision).HasComment("已应用的目录商品修订号，用于拒绝乱序事件");
         });
     }
 }

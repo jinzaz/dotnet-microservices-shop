@@ -35,11 +35,13 @@ namespace MSA.IdentityService.Migrations
                         .HasColumnType("text");
 
                     b.Property<DateTimeOffset>("CreatedOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("账号创建的 UTC 时间");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasComment("用户对外展示名称");
 
                     b.Property<string>("Email")
                         .HasMaxLength(256)
@@ -49,10 +51,12 @@ namespace MSA.IdentityService.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
+                        .HasColumnType("boolean")
+                        .HasComment("账号是否允许登录和执行业务操作");
 
                     b.Property<DateTimeOffset?>("LastLoginOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("最近一次成功登录的 UTC 时间");
 
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("boolean");
@@ -104,26 +108,31 @@ namespace MSA.IdentityService.Migrations
                     b.Property<string>("Id")
                         .HasMaxLength(450)
                         .HasColumnType("character varying(450)")
-                        .HasColumnName("UserId");
+                        .HasColumnName("UserId")
+                        .HasComment("积分账户所属用户标识");
 
                     b.Property<long>("Balance")
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("当前可用积分余额");
 
                     b.Property<DateTimeOffset>("CreatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<long>("LifetimeEarned")
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("账户历史累计获得积分");
 
                     b.Property<long>("LifetimeSpent")
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("账户历史累计消费积分");
 
                     b.Property<DateTimeOffset>("UpdatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("积分账户乐观并发版本号");
 
                     b.HasKey("Id");
 
@@ -142,41 +151,50 @@ namespace MSA.IdentityService.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<long>("BalanceAfter")
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("积分变动后余额");
 
                     b.Property<long>("BalanceBefore")
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("积分变动前余额");
 
                     b.Property<string>("BusinessKey")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
+                        .HasColumnType("character varying(128)")
+                        .HasComment("积分业务幂等键");
 
                     b.Property<long>("Delta")
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("本次积分变动量，正数为增加、负数为扣减");
 
                     b.Property<DateTimeOffset>("OccurredOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("积分变动发生的 UTC 时间");
 
                     b.Property<string>("OperatorId")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasColumnType("character varying(200)")
+                        .HasComment("发起积分变动的主体标识");
 
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
+                        .HasColumnType("character varying(500)")
+                        .HasComment("积分变动原因");
 
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("character varying(64)")
+                        .HasComment("积分变动来源类型");
 
                     b.Property<string>("UserId")
                         .IsRequired()
                         .HasMaxLength(450)
-                        .HasColumnType("character varying(450)");
+                        .HasColumnType("character varying(450)")
+                        .HasComment("积分流水所属用户标识");
 
                     b.HasKey("Id");
 
@@ -208,13 +226,15 @@ namespace MSA.IdentityService.Migrations
                         .IsRequired()
                         .HasMaxLength(2)
                         .HasColumnType("character(2)")
-                        .IsFixedLength();
+                        .IsFixedLength()
+                        .HasComment("ISO 3166-1 alpha-2 国家或地区代码");
 
                     b.Property<DateTimeOffset>("CreatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset?>("DeletedOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("地址软删除的 UTC 时间");
 
                     b.Property<string>("District")
                         .IsRequired()
@@ -222,15 +242,18 @@ namespace MSA.IdentityService.Migrations
                         .HasColumnType("character varying(100)");
 
                     b.Property<bool>("IsDefault")
-                        .HasColumnType("boolean");
+                        .HasColumnType("boolean")
+                        .HasComment("是否为用户当前默认有效地址");
 
                     b.Property<bool>("IsEnabled")
-                        .HasColumnType("boolean");
+                        .HasColumnType("boolean")
+                        .HasComment("地址是否可用于新订单");
 
                     b.Property<string>("Label")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
+                        .HasColumnType("character varying(50)")
+                        .HasComment("用户自定义地址标签");
 
                     b.Property<string>("PhoneNumber")
                         .IsRequired()
@@ -262,11 +285,13 @@ namespace MSA.IdentityService.Migrations
                     b.Property<string>("UserId")
                         .IsRequired()
                         .HasMaxLength(450)
-                        .HasColumnType("character varying(450)");
+                        .HasColumnType("character varying(450)")
+                        .HasComment("地址所属用户标识");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint");
+                        .HasColumnType("bigint")
+                        .HasComment("地址乐观并发版本号");
 
                     b.HasKey("Id");
 
