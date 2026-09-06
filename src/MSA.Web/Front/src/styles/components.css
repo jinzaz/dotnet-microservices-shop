@@ -271,7 +271,7 @@
   grid-template-columns: repeat(4, 1fr);
   width: min(calc(100% - 48px), var(--container));
   margin: 0 auto;
-  padding: 25px 0;
+  padding: 16px 0;
 }
 
 .service-promise {
@@ -319,7 +319,7 @@
   gap: 54px;
   width: min(calc(100% - 48px), var(--container));
   margin: 0 auto;
-  padding: 38px 0 42px;
+  padding: 10px 0 12px;
 }
 
 .site-footer__brand {

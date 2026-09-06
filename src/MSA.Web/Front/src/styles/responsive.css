@@ -101,6 +101,7 @@
 
   .home-hero {
     grid-template-columns: 1fr;
+    height: auto;
   }
 
   .home-hero__copy {
@@ -184,6 +185,10 @@
 
   .account-page {
     display: block;
+  }
+
+  .app-shell:has(.address-drawer[open]) .account-page {
+    padding-right: 0;
   }
 
   .account-sidebar {

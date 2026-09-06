@@ -1,7 +1,7 @@
 .home-hero {
   display: grid;
-  grid-template-columns: minmax(420px, 46%) 1fr;
-  min-height: 500px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  height: 330px;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-white);
   overflow: hidden;
@@ -11,13 +11,13 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 64px max(52px, calc((100vw - var(--container)) / 2));
+  padding: 38px max(52px, calc((100vw - var(--container)) / 2));
   padding-right: 48px;
 }
 
 .home-hero h1 {
   max-width: 520px;
-  font-size: clamp(45px, 4vw, 64px);
+  font-size: clamp(45px, 4vw, 56px);
   font-weight: 780;
   letter-spacing: -.055em;
   line-height: 1.14;
@@ -25,9 +25,9 @@
 
 .home-hero__copy > p {
   max-width: 440px;
-  margin-top: 24px;
+  margin-top: 16px;
   color: var(--color-muted);
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1.75;
 }
 
@@ -35,7 +35,7 @@
   display: flex;
   align-items: center;
   gap: 30px;
-  margin-top: 32px;
+  margin-top: 23px;
 }
 
 .home-hero__actions .button {
@@ -72,7 +72,7 @@
   align-items: center;
   justify-content: center;
   gap: 18px;
-  min-height: 82px;
+  min-height: 76px;
   border-right: 1px solid var(--color-border);
   font-size: 15px;
   font-weight: 600;
@@ -96,7 +96,7 @@
 .featured-products {
   width: min(calc(100% - 48px), var(--container));
   margin: 0 auto;
-  padding: 48px 0 62px;
+  padding: 14px 0 10px;
 }
 
 .section-heading,
@@ -105,12 +105,12 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 22px;
+  margin-bottom: 14px;
 }
 
 .section-heading h2,
 .account-section__heading h2 {
-  font-size: 24px;
+  font-size: 21px;
   font-weight: 740;
   letter-spacing: -.025em;
   line-height: 1.25;
@@ -125,7 +125,7 @@
 .product-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
+  gap: 22px;
 }
 
 .product-card {
@@ -134,7 +134,7 @@
 
 .product-card__media {
   position: relative;
-  aspect-ratio: 1 / .78;
+  aspect-ratio: 1 / .56;
   border-radius: 4px;
   background: var(--color-surface);
   overflow: hidden;
@@ -332,7 +332,7 @@
 .login-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  min-height: 660px;
+  min-height: 720px;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -439,9 +439,9 @@
 
 .account-page {
   display: grid;
-  grid-template-columns: 235px minmax(0, 1fr);
-  width: min(100%, 1440px);
-  min-height: 710px;
+  grid-template-columns: 250px minmax(0, 1fr);
+  width: 100%;
+  min-height: 0;
   margin: 0 auto;
 }
 
@@ -528,7 +528,7 @@
 
 .account-content {
   min-width: 0;
-  padding: 30px 32px 48px;
+  padding: 14px 34px 13px;
 }
 
 .account-title-row {
@@ -602,7 +602,7 @@
 }
 
 .account-section {
-  padding-top: 25px;
+  padding-top: 12px;
   scroll-margin-top: 78px;
 }
 
@@ -677,7 +677,7 @@
   grid-template-columns: minmax(150px, 1.1fr) 82px 122px minmax(220px, 1.8fr) auto;
   align-items: center;
   gap: 14px;
-  min-height: 56px;
+  min-height: 52px;
   padding: 8px 14px;
   border-bottom: 1px solid var(--color-border);
   font-size: 12px;
@@ -794,7 +794,7 @@
 }
 
 .address-drawer {
-  width: min(100%, 430px);
+  width: min(100%, 370px);
   max-width: none;
   height: 100dvh;
   max-height: none;
@@ -803,6 +803,15 @@
   border: 0;
   border-radius: 0;
   box-shadow: var(--shadow-float);
+}
+
+.address-drawer::backdrop {
+  background: rgb(5 22 46 / 5%);
+  backdrop-filter: none;
+}
+
+.app-shell:has(.address-drawer[open]) .account-page {
+  padding-right: 370px;
 }
 
 .address-drawer[open] {

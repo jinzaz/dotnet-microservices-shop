@@ -50,10 +50,10 @@ export function AddressDrawer({ open, address, onClose, onSave }: AddressDrawerP
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
-    if (open && !dialog.open) {
+    if (open) {
       setValue(toInput(address));
       setError('');
-      dialog.showModal();
+      if (!dialog.open) dialog.showModal();
     } else if (!open && dialog.open) {
       dialog.close();
     }

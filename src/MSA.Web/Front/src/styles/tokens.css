@@ -20,8 +20,8 @@
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
-  --container: 1200px;
-  --header-height: 68px;
+  --container: 1336px;
+  --header-height: 64px;
   --font-sans: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
   --transition-fast: 160ms ease;
   --transition-base: 220ms ease;

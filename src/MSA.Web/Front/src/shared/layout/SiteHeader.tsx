@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/auth/AuthProvider';
 import { Icon } from '../ui/Icon';
 
@@ -32,20 +32,25 @@ export function SiteHeader() {
         <Link className="brand" to="/" aria-label="MSA Store 首页">MSA Store</Link>
 
         <nav className={`primary-nav ${menuOpen ? 'is-open' : ''}`} aria-label="主导航">
-          {navigation.map((item) => (
-            <NavLink
-              key={item.label}
-              to={item.to}
-              onClick={() => setMenuOpen(false)}
-              className={({ isActive }) => {
-                const hashActive = item.to.includes('#') && location.hash === item.to.slice(item.to.indexOf('#'));
-                return isActive || hashActive ? 'is-active' : undefined;
-              }}
-              end={item.to === '/'}
-            >
-              {item.label}
-            </NavLink>
-          ))}
+          {navigation.map((item) => {
+            const itemHash = item.to.includes('#') ? item.to.slice(item.to.indexOf('#')) : '';
+            const isActive = item.to === '/'
+              ? location.pathname === '/' && !location.hash
+              : itemHash
+                ? location.pathname === '/' && location.hash === itemHash
+                : location.pathname.startsWith(item.to);
+
+            return (
+              <Link
+                key={item.label}
+                to={item.to}
+                onClick={() => setMenuOpen(false)}
+                className={isActive ? 'is-active' : undefined}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="site-header__actions">

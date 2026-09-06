@@ -24,6 +24,9 @@ const proxy = Object.fromEntries(
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    preserveSymlinks: true,
+  },
   server: {
     port: 5173,
     strictPort: true,
