@@ -27,18 +27,35 @@ internal sealed class CreateOrderCommandHandler(
     {
         var idempotencyKey = request.IdempotencyKey.Trim();
         var couponCodes = request.CouponCodes ?? [];
+        var shippingAddress = request.ShippingAddress.ToSnapshot();
         var fingerprint = OrderRequestFingerprint.Create(
             request.UserId,
             request.PaymentMethod,
             null,
             request.Items.Select(item => (item.Sku, item.Quantity)),
-            couponCodes);
+            couponCodes,
+            shippingAddress,
+            request.SourceBasketId,
+            request.SourceBasketVersion);
         var couponDigests = couponCodes.Select(CouponCode.Digest).ToArray();
 
+        var lockKeys = new List<string>
+        {
+            OrderSubmissionLockKeys.Idempotency(request.UserId, idempotencyKey)
+        };
+        if (request.SourceBasketId is Guid sourceBasketId
+            && request.SourceBasketVersion is long sourceBasketVersion)
+        {
+            lockKeys.Add(OrderSubmissionLockKeys.BasketCheckout(
+                request.UserId,
+                sourceBasketId,
+                sourceBasketVersion));
+        }
+        lockKeys.AddRange(couponDigests.Select(digest =>
+            OrderSubmissionLockKeys.CouponUser(digest, request.UserId)));
+
         await submissionLock.AcquireAsync(
-            new[] { OrderSubmissionLockKeys.Idempotency(request.UserId, idempotencyKey) }
-                .Concat(couponDigests.Select(digest =>
-                    OrderSubmissionLockKeys.CouponUser(digest, request.UserId))),
+            lockKeys,
             cancellationToken);
 
         var existing = await db.Orders
@@ -54,6 +71,31 @@ internal sealed class CreateOrderCommandHandler(
                 throw new InvalidOperationException("The idempotency key is already bound to a different order request.");
             }
             return existing.Id;
+        }
+
+        if (request.SourceBasketId is Guid basketId
+            && request.SourceBasketVersion is long basketVersion)
+        {
+            var existingBasketCheckout = await db.Orders
+                .AsNoTracking()
+                .Where(order =>
+                    order.UserId == request.UserId
+                    && order.SourceBasketId == basketId
+                    && order.SourceBasketVersion == basketVersion)
+                .Select(order => new { order.Id, order.RequestFingerprint })
+                .SingleOrDefaultAsync(cancellationToken);
+            if (existingBasketCheckout is not null)
+            {
+                if (!string.Equals(
+                        existingBasketCheckout.RequestFingerprint,
+                        fingerprint,
+                        StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        "The basket version is already bound to a different order request.");
+                }
+                return existingBasketCheckout.Id;
+            }
         }
 
         var requestedItems = request.Items
@@ -93,6 +135,7 @@ internal sealed class CreateOrderCommandHandler(
             idempotencyKey,
             fingerprint,
             request.PaymentMethod,
+            shippingAddress,
             pricingItems.Select(item => new OrderLine(
                 item.Product.Sku,
                 item.Product.Name,
@@ -101,6 +144,8 @@ internal sealed class CreateOrderCommandHandler(
             price.Discounts,
             currencies[0],
             flashSaleCampaignId: null,
+            request.SourceBasketId,
+            request.SourceBasketVersion,
             Guid.NewGuid(),
             price.SnapshotHash,
             paymentDueOnUtc,
@@ -141,7 +186,9 @@ internal sealed class CreateOrderCommandHandler(
             PaymentMethod = order.PaymentMethod,
             PricingSnapshotId = order.PricingSnapshotId,
             PricingSnapshotHash = order.PricingSnapshotHash,
-            PaymentDueOnUtc = order.PaymentDueOnUtc
+            PaymentDueOnUtc = order.PaymentDueOnUtc,
+            SourceBasketId = order.SourceBasketId,
+            SourceBasketVersion = order.SourceBasketVersion
         };
         outbox.Add(OutboxMessage.Create(
             integrationEvent.GetType().AssemblyQualifiedName!,

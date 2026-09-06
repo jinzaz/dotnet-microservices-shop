@@ -18,6 +18,18 @@ public sealed class CreateOrderCommandValidator : AbstractValidator<CreateOrderC
             item.RuleFor(value => value.Quantity).InclusiveBetween(1, 999);
         });
         RuleFor(command => command.PaymentMethod).Must(value => value is "Alipay" or "WeChatPay");
+        RuleFor(command => command.ShippingAddress)
+            .NotNull()
+            .SetValidator(new ShippingAddressInputValidator());
+        RuleFor(command => command)
+            .Must(command => command.SourceBasketId.HasValue == command.SourceBasketVersion.HasValue)
+            .WithMessage("SourceBasketId and SourceBasketVersion must be provided together.");
+        RuleFor(command => command.SourceBasketId)
+            .Must(id => !id.HasValue || id.Value != Guid.Empty)
+            .WithMessage("SourceBasketId cannot be an empty GUID.");
+        RuleFor(command => command.SourceBasketVersion)
+            .GreaterThanOrEqualTo(0)
+            .When(command => command.SourceBasketVersion.HasValue);
         RuleFor(command => command.CouponCodes)
             .Must(codes => codes is null || codes.Count <= 5)
             .WithMessage("At most five coupon codes can be applied.")
@@ -31,5 +43,24 @@ public sealed class CreateOrderCommandValidator : AbstractValidator<CreateOrderC
             .NotEmpty()
             .MaximumLength(80)
             .When(command => command.CouponCodes is not null);
+    }
+}
+
+public sealed class ShippingAddressInputValidator : AbstractValidator<ShippingAddressInput>
+{
+    public ShippingAddressInputValidator()
+    {
+        RuleFor(address => address.AddressId)
+            .Must(id => !id.HasValue || id.Value != Guid.Empty)
+            .WithMessage("AddressId cannot be an empty GUID.");
+        RuleFor(address => address.RecipientName).NotEmpty().MaximumLength(100);
+        RuleFor(address => address.PhoneNumber).NotEmpty().MaximumLength(32);
+        RuleFor(address => address.CountryCode).NotEmpty().Length(2, 3);
+        RuleFor(address => address.Province).NotEmpty().MaximumLength(100);
+        RuleFor(address => address.City).NotEmpty().MaximumLength(100);
+        RuleFor(address => address.District).NotEmpty().MaximumLength(100);
+        RuleFor(address => address.StreetLine1).NotEmpty().MaximumLength(300);
+        RuleFor(address => address.StreetLine2).MaximumLength(300);
+        RuleFor(address => address.PostalCode).MaximumLength(20);
     }
 }

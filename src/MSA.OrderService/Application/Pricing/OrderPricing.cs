@@ -371,21 +371,59 @@ public static class OrderRequestFingerprint
         string paymentMethod,
         Guid? campaignId,
         IEnumerable<(string Sku, int Quantity)> items,
-        IEnumerable<string> couponCodes)
+        IEnumerable<string> couponCodes,
+        ShippingAddressSnapshot shippingAddress,
+        Guid? sourceBasketId,
+        long? sourceBasketVersion)
     {
-        var canonicalItems = string.Join(",", items
+        ArgumentNullException.ThrowIfNull(shippingAddress);
+        if (sourceBasketId.HasValue != sourceBasketVersion.HasValue)
+            throw new ArgumentException("Basket id and version must be provided together.");
+        if (sourceBasketId == Guid.Empty || sourceBasketVersion is < 0)
+            throw new ArgumentOutOfRangeException(nameof(sourceBasketId), "Basket source values are invalid.");
+        var canonicalItems = items
             .Select(item => (Sku: item.Sku.Trim().ToUpperInvariant(), item.Quantity))
             .OrderBy(item => item.Sku, StringComparer.Ordinal)
-            .Select(item => $"{item.Sku}:{item.Quantity.ToString(CultureInfo.InvariantCulture)}"));
-        var canonicalCoupons = string.Join(",", couponCodes
+            .Select(item => new
+            {
+                item.Sku,
+                Quantity = item.Quantity.ToString(CultureInfo.InvariantCulture)
+            })
+            .ToArray();
+        var canonicalCoupons = couponCodes
             .Select(CouponCode.Digest)
-            .Order(StringComparer.Ordinal));
-        var canonical = string.Join('|',
-            userId.Trim(),
-            paymentMethod.Trim().ToUpperInvariant(),
-            campaignId?.ToString("N") ?? "regular",
-            canonicalItems,
-            canonicalCoupons);
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        var canonical = JsonSerializer.Serialize(new
+        {
+            UserId = userId.Trim(),
+            PaymentMethod = paymentMethod.Trim().ToUpperInvariant(),
+            CampaignId = campaignId?.ToString("N") ?? "regular",
+            Items = canonicalItems,
+            Coupons = canonicalCoupons,
+            Address = new
+            {
+                shippingAddress.SourceAddressId,
+                shippingAddress.RecipientName,
+                shippingAddress.PhoneNumber,
+                shippingAddress.CountryCode,
+                shippingAddress.Province,
+                shippingAddress.City,
+                shippingAddress.District,
+                shippingAddress.StreetLine1,
+                shippingAddress.StreetLine2,
+                shippingAddress.PostalCode
+            }
+        });
+        if (sourceBasketId.HasValue)
+        {
+            canonical = string.Join(
+                '|',
+                canonical,
+                "basket",
+                sourceBasketId.Value.ToString("N"),
+                sourceBasketVersion!.Value.ToString(CultureInfo.InvariantCulture));
+        }
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
 }

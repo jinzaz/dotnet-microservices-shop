@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using MSA.OrderService.Application.CreateFlashSaleOrder;
+using MSA.OrderService.Application.CreateOrder;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 
@@ -34,6 +35,7 @@ public sealed class FlashSaleOrdersController(ISender sender) : ControllerBase
                 campaignId,
                 request.Quantity,
                 request.PaymentMethod,
+                request.ShippingAddress,
                 request.CouponCodes),
             cancellationToken);
         return AcceptedAtAction(
@@ -52,6 +54,9 @@ public sealed record CreateFlashSaleOrderRequest
 
     [Required]
     public required string PaymentMethod { get; init; }
+
+    [Required]
+    public required ShippingAddressInput ShippingAddress { get; init; }
 
     [MaxLength(5)]
     public IReadOnlyList<string>? CouponCodes { get; init; }

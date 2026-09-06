@@ -245,6 +245,14 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("CancelledOnUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("CarrierCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("CarrierName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
                     b.Property<DateTimeOffset?>("ConfirmedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -256,6 +264,9 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)");
 
+                    b.Property<DateTimeOffset?>("DeliveredOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<decimal>("DiscountAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -263,10 +274,16 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.Property<Guid?>("FlashSaleCampaignId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("FulfillmentStatus")
+                        .HasColumnType("integer");
+
                     b.Property<string>("IdempotencyKey")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset?>("InTransitOnUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("OrderNumber")
                         .IsRequired()
@@ -300,12 +317,25 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.Property<Guid?>("ReservationId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset?>("ShippedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("SourceBasketId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("SourceBasketVersion")
+                        .HasColumnType("bigint");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
                     b.Property<decimal>("SubtotalAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("TrackingNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
 
                     b.Property<DateTimeOffset>("UpdatedOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -330,12 +360,18 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("\"FlashSaleCampaignId\" IS NOT NULL");
 
+                    b.HasIndex("FulfillmentStatus", "UpdatedOnUtc");
+
                     b.HasIndex("Status", "CreatedOnUtc");
 
                     b.HasIndex("UserId", "CreatedOnUtc");
 
                     b.HasIndex("UserId", "IdempotencyKey")
                         .IsUnique();
+
+                    b.HasIndex("UserId", "SourceBasketId", "SourceBasketVersion")
+                        .IsUnique()
+                        .HasFilter("\"SourceBasketId\" IS NOT NULL AND \"SourceBasketVersion\" IS NOT NULL");
 
                     b.ToTable("orders", null, t =>
                         {
@@ -352,6 +388,8 @@ namespace MSA.OrderService.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_orders_payment_method", "\"PaymentMethod\" IN ('Alipay', 'WeChatPay', 'Unknown')");
 
                             t.HasCheckConstraint("CK_orders_snapshot_hashes", "\"RequestFingerprint\" ~ '^[0-9A-F]{64}$' AND \"PricingSnapshotHash\" ~ '^[0-9A-F]{64}$'");
+
+                            t.HasCheckConstraint("CK_orders_source_basket_pair", "(\"SourceBasketId\" IS NULL AND \"SourceBasketVersion\" IS NULL) OR (\"SourceBasketId\" IS NOT NULL AND \"SourceBasketVersion\" IS NOT NULL AND \"SourceBasketVersion\" >= 0)");
 
                             t.HasCheckConstraint("CK_orders_status", "\"Status\" BETWEEN 0 AND 3");
                         });
@@ -465,6 +503,64 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         {
                             t.HasCheckConstraint("CK_order_discounts_amount", "\"Amount\" > 0");
                         });
+                });
+
+            modelBuilder.Entity("MSA.OrderService.Domain.OrderFulfillmentStatusHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("CarrierCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("CarrierName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int?>("FromStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset>("OccurredOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RequestFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("ToStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TrackingNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+
+                    b.HasIndex("OrderId", "OccurredOnUtc");
+
+                    b.ToTable("order_fulfillment_status_history", (string)null);
                 });
 
             modelBuilder.Entity("MSA.OrderService.Domain.OrderLine", b =>
@@ -772,6 +868,81 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("MSA.OrderService.Domain.Order", b =>
+                {
+                    b.OwnsOne("MSA.OrderService.Domain.ShippingAddressSnapshot", "ShippingAddress", b1 =>
+                        {
+                            b1.Property<Guid>("OrderId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<string>("City")
+                                .IsRequired()
+                                .HasMaxLength(100)
+                                .HasColumnType("character varying(100)")
+                                .HasColumnName("ShippingCity");
+
+                            b1.Property<string>("CountryCode")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("character varying(3)")
+                                .HasColumnName("ShippingCountryCode");
+
+                            b1.Property<string>("District")
+                                .IsRequired()
+                                .HasMaxLength(100)
+                                .HasColumnType("character varying(100)")
+                                .HasColumnName("ShippingDistrict");
+
+                            b1.Property<string>("PhoneNumber")
+                                .IsRequired()
+                                .HasMaxLength(32)
+                                .HasColumnType("character varying(32)")
+                                .HasColumnName("ShippingPhoneNumber");
+
+                            b1.Property<string>("PostalCode")
+                                .HasMaxLength(20)
+                                .HasColumnType("character varying(20)")
+                                .HasColumnName("ShippingPostalCode");
+
+                            b1.Property<string>("Province")
+                                .IsRequired()
+                                .HasMaxLength(100)
+                                .HasColumnType("character varying(100)")
+                                .HasColumnName("ShippingProvince");
+
+                            b1.Property<string>("RecipientName")
+                                .IsRequired()
+                                .HasMaxLength(100)
+                                .HasColumnType("character varying(100)")
+                                .HasColumnName("ShippingRecipientName");
+
+                            b1.Property<Guid?>("SourceAddressId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("ShippingAddressId");
+
+                            b1.Property<string>("StreetLine1")
+                                .IsRequired()
+                                .HasMaxLength(300)
+                                .HasColumnType("character varying(300)")
+                                .HasColumnName("ShippingStreetLine1");
+
+                            b1.Property<string>("StreetLine2")
+                                .HasMaxLength(300)
+                                .HasColumnType("character varying(300)")
+                                .HasColumnName("ShippingStreetLine2");
+
+                            b1.HasKey("OrderId");
+
+                            b1.ToTable("orders");
+
+                            b1.WithOwner()
+                                .HasForeignKey("OrderId");
+                        });
+
+                    b.Navigation("ShippingAddress")
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("MSA.OrderService.Domain.OrderCouponRedemption", b =>
                 {
                     b.HasOne("MSA.OrderService.Domain.CouponProjection", null)
@@ -796,6 +967,15 @@ namespace MSA.OrderService.Infrastructure.Migrations
                 {
                     b.HasOne("MSA.OrderService.Domain.Order", null)
                         .WithMany("Discounts")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.OrderService.Domain.OrderFulfillmentStatusHistory", b =>
+                {
+                    b.HasOne("MSA.OrderService.Domain.Order", null)
+                        .WithMany("FulfillmentStatusHistory")
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -827,6 +1007,8 @@ namespace MSA.OrderService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.OrderService.Domain.Order", b =>
                 {
                     b.Navigation("Discounts");
+
+                    b.Navigation("FulfillmentStatusHistory");
 
                     b.Navigation("Lines");
 

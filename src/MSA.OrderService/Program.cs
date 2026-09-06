@@ -10,6 +10,7 @@ using MSA.Infrastrucute.Extensions;
 using MSA.OrderService.Application;
 using MSA.OrderService.Application.CreateFlashSaleOrder;
 using MSA.OrderService.Application.CreateOrder;
+using MSA.OrderService.Application.ManageFulfillment;
 using MSA.OrderService.Application.Pricing;
 using MSA.OrderService.Domain;
 using MSA.OrderService.Infrastructure;
@@ -40,6 +41,7 @@ builder.Services.AddDbContext<OrderDbContext>(options => options.UseNpgsql(conne
 builder.Services.AddScoped<MSADbContext>(services => services.GetRequiredService<OrderDbContext>());
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddScoped<IOrderSubmissionLock, PostgresOrderSubmissionLock>();
+builder.Services.AddScoped<IOrderFulfillmentLock, PostgresOrderFulfillmentLock>();
 builder.Services.AddScoped<IOrderPricingService, OrderPricingService>();
 builder.Services.AddScoped<ICouponRedemptionStore, PostgresCouponRedemptionStore>();
 builder.Services.AddScoped<IPromotionRuleEvaluator, MinimumOrderAmountRule>();
@@ -57,6 +59,7 @@ builder.Services.AddMediatR(configuration =>
     configuration.RegisterServicesFromAssemblyContaining<CreateOrderCommand>());
 builder.Services.AddScoped<IValidator<CreateOrderCommand>, CreateOrderCommandValidator>();
 builder.Services.AddScoped<IValidator<CreateFlashSaleOrderCommand>, CreateFlashSaleOrderCommandValidator>();
+builder.Services.AddScoped<IValidator<UpdateOrderFulfillmentCommand>, UpdateOrderFulfillmentCommandValidator>();
 builder.Services.AddMsaApplicationPipeline();
 
 builder.Services.AddRateLimiter(options =>

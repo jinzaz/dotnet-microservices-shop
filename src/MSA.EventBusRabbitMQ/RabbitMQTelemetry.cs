@@ -1,8 +1,5 @@
-﻿using OpenTelemetry.Context.Propagation;
-using System;
-using System.Collections.Generic;
+using OpenTelemetry.Context.Propagation;
 using System.Diagnostics;
-using System.Text;
 
 namespace MSA.EventBusRabbitMQ;
 

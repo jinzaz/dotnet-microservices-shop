@@ -99,6 +99,195 @@ namespace MSA.IdentityService.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("MSA.IdentityService.Domain.LoyaltyPointAccount", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("UserId");
+
+                    b.Property<long>("Balance")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("LifetimeEarned")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("LifetimeSpent")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("loyalty_point_accounts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_loyalty_point_accounts_balances", "\"Balance\" >= 0 AND \"LifetimeEarned\" >= 0 AND \"LifetimeSpent\" >= 0 AND \"Balance\" = \"LifetimeEarned\" - \"LifetimeSpent\"");
+
+                            t.HasCheckConstraint("CK_loyalty_point_accounts_version", "\"Version\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.IdentityService.Domain.LoyaltyPointEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("BalanceAfter")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("BalanceBefore")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("BusinessKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<long>("Delta")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("OccurredOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OperatorId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "BusinessKey")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "OccurredOnUtc");
+
+                    b.ToTable("loyalty_point_entries", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_loyalty_point_entries_balances", "\"BalanceBefore\" >= 0 AND \"BalanceAfter\" >= 0 AND \"BalanceAfter\" = \"BalanceBefore\" + \"Delta\"");
+
+                            t.HasCheckConstraint("CK_loyalty_point_entries_delta", "\"Delta\" <> 0");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.IdentityService.Domain.UserAddress", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("CountryCode")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character(2)")
+                        .IsFixedLength();
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("District")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("PhoneNumber")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("PostalCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Province")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("RecipientName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Street")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasFilter("\"IsDefault\" AND \"IsEnabled\" AND \"DeletedOnUtc\" IS NULL");
+
+                    b.HasIndex("UserId", "CreatedOnUtc");
+
+                    b.ToTable("user_addresses", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_user_addresses_active_default", "NOT \"IsDefault\" OR (\"IsEnabled\" AND \"DeletedOnUtc\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_user_addresses_country_code", "\"CountryCode\" ~ '^[A-Z]{2}$'");
+
+                            t.HasCheckConstraint("CK_user_addresses_deletion", "\"DeletedOnUtc\" IS NULL OR NOT \"IsEnabled\"");
+
+                            t.HasCheckConstraint("CK_user_addresses_version", "\"Version\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
                 {
                     b.Property<string>("Id")
@@ -437,6 +626,33 @@ namespace MSA.IdentityService.Migrations
                     b.HasIndex("ApplicationId", "Status", "Subject", "Type");
 
                     b.ToTable("OpenIddictTokens", (string)null);
+                });
+
+            modelBuilder.Entity("MSA.IdentityService.Domain.LoyaltyPointAccount", b =>
+                {
+                    b.HasOne("MSA.IdentityService.ApplicationUser", null)
+                        .WithOne()
+                        .HasForeignKey("MSA.IdentityService.Domain.LoyaltyPointAccount", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.IdentityService.Domain.LoyaltyPointEntry", b =>
+                {
+                    b.HasOne("MSA.IdentityService.Domain.LoyaltyPointAccount", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.IdentityService.Domain.UserAddress", b =>
+                {
+                    b.HasOne("MSA.IdentityService.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>

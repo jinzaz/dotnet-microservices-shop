@@ -15,6 +15,8 @@ public sealed class OrderSubmittedIntegrationEvent : IntegrationEvent
     public Guid? PricingSnapshotId { get; init; }
     public string? PricingSnapshotHash { get; init; }
     public DateTimeOffset? PaymentDueOnUtc { get; init; }
+    public Guid? SourceBasketId { get; init; }
+    public long? SourceBasketVersion { get; init; }
 }
 
 public sealed class InventoryReservedIntegrationEvent : IntegrationEvent

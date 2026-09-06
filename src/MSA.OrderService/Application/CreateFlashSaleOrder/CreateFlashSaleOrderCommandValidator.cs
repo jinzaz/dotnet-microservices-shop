@@ -1,4 +1,5 @@
 using FluentValidation;
+using MSA.OrderService.Application.CreateOrder;
 
 namespace MSA.OrderService.Application.CreateFlashSaleOrder;
 
@@ -11,6 +12,9 @@ public sealed class CreateFlashSaleOrderCommandValidator : AbstractValidator<Cre
         RuleFor(command => command.CampaignId).NotEmpty();
         RuleFor(command => command.Quantity).InclusiveBetween(1, 999);
         RuleFor(command => command.PaymentMethod).Must(value => value is "Alipay" or "WeChatPay");
+        RuleFor(command => command.ShippingAddress)
+            .NotNull()
+            .SetValidator(new ShippingAddressInputValidator());
         RuleFor(command => command.CouponCodes)
             .Must(codes => codes is null || codes.Count <= 5)
             .WithMessage("At most five coupon codes can be applied.")

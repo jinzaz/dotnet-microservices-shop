@@ -9,6 +9,7 @@ public sealed class OrderDbContext(DbContextOptions<OrderDbContext> options, IMe
     : MessagingDbContext(options, mediator)
 {
     public DbSet<Order> Orders => Set<Order>();
+    public DbSet<OrderFulfillmentStatusHistory> OrderFulfillmentStatusHistory => Set<OrderFulfillmentStatusHistory>();
     public DbSet<OrderProductProjection> ProductProjections => Set<OrderProductProjection>();
     public DbSet<FlashSaleCampaignProjection> FlashSaleCampaignProjections => Set<FlashSaleCampaignProjection>();
     public DbSet<PromotionProjection> PromotionProjections => Set<PromotionProjection>();
@@ -38,12 +39,24 @@ public sealed class OrderDbContext(DbContextOptions<OrderDbContext> options, IMe
                 table.HasCheckConstraint("CK_orders_snapshot_hashes", "\"RequestFingerprint\" ~ '^[0-9A-F]{64}$' AND \"PricingSnapshotHash\" ~ '^[0-9A-F]{64}$'");
                 table.HasCheckConstraint("CK_orders_confirmed_fields", "\"Status\" <> 2 OR (\"ReservationId\" IS NOT NULL AND \"PaymentId\" IS NOT NULL AND \"ConfirmedOnUtc\" IS NOT NULL)");
                 table.HasCheckConstraint("CK_orders_cancelled_fields", "\"Status\" <> 3 OR (\"CancellationReason\" IS NOT NULL AND \"CancelledOnUtc\" IS NOT NULL)");
+                table.HasCheckConstraint(
+                    "CK_orders_source_basket_pair",
+                    "(\"SourceBasketId\" IS NULL AND \"SourceBasketVersion\" IS NULL) OR (\"SourceBasketId\" IS NOT NULL AND \"SourceBasketVersion\" IS NOT NULL AND \"SourceBasketVersion\" >= 0)");
             });
             entity.HasKey(order => order.Id);
             entity.HasIndex(order => order.OrderNumber).IsUnique();
             entity.HasIndex(order => new { order.UserId, order.IdempotencyKey }).IsUnique();
+            entity.HasIndex(order => new
+                {
+                    order.UserId,
+                    order.SourceBasketId,
+                    order.SourceBasketVersion
+                })
+                .IsUnique()
+                .HasFilter("\"SourceBasketId\" IS NOT NULL AND \"SourceBasketVersion\" IS NOT NULL");
             entity.HasIndex(order => new { order.UserId, order.CreatedOnUtc });
             entity.HasIndex(order => new { order.Status, order.CreatedOnUtc });
+            entity.HasIndex(order => new { order.FulfillmentStatus, order.UpdatedOnUtc });
             entity.HasIndex(order => new { order.FlashSaleCampaignId, order.Status });
             entity.HasIndex(order => new { order.FlashSaleCampaignId, order.UserId })
                 .IsUnique()
@@ -59,7 +72,25 @@ public sealed class OrderDbContext(DbContextOptions<OrderDbContext> options, IMe
             entity.Property(order => order.Currency).HasMaxLength(3);
             entity.Property(order => order.PricingSnapshotHash).HasMaxLength(64);
             entity.Property(order => order.CancellationReason).HasMaxLength(1000);
+            entity.Property(order => order.CarrierCode).HasMaxLength(50);
+            entity.Property(order => order.CarrierName).HasMaxLength(120);
+            entity.Property(order => order.TrackingNumber).HasMaxLength(120);
             entity.Property(order => order.Version).IsConcurrencyToken();
+
+            entity.OwnsOne(order => order.ShippingAddress, address =>
+            {
+                address.Property(value => value.SourceAddressId).HasColumnName("ShippingAddressId");
+                address.Property(value => value.RecipientName).HasColumnName("ShippingRecipientName").HasMaxLength(100);
+                address.Property(value => value.PhoneNumber).HasColumnName("ShippingPhoneNumber").HasMaxLength(32);
+                address.Property(value => value.CountryCode).HasColumnName("ShippingCountryCode").HasMaxLength(3);
+                address.Property(value => value.Province).HasColumnName("ShippingProvince").HasMaxLength(100);
+                address.Property(value => value.City).HasColumnName("ShippingCity").HasMaxLength(100);
+                address.Property(value => value.District).HasColumnName("ShippingDistrict").HasMaxLength(100);
+                address.Property(value => value.StreetLine1).HasColumnName("ShippingStreetLine1").HasMaxLength(300);
+                address.Property(value => value.StreetLine2).HasColumnName("ShippingStreetLine2").HasMaxLength(300);
+                address.Property(value => value.PostalCode).HasColumnName("ShippingPostalCode").HasMaxLength(20);
+            });
+            entity.Navigation(order => order.ShippingAddress).IsRequired();
 
             entity.HasMany(order => order.Lines)
                 .WithOne()
@@ -81,6 +112,13 @@ public sealed class OrderDbContext(DbContextOptions<OrderDbContext> options, IMe
                 .IsRequired()
                 .OnDelete(DeleteBehavior.Cascade);
             entity.Navigation(order => order.StatusHistory).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            entity.HasMany(order => order.FulfillmentStatusHistory)
+                .WithOne()
+                .HasForeignKey(history => history.OrderId)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(order => order.FulfillmentStatusHistory).UsePropertyAccessMode(PropertyAccessMode.Field);
         });
 
         modelBuilder.Entity<OrderLine>(entity =>
@@ -121,6 +159,23 @@ public sealed class OrderDbContext(DbContextOptions<OrderDbContext> options, IMe
             entity.HasIndex(history => new { history.OrderId, history.OccurredOnUtc });
             entity.Property(history => history.Actor).HasMaxLength(200);
             entity.Property(history => history.Reason).HasMaxLength(1000);
+        });
+
+        modelBuilder.Entity<OrderFulfillmentStatusHistory>(entity =>
+        {
+            entity.ToTable("order_fulfillment_status_history");
+            entity.HasKey(history => history.Id);
+            entity.HasIndex(history => new { history.OrderId, history.OccurredOnUtc });
+            entity.HasIndex(history => new { history.OrderId, history.IdempotencyKey })
+                .IsUnique()
+                .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+            entity.Property(history => history.CarrierCode).HasMaxLength(50);
+            entity.Property(history => history.CarrierName).HasMaxLength(120);
+            entity.Property(history => history.TrackingNumber).HasMaxLength(120);
+            entity.Property(history => history.Note).HasMaxLength(1000);
+            entity.Property(history => history.Actor).HasMaxLength(200);
+            entity.Property(history => history.IdempotencyKey).HasMaxLength(100);
+            entity.Property(history => history.RequestFingerprint).HasMaxLength(64);
         });
     }
 

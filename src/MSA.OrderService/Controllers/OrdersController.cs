@@ -3,6 +3,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MSA.OrderService.Application.CreateOrder;
 using MSA.OrderService.Application.GetOrder;
+using MSA.OrderService.Application.GetOrders;
+using MSA.OrderService.Domain;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 
 namespace MSA.OrderService.Controllers;
@@ -17,7 +20,10 @@ public sealed class OrdersController(ISender sender) : ControllerBase
     public sealed record CreateOrderRequest(
         IReadOnlyList<CreateOrderItemRequest> Items,
         string PaymentMethod,
-        IReadOnlyList<string>? CouponCodes = null);
+        ShippingAddressInput ShippingAddress,
+        IReadOnlyList<string>? CouponCodes = null,
+        Guid? SourceBasketId = null,
+        long? SourceBasketVersion = null);
 
     [HttpPost]
     public async Task<ActionResult> Create(
@@ -32,9 +38,33 @@ public sealed class OrdersController(ISender sender) : ControllerBase
                 idempotencyKey,
                 request.Items.Select(item => new CreateOrderItem(item.Sku, item.Quantity)).ToArray(),
                 request.PaymentMethod,
-                request.CouponCodes),
+                request.ShippingAddress,
+                request.CouponCodes,
+                request.SourceBasketId,
+                request.SourceBasketVersion),
             cancellationToken);
         return AcceptedAtAction(nameof(Get), new { id }, new { orderId = id });
+    }
+
+    [HttpGet]
+    public Task<IReadOnlyList<OrderListItemDto>> List(
+        [FromQuery] string? userId,
+        [FromQuery] OrderFulfillmentStatus? fulfillmentStatus,
+        [FromQuery, Range(0, int.MaxValue)] int skip = 0,
+        [FromQuery, Range(1, 200)] int take = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var requestingUserId = User.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
+        var canReadAll = User.IsInRole("admin") || User.IsInRole("operator");
+        return sender.Send(
+            new GetOrdersQuery(
+                requestingUserId,
+                canReadAll,
+                canReadAll ? userId : null,
+                fulfillmentStatus,
+                skip,
+                take),
+            cancellationToken);
     }
 
     [HttpGet("{id:guid}")]

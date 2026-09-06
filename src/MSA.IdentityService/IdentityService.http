@@ -1,6 +1,87 @@
-@IdentityService_HostAddress = http://localhost:5274
+@IdentityService_HostAddress = http://localhost:12002
+@accessToken = replace-with-access-token
+@addressId = 00000000-0000-0000-0000-000000000000
+@userId = replace-with-user-id
 
-GET {{IdentityService_HostAddress}}/weatherforecast/
-Accept: application/json
+### List my active addresses
+GET {{IdentityService_HostAddress}}/api/users/me/addresses
+Authorization: Bearer {{accessToken}}
 
-###
+### Create an address
+POST {{IdentityService_HostAddress}}/api/users/me/addresses
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "label": "家",
+  "recipientName": "张三",
+  "phoneNumber": "13800138000",
+  "countryCode": "CN",
+  "province": "上海市",
+  "city": "上海市",
+  "district": "浦东新区",
+  "street": "世纪大道 100 号 1 栋 1001 室",
+  "postalCode": "200120",
+  "makeDefault": true
+}
+
+### Get one address
+GET {{IdentityService_HostAddress}}/api/users/me/addresses/{{addressId}}
+Authorization: Bearer {{accessToken}}
+
+### Update an address
+PUT {{IdentityService_HostAddress}}/api/users/me/addresses/{{addressId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "label": "公司",
+  "recipientName": "张三",
+  "phoneNumber": "13800138000",
+  "countryCode": "CN",
+  "province": "上海市",
+  "city": "上海市",
+  "district": "徐汇区",
+  "street": "漕溪北路 18 号",
+  "postalCode": "200030"
+}
+
+### Set default address
+PUT {{IdentityService_HostAddress}}/api/users/me/addresses/{{addressId}}/default
+Authorization: Bearer {{accessToken}}
+
+### Soft-delete an address
+DELETE {{IdentityService_HostAddress}}/api/users/me/addresses/{{addressId}}
+Authorization: Bearer {{accessToken}}
+
+### Get my point balance
+GET {{IdentityService_HostAddress}}/api/users/me/points
+Authorization: Bearer {{accessToken}}
+
+### Get my point ledger
+GET {{IdentityService_HostAddress}}/api/users/me/points/entries?skip=0&take=50
+Authorization: Bearer {{accessToken}}
+
+### Admin grants points; replaying this businessKey is idempotent
+POST {{IdentityService_HostAddress}}/api/users/{{userId}}/points/adjustments
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "delta": 100,
+  "businessKey": "ADMIN-CAMPAIGN-2026-001",
+  "source": "AdminCampaign",
+  "reason": "周年活动赠送"
+}
+
+### Admin gets a user's point account
+GET {{IdentityService_HostAddress}}/api/users/{{userId}}/points
+Authorization: Bearer {{accessToken}}
+
+### Admin gets a user's point ledger
+GET {{IdentityService_HostAddress}}/api/users/{{userId}}/points/entries?skip=0&take=50
+Authorization: Bearer {{accessToken}}
+
+### Admin gets the point entry returned in the Location header
+GET {{IdentityService_HostAddress}}/api/users/{{userId}}/points/entries/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{accessToken}}

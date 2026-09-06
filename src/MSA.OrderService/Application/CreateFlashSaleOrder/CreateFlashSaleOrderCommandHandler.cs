@@ -30,12 +30,16 @@ internal sealed class CreateFlashSaleOrderCommandHandler(
     {
         var idempotencyKey = request.IdempotencyKey.Trim();
         var couponCodes = request.CouponCodes ?? [];
+        var shippingAddress = request.ShippingAddress.ToSnapshot();
         var fingerprint = OrderRequestFingerprint.Create(
             request.UserId,
             request.PaymentMethod,
             request.CampaignId,
             [(string.Empty, request.Quantity)],
-            couponCodes);
+            couponCodes,
+            shippingAddress,
+            null,
+            null);
         var couponDigests = couponCodes.Select(CouponCode.Digest).ToArray();
         await submissionLock.AcquireAsync(
             new[]
@@ -108,10 +112,13 @@ internal sealed class CreateFlashSaleOrderCommandHandler(
             idempotencyKey,
             fingerprint,
             request.PaymentMethod,
+            shippingAddress,
             [new OrderLine(product.Sku, product.Name, request.Quantity, product.Price)],
             price.Discounts,
             product.Currency,
             request.CampaignId,
+            null,
+            null,
             Guid.NewGuid(),
             price.SnapshotHash,
             paymentDueOnUtc,

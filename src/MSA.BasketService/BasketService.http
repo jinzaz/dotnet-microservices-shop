@@ -1,0 +1,60 @@
+@BasketService_HostAddress = https://localhost:10007
+@AccessToken = replace-with-access-token
+@Sku = SKU-001
+
+### Get the current user's basket. Copy the ETag response value into later If-Match headers.
+GET {{BasketService_HostAddress}}/api/basket/
+Authorization: Bearer {{AccessToken}}
+Accept: application/json
+
+### Add an item to a new basket (version 0 means the basket did not exist yet).
+POST {{BasketService_HostAddress}}/api/basket/items
+Authorization: Bearer {{AccessToken}}
+If-Match: "0"
+Content-Type: application/json
+
+{
+  "sku": "{{Sku}}",
+  "quantity": 2
+}
+
+### Increase an existing item (replace 1 with the latest ETag version).
+POST {{BasketService_HostAddress}}/api/basket/items
+Authorization: Bearer {{AccessToken}}
+If-Match: "1"
+Content-Type: application/json
+
+{
+  "sku": "{{Sku}}",
+  "quantity": 1
+}
+
+### Set the exact item quantity (replace 2 with the latest ETag version).
+PUT {{BasketService_HostAddress}}/api/basket/items/{{Sku}}
+Authorization: Bearer {{AccessToken}}
+If-Match: "2"
+Content-Type: application/json
+
+{
+  "quantity": 3
+}
+
+### Replace coupon codes. They are only hints; Ordering validates and prices them at checkout.
+PUT {{BasketService_HostAddress}}/api/basket/coupons
+Authorization: Bearer {{AccessToken}}
+If-Match: "3"
+Content-Type: application/json
+
+{
+  "couponCodes": ["WELCOME10"]
+}
+
+### Remove one item idempotently (replace 4 with the latest ETag version).
+DELETE {{BasketService_HostAddress}}/api/basket/items/{{Sku}}
+Authorization: Bearer {{AccessToken}}
+If-Match: "4"
+
+### Clear all items and coupon codes idempotently (replace 5 with the latest ETag version).
+DELETE {{BasketService_HostAddress}}/api/basket/
+Authorization: Bearer {{AccessToken}}
+If-Match: "5"

@@ -15,4 +15,10 @@ public static class OrderSubmissionLockKeys
 
     public static string CouponUser(string codeDigest, string userId) =>
         $"coupon-user:{codeDigest}:{userId}";
+
+    public static string BasketCheckout(
+        string userId,
+        Guid basketId,
+        long basketVersion) =>
+        $"basket-checkout:{userId}:{basketId:N}:{basketVersion}";
 }

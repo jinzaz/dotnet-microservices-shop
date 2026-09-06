@@ -25,6 +25,7 @@
     <Project Path="src/MSA.IdentityService/MSA.IdentityService.csproj" Id="77d3e573-0b9a-4c2e-b6f8-64ef0cecc951" />
   </Folder>
   <Folder Name="/2.Src/2.ApiService/Busiensses/">
+    <Project Path="src/MSA.BasketService/MSA.BasketService.csproj" />
     <Project Path="src/MSA.CatalogService/MSA.CatalogService.csproj" />
     <Project Path="src/MSA.InventoryService/MSA.InventoryService.csproj" />
     <Project Path="src/MSA.NotificationService/MSA.NotificationService.csproj" />
