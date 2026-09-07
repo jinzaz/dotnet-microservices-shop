@@ -14,9 +14,11 @@ export function FormField({
   trailing,
   id,
   className = '',
+  'aria-describedby': describedBy,
   ...inputProps
 }: FormFieldProps) {
   const errorId = error && id ? `${id}-error` : undefined;
+  const descriptionIds = [describedBy, errorId].filter(Boolean).join(' ') || undefined;
 
   return (
     <div className={`form-field ${className}`.trim()}>
@@ -26,7 +28,7 @@ export function FormField({
         <input
           id={id}
           aria-invalid={Boolean(error)}
-          aria-describedby={errorId}
+          aria-describedby={descriptionIds}
           {...inputProps}
         />
         {trailing ? <span className="form-field__trailing">{trailing}</span> : null}

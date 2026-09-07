@@ -18,4 +18,4 @@ npm run dev
 - `npm run build`：生产构建
 - `npm run preview`：预览生产构建
 
-个人中心可在开发环境用 `/account?demo=1` 做纯前端视觉与交互验收。该入口在生产构建中不可用。
+个人中心可在开发环境用 `/account?demo=1`，订单列表可用 `/orders?demo=1` 做纯前端视觉与交互验收。这些入口在生产构建中不可用。

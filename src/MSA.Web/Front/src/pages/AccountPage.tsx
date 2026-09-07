@@ -178,6 +178,7 @@ export default function AccountPage() {
           activeSection={activeSection}
           onSectionChange={setActiveSection}
           onLogout={handleLogout}
+          ordersPath={demoMode ? '/orders?demo=1' : '/orders'}
         />
         <div className="account-content">
           <div className="account-title-row">

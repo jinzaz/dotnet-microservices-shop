@@ -13,11 +13,13 @@ import {
   signIn as establishSession,
   subscribeToAuthSession,
 } from '../../features/auth/auth-session';
-import type { LoginCredentials } from '../../features/auth/types';
+import { registerAccount } from '../../features/auth/auth-api';
+import type { LoginCredentials, RegistrationDetails } from '../../features/auth/types';
 
 type AuthContextValue = {
   isAuthenticated: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
+  register: (details: RegistrationDetails) => Promise<void>;
   logout: () => void;
 };
 
@@ -35,13 +37,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await establishSession(credentials);
   }, []);
 
+  const register = useCallback(async (details: RegistrationDetails) => {
+    await registerAccount(details);
+    await establishSession({
+      email: details.email,
+      password: details.password,
+      rememberMe: true,
+    });
+  }, []);
+
   const logout = useCallback(() => {
     clearAuthSession();
   }, []);
 
   const value = useMemo(
-    () => ({ isAuthenticated, login, logout }),
-    [isAuthenticated, login, logout],
+    () => ({ isAuthenticated, login, register, logout }),
+    [isAuthenticated, login, register, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

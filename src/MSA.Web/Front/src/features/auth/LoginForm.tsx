@@ -8,11 +8,12 @@ import type { LoginCredentials } from './types';
 
 type LoginFormProps = {
   onSubmit: (credentials: LoginCredentials) => Promise<void>;
+  registerTo?: string;
 };
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function LoginForm({ onSubmit }: LoginFormProps) {
+export function LoginForm({ onSubmit, registerTo = '/register' }: LoginFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -55,6 +56,7 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
         onChange={(event) => setEmail(event.target.value)}
         placeholder="name@example.com"
         autoComplete="email"
+        required
         leading={<Icon name="mail" />}
         error={errors.email}
       />
@@ -66,6 +68,7 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
         onChange={(event) => setPassword(event.target.value)}
         placeholder="请输入密码"
         autoComplete="current-password"
+        required
         leading={<Icon name="lock" />}
         trailing={(
           <button
@@ -90,7 +93,7 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
       {errors.form ? <p className="form-message form-message--error" role="alert">{errors.form}</p> : null}
       <Button className="login-submit" type="submit" loading={submitting}>登录</Button>
       <div className="login-divider"><span>或</span></div>
-      <p className="login-register">还没有账户？ <Link to="/register">创建账户</Link></p>
+      <p className="login-register">还没有账户？ <Link to={registerTo}>创建账户</Link></p>
       <p className="login-trust"><Icon name="shield" />安全登录由 MSA Identity 提供</p>
     </form>
   );

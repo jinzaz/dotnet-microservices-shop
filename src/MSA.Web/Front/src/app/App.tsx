@@ -4,7 +4,9 @@ import HomePage from '../pages/HomePage';
 import { RequireAuth } from './auth/RequireAuth';
 
 const LoginPage = lazy(() => import('../pages/LoginPage'));
+const RegisterPage = lazy(() => import('../pages/RegisterPage'));
 const AccountPage = lazy(() => import('../pages/AccountPage'));
+const OrdersPage = lazy(() => import('../pages/OrdersPage'));
 const FutureFeaturePage = lazy(() => import('../pages/FutureFeaturePage'));
 const NotFoundPage = lazy(() => import('../pages/NotFoundPage'));
 
@@ -24,8 +26,8 @@ export default function App() {
         />
         <Route path="/products" element={<FutureFeaturePage />} />
         <Route path="/cart" element={<FutureFeaturePage />} />
-        <Route path="/orders" element={<RequireAuth><FutureFeaturePage /></RequireAuth>} />
-        <Route path="/register" element={<FutureFeaturePage />} />
+        <Route path="/orders" element={<RequireAuth><OrdersPage /></RequireAuth>} />
+        <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<FutureFeaturePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

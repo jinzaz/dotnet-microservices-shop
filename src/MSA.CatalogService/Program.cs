@@ -51,6 +51,7 @@ builder.Services.AddRabbitMQEventBus(options =>
     options.HostName = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
     options.UserName = builder.Configuration["RabbitMQ:User"] ?? "guest";
     options.Password = builder.Configuration["RabbitMQ:Password"] ?? "guest";
+    options.VirtualHost = builder.Configuration["RabbitMQ:VirtualHost"] ?? "/";
     options.ExchangeName = builder.Configuration["RabbitMQ:ExchangeName"] ?? "msa.commerce.events";
     options.DeadLetterExchange = builder.Configuration["RabbitMQ:DeadLetterExchange"] ?? "msa.commerce.events.dlx";
     options.QueueName = builder.Configuration["RabbitMQ:QueueName"] ?? "msa.catalog";

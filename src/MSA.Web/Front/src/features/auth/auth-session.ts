@@ -6,6 +6,7 @@ const storageKey = 'msa.store.auth.v1';
 const refreshLeewayMs = 45_000;
 const listeners = new Set<() => void>();
 let refreshPromise: Promise<string | null> | null = null;
+let sessionEpoch = 0;
 
 function safeRead(storage: Storage): AuthSession | null {
   try {
@@ -44,15 +45,20 @@ function toSession(tokens: TokenResponse, rememberMe: boolean, previousRefreshTo
 }
 
 async function requestTokens(parameters: URLSearchParams): Promise<TokenResponse> {
-  const response = await fetch(apiUrl(`${serviceRoutes.identity}/connect/token`), {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: parameters,
-  });
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(`${serviceRoutes.identity}/connect/token`), {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: parameters,
+    });
+  } catch {
+    throw new Error('暂时无法连接登录服务，请确认 API Gateway 已启动。');
+  }
 
   if (!response.ok) {
     throw await toApiError(response, '登录服务暂时不可用，请稍后重试。');
@@ -62,19 +68,24 @@ async function requestTokens(parameters: URLSearchParams): Promise<TokenResponse
 }
 
 async function establishIdentityCookie(credentials: LoginCredentials): Promise<void> {
-  const response = await fetch(apiUrl(`${serviceRoutes.identity}/api/auth/login`), {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      email: credentials.email,
-      password: credentials.password,
-      rememberMe: credentials.rememberMe,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(`${serviceRoutes.identity}/api/auth/login`), {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: credentials.email,
+        password: credentials.password,
+        rememberMe: credentials.rememberMe,
+      }),
+    });
+  } catch {
+    throw new Error('暂时无法连接登录服务，请确认 API Gateway 已启动。');
+  }
 
   if (!response.ok) {
     throw await toApiError(response, '登录服务暂时不可用，请稍后重试。');
@@ -90,15 +101,13 @@ export async function signIn(credentials: LoginCredentials): Promise<void> {
     scope: 'openid profile email api offline_access',
   });
 
-  const [tokens] = await Promise.all([
-    requestTokens(parameters),
-    establishIdentityCookie(credentials),
-  ]);
+  const tokens = await requestTokens(parameters);
+  await establishIdentityCookie(credentials);
 
   persistSession(toSession(tokens, credentials.rememberMe));
 }
 
-async function refreshAccessToken(session: AuthSession): Promise<string | null> {
+async function refreshAccessToken(session: AuthSession, epoch: number): Promise<string | null> {
   if (!session.refreshToken) {
     clearAuthSession();
     return null;
@@ -112,11 +121,12 @@ async function refreshAccessToken(session: AuthSession): Promise<string | null> 
         refresh_token: session.refreshToken,
       }),
     );
+    if (epoch !== sessionEpoch) return null;
     const refreshed = toSession(tokens, session.rememberMe, session.refreshToken);
     persistSession(refreshed);
     return refreshed.accessToken;
   } catch {
-    clearAuthSession();
+    if (epoch === sessionEpoch) clearAuthSession();
     return null;
   }
 }
@@ -126,7 +136,8 @@ export async function getValidAccessToken(): Promise<string | null> {
   if (!session) return null;
   if (session.expiresAt - Date.now() > refreshLeewayMs) return session.accessToken;
 
-  refreshPromise ??= refreshAccessToken(session).finally(() => {
+  const epoch = sessionEpoch;
+  refreshPromise ??= refreshAccessToken(session, epoch).finally(() => {
     refreshPromise = null;
   });
   return refreshPromise;
@@ -137,6 +148,7 @@ export function hasAuthSession(): boolean {
 }
 
 export function clearAuthSession(): void {
+  sessionEpoch += 1;
   window.localStorage.removeItem(storageKey);
   window.sessionStorage.removeItem(storageKey);
   notify();

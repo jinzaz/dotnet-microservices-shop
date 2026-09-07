@@ -9,6 +9,7 @@ type AccountSidebarProps = {
   activeSection: AccountSection;
   onSectionChange: (section: AccountSection) => void;
   onLogout: () => void;
+  ordersPath?: string;
 };
 
 const sections: ReadonlyArray<{ id: AccountSection; label: string; icon: IconName }> = [
@@ -22,7 +23,13 @@ function initials(name: string): string {
   return name.trim().slice(0, 1).toLocaleUpperCase('zh-CN') || 'M';
 }
 
-export function AccountSidebar({ profile, activeSection, onSectionChange, onLogout }: AccountSidebarProps) {
+export function AccountSidebar({
+  profile,
+  activeSection,
+  onSectionChange,
+  onLogout,
+  ordersPath = '/orders',
+}: AccountSidebarProps) {
   return (
     <aside className="account-sidebar">
       <div className="account-identity">
@@ -42,7 +49,7 @@ export function AccountSidebar({ profile, activeSection, onSectionChange, onLogo
             {section.label}
           </a>
         ))}
-        <Link to="/orders">
+        <Link to={ordersPath}>
           <Icon name="clipboard" />
           我的订单
         </Link>

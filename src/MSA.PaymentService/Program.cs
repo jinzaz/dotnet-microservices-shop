@@ -47,6 +47,7 @@ builder.Services.AddRabbitMQEventBus(options =>
     options.ExchangeName = builder.Configuration["RabbitMQ:ExchangeName"] ?? "msa.commerce.events";
     options.UserName = builder.Configuration["RabbitMQ:User"] ?? "guest";
     options.Password = builder.Configuration["RabbitMQ:Password"] ?? "guest";
+    options.VirtualHost = builder.Configuration["RabbitMQ:VirtualHost"] ?? "/";
     options.QueueName = "msa.payment";
     options.DeadLetterExchange = $"{options.ExchangeName}.dlx";
     options.DeadLetterQueue = $"{options.QueueName}.dlq";

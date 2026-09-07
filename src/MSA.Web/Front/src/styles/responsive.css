@@ -224,6 +224,11 @@
     gap: 2px;
     padding-bottom: 10px;
     overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .account-sidebar nav::-webkit-scrollbar {
+    display: none;
   }
 
   .account-sidebar nav a {
@@ -285,6 +290,21 @@
     flex-direction: column;
     align-items: flex-end;
     gap: 5px;
+  }
+
+  .orders-page {
+    width: min(calc(100% - 32px), var(--container));
+    padding-top: 32px;
+  }
+
+  .order-filters {
+    gap: 24px;
+    margin-right: -16px;
+  }
+
+  .order-row__body {
+    grid-template-columns: minmax(200px, 1fr) minmax(220px, 1.2fr) auto;
+    gap: 20px;
   }
 }
 
@@ -435,6 +455,48 @@
 
   .form-dialog > form {
     padding: 24px 20px;
+  }
+
+  .register-form {
+    padding: 4px 0;
+  }
+
+  .orders-title-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .orders-title-row .button {
+    width: 100%;
+  }
+
+  .order-row__header {
+    align-items: flex-start;
+    padding: 12px 14px;
+  }
+
+  .order-row__header > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .order-row__body {
+    grid-template-columns: 1fr auto;
+    gap: 18px 14px;
+    padding: 16px 14px;
+  }
+
+  .order-delivery {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .order-amount {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
   }
 }
 

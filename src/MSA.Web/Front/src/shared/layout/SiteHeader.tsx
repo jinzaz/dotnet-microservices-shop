@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/auth/AuthProvider';
+import { isDemoMode } from '../config/api';
 import { Icon } from '../ui/Icon';
 
 const navigation = [
@@ -17,6 +18,9 @@ export function SiteHeader() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated } = useAuth();
+  const demoMode = isDemoMode(location.search);
+  const hasAccountAccess = isAuthenticated || demoMode;
+  const accountPath = demoMode ? '/account?demo=1' : '/account';
 
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -43,7 +47,7 @@ export function SiteHeader() {
             return (
               <Link
                 key={item.label}
-                to={item.to}
+                to={item.to === '/account' ? accountPath : item.to}
                 onClick={() => setMenuOpen(false)}
                 className={isActive ? 'is-active' : undefined}
               >
@@ -64,9 +68,9 @@ export function SiteHeader() {
             <Icon name="search" />
             <span>搜索</span>
           </button>
-          <Link className="header-action" to={isAuthenticated ? '/account' : '/login'}>
+          <Link className="header-action" to={hasAccountAccess ? accountPath : '/login'}>
             <Icon name="user" />
-            <span>{isAuthenticated ? '我的账户' : '登录'}</span>
+            <span>{hasAccountAccess ? '我的账户' : '登录'}</span>
           </Link>
           <Link className="header-action" to="/cart">
             <Icon name="bag" />

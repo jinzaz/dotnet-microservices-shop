@@ -13,7 +13,7 @@ const gatewayPrefixes = [
 
 const proxy = Object.fromEntries(
   gatewayPrefixes.map((prefix) => [
-    prefix,
+    `^${prefix}(?:/|$)`,
     {
       target: 'https://localhost:10000',
       changeOrigin: true,

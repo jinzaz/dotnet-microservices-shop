@@ -4,6 +4,18 @@ export type LoginCredentials = {
   rememberMe: boolean;
 };
 
+export type RegistrationDetails = {
+  displayName: string;
+  email: string;
+  password: string;
+};
+
+export type RegisteredUser = {
+  id: string;
+  email: string;
+  displayName: string;
+};
+
 export type TokenResponse = {
   access_token: string;
   refresh_token?: string;
