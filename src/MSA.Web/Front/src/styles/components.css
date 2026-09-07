@@ -197,6 +197,28 @@
   color: var(--color-accent);
 }
 
+.header-cart {
+  position: relative;
+}
+
+.cart-count {
+  position: absolute;
+  top: -5px;
+  left: 15px;
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  padding: 0 5px;
+  border: 2px solid var(--color-white);
+  border-radius: 9px;
+  background: var(--color-accent);
+  color: var(--color-white);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1;
+}
+
 .menu-toggle {
   display: none;
 }

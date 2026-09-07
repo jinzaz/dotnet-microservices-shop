@@ -11,11 +11,23 @@ import type {
 
 const usersBase = `${serviceRoutes.identity}/api/users/me`;
 
+export function getProfile(): Promise<UserProfile> {
+  return apiRequest<UserProfile>(usersBase);
+}
+
+export function listAddresses(): Promise<UserAddress[]> {
+  return apiRequest<UserAddress[]>(`${usersBase}/addresses`);
+}
+
+export function getPoints(): Promise<LoyaltyPointAccount> {
+  return apiRequest<LoyaltyPointAccount>(`${usersBase}/points`);
+}
+
 export async function getAccountSnapshot(): Promise<AccountSnapshot> {
   const [profile, addresses, points, pointEntries] = await Promise.all([
-    apiRequest<UserProfile>(usersBase),
-    apiRequest<UserAddress[]>(`${usersBase}/addresses`),
-    apiRequest<LoyaltyPointAccount>(`${usersBase}/points`),
+    getProfile(),
+    listAddresses(),
+    getPoints(),
     apiRequest<LoyaltyPointEntry[]>(`${usersBase}/points/entries?skip=0&take=5`),
   ]);
 

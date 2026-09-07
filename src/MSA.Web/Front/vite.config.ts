@@ -9,6 +9,7 @@ const gatewayPrefixes = [
   '/inventory',
   '/payment',
   '/notification',
+  '/review',
 ];
 
 const proxy = Object.fromEntries(

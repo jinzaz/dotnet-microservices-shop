@@ -2,6 +2,21 @@ import type { OrderListItem } from './types';
 
 export const demoOrders: OrderListItem[] = [
   {
+    id: '5e3ceac6-231f-4c7d-8ce1-f55e0d288901',
+    orderNumber: 'MSA202609070018',
+    userId: 'demo-user',
+    amount: 246.2,
+    currency: 'CNY',
+    orderStatus: 'Submitted',
+    fulfillmentStatus: 'PendingPayment',
+    recipientName: '林默',
+    phoneNumber: '138 0000 0000',
+    carrierName: null,
+    trackingNumber: null,
+    createdOnUtc: '2026-09-07T08:33:00Z',
+    updatedOnUtc: '2026-09-07T08:33:00Z',
+  },
+  {
     id: '1a6c3d29-b88e-4be8-b727-70c6337c4101',
     orderNumber: 'O202609021A6C3D29B88E4BE8B72770C6337C4101',
     userId: 'demo-user',

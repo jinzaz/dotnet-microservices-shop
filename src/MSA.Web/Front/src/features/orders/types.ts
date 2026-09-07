@@ -23,3 +23,30 @@ export type OrderListItem = {
   createdOnUtc: string;
   updatedOnUtc: string;
 };
+
+export type OrderLine = {
+  sku: string;
+  productName: string;
+  quantity: number;
+  listUnitPrice: number;
+  unitPrice: number;
+  lineSubtotal: number;
+  discountAmount: number;
+  lineAmount: number;
+};
+
+export type OrderDetails = {
+  id: string;
+  orderNumber: string;
+  subtotalAmount: number;
+  discountAmount: number;
+  amount: number;
+  currency: string;
+  paymentMethod: string;
+  status: string;
+  fulfillmentStatus: OrderFulfillmentStatus;
+  paymentDueOnUtc: string;
+  lines: OrderLine[];
+  createdOnUtc: string;
+  updatedOnUtc: string;
+};

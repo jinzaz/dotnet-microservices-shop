@@ -1,6 +1,6 @@
 import { apiRequest } from '../../shared/api/http';
 import { serviceRoutes } from '../../shared/config/api';
-import type { OrderFulfillmentStatus, OrderListItem } from './types';
+import type { OrderDetails, OrderFulfillmentStatus, OrderListItem } from './types';
 
 export function listOrders(fulfillmentStatus?: OrderFulfillmentStatus): Promise<OrderListItem[]> {
   const parameters = new URLSearchParams({ skip: '0', take: '50' });
@@ -9,4 +9,8 @@ export function listOrders(fulfillmentStatus?: OrderFulfillmentStatus): Promise<
   return apiRequest<OrderListItem[]>(
     `${serviceRoutes.ordering}/api/orders?${parameters.toString()}`,
   );
+}
+
+export function getOrder(orderId: string): Promise<OrderDetails> {
+  return apiRequest<OrderDetails>(`${serviceRoutes.ordering}/api/orders/${encodeURIComponent(orderId)}`);
 }

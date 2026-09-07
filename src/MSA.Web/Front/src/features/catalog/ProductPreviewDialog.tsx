@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Button } from '../../shared/ui/Button';
+import { Link } from 'react-router-dom';
 import { Icon } from '../../shared/ui/Icon';
 import { formatMoney } from '../../shared/utils/format';
 import type { DisplayProduct } from './types';
@@ -41,8 +41,8 @@ export function ProductPreviewDialog({ product, onClose }: ProductPreviewDialogP
         <h2>{product.name}</h2>
         <strong>{formatMoney(product.price, product.currency)}</strong>
         <p>{product.description}</p>
-        <Button type="button" onClick={onClose}>继续浏览</Button>
-        <small>商品详情与加入购物车将在下一阶段接入。</small>
+        <Link className="button button--primary button--regular" to={`/products/${product.id}`}>查看商品详情</Link>
+        <button className="product-preview__continue" type="button" onClick={onClose}>继续浏览</button>
       </div>
     </dialog>
   );

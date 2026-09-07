@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Icon } from '../../shared/ui/Icon';
 import { formatDateTime, formatMoney } from '../../shared/utils/format';
 import type { OrderFulfillmentStatus, OrderListItem } from './types';
@@ -24,7 +25,7 @@ function deliverySummary(order: OrderListItem): string {
   }
 }
 
-export function OrderList({ orders }: { orders: OrderListItem[] }) {
+export function OrderList({ orders, demoMode = false }: { orders: OrderListItem[]; demoMode?: boolean }) {
   if (!orders.length) {
     return (
       <div className="orders-empty">
@@ -65,6 +66,9 @@ export function OrderList({ orders }: { orders: OrderListItem[] }) {
               <div className="order-amount">
                 <span>订单总额</span>
                 <strong>{formatMoney(order.amount, order.currency)}</strong>
+                {order.fulfillmentStatus === 'PendingPayment' ? (
+                  <Link className="order-payment-link" to={`/payment/${order.id}${demoMode ? '?demo=1' : ''}`}>去支付</Link>
+                ) : null}
               </div>
             </div>
           </article>

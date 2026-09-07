@@ -90,7 +90,7 @@ export default function OrdersPage() {
             <Button type="button" size="small" onClick={() => void orderQuery.refetch()}>重新加载</Button>
           </div>
         ) : null}
-        {demoMode || orderQuery.isSuccess ? <OrderList orders={orders} /> : null}
+        {demoMode || orderQuery.isSuccess ? <OrderList orders={orders} demoMode={demoMode} /> : null}
       </section>
       <ServicePromises />
     </CommerceShell>

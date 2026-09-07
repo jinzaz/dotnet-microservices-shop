@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Icon, type IconName } from '../../shared/ui/Icon';
 import type { UserProfile } from './types';
 
-type AccountSection = 'overview' | 'profile' | 'addresses' | 'points';
+type AccountSection = 'overview' | 'profile' | 'addresses' | 'points' | 'coupons';
 
 type AccountSidebarProps = {
   profile: UserProfile;
@@ -10,6 +10,7 @@ type AccountSidebarProps = {
   onSectionChange: (section: AccountSection) => void;
   onLogout: () => void;
   ordersPath?: string;
+  couponsPath?: string;
 };
 
 const sections: ReadonlyArray<{ id: AccountSection; label: string; icon: IconName }> = [
@@ -29,6 +30,7 @@ export function AccountSidebar({
   onSectionChange,
   onLogout,
   ordersPath = '/orders',
+  couponsPath = '/coupons',
 }: AccountSidebarProps) {
   return (
     <aside className="account-sidebar">
@@ -49,6 +51,10 @@ export function AccountSidebar({
             {section.label}
           </a>
         ))}
+        <Link to={couponsPath} className={activeSection === 'coupons' ? 'is-active' : undefined}>
+          <Icon name="ticket" />
+          我的优惠券
+        </Link>
         <Link to={ordersPath}>
           <Icon name="clipboard" />
           我的订单

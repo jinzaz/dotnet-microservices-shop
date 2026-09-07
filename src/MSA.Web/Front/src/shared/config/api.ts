@@ -13,6 +13,7 @@ export const serviceRoutes = {
   inventory: '/inventory',
   payment: '/payment',
   notification: '/notification',
+  review: '/review',
 } as const;
 
 export function isDemoMode(search = window.location.search): boolean {

@@ -9,6 +9,7 @@ import { ProductPreviewDialog } from '../features/catalog/ProductPreviewDialog';
 import type { DisplayProduct } from '../features/catalog/types';
 import { CommerceShell } from '../shared/layout/CommerceShell';
 import { ServicePromises } from '../shared/layout/ServicePromises';
+import { HeroCarousel } from '../features/home/HeroCarousel';
 import { Icon, type IconName } from '../shared/ui/Icon';
 
 const categories: ReadonlyArray<{ label: string; icon: IconName; anchor: string }> = [
@@ -60,25 +61,7 @@ export default function HomePage() {
 
   return (
     <CommerceShell>
-      <section className="home-hero">
-        <div className="home-hero__copy">
-          <h1>把日常，选得更好</h1>
-          <p>从质感家居到随身好物，认真挑选每一件值得长期使用的东西。</p>
-          <div className="home-hero__actions">
-            <a className="button button--primary button--regular" href="#featured">浏览精选</a>
-            <a className="text-link" href="#new">查看新品 <Icon name="arrow-right" /></a>
-          </div>
-        </div>
-        <div className="home-hero__media">
-          <img
-            src="/images/hero-lifestyle.jpg"
-            alt="黑色手冲壶、陶瓷杯与绿植组成的安静居家一角"
-            width="1672"
-            height="941"
-            fetchPriority="high"
-          />
-        </div>
-      </section>
+      <HeroCarousel />
 
       <nav className="category-rail" id="new" aria-label="商品分类">
         <div className="category-rail__inner">

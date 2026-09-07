@@ -32,8 +32,19 @@ export type IconName =
   | 'plus'
   | 'trash'
   | 'check'
+  | 'chevron-left'
   | 'chevron-right'
-  | 'heart';
+  | 'heart'
+  | 'copy'
+  | 'ticket'
+  | 'minus'
+  | 'credit-card'
+  | 'package'
+  | 'circle-check'
+  | 'qr-code'
+  | 'clock'
+  | 'help-circle'
+  | 'alert-circle';
 
 const paths: Record<IconName, ReactNode> = {
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
@@ -67,8 +78,19 @@ const paths: Record<IconName, ReactNode> = {
   plus: <path d="M12 5v14M5 12h14" />,
   trash: <><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6m4-6v6" /></>,
   check: <path d="m5 12 4 4L19 6" />,
+  'chevron-left': <path d="m15 5-7 7 7 7" />,
   'chevron-right': <path d="m9 5 7 7-7 7" />,
   heart: <path d="M20.8 5.8a5.5 5.5 0 0 0-7.8 0L12 6.9l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 22l8.8-8.4a5.5 5.5 0 0 0 0-7.8Z" />,
+  copy: <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" /></>,
+  ticket: <><path d="M3 7a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a3 3 0 0 0 0 6v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a3 3 0 0 0 0-6V7Z" /><path d="M12 7v2m0 3v2m0 3v1" /></>,
+  minus: <path d="M5 12h14" />,
+  'credit-card': <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20M6 15h4" /></>,
+  package: <><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" /><path d="m4.4 7.7 7.6 4.4 7.6-4.4M12 12v9M8 5.2l8 4.6" /></>,
+  'circle-check': <><circle cx="12" cy="12" r="9" /><path d="m8 12 2.6 2.6L16.5 9" /></>,
+  'qr-code': <><path d="M3 9V3h6M15 3h6v6M21 15v6h-6M9 21H3v-6" /><path d="M7 7h.01M17 7h.01M7 17h.01M14 13h3v3h-3zM18 18h.01" /></>,
+  clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+  'help-circle': <><circle cx="12" cy="12" r="9" /><path d="M9.8 9a2.3 2.3 0 1 1 3.6 1.9c-.9.6-1.4 1-1.4 2.1M12 17h.01" /></>,
+  'alert-circle': <><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 17h.01" /></>,
 };
 
 type IconProps = SVGProps<SVGSVGElement> & { name: IconName };

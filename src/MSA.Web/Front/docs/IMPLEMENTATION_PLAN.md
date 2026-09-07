@@ -2,13 +2,13 @@
 
 ## 目标与边界
 
-首期交付 React + TypeScript + Vite 前端骨架，以及首页、登录注册页、个人中心和订单列表。个人中心对接现有 Identity Service 的资料、地址和积分接口；订单列表独立对接 Ordering Service；首页在认证后读取 Catalog Service 商品列表。商品详情、购物车、结算、订单详情和支付保留清晰的路由与 API 边界，后续按业务阶段接入。
+当前交付 React + TypeScript + Vite 商城前端，以及首页轮播、登录注册、个人中心、券包、订单列表、商品详情、本地购物袋与结算下单。个人中心对接 Identity Service 的资料、地址和积分接口；订单列表和创建订单对接 Ordering Service；商品与库存分别对接 Catalog 和 Inventory；购物袋同步 Basket。暂缺的用户券包、商品 SKU 列表和评价接口均保留独立前端契约与演示回退。
 
 ## 架构
 
 - `app/`：路由、全局 Provider 与认证边界。
 - `shared/`：设计系统、布局、HTTP 客户端、运行时配置和通用工具。
-- `features/`：按 `auth`、`catalog`、`profile` 业务能力组织 API、类型、状态和组件。
+- `features/`：按 `auth`、`catalog`、`basket`、`checkout`、`coupons`、`reviews`、`profile` 业务能力组织 API、类型、状态和组件。
 - `pages/`：只负责页面级组合，避免直接访问微服务或保存业务状态。
 - 所有服务请求经 API Gateway：`/identity`、`/catalog`、`/basket`、`/order`、`/payment` 等前缀，不跨服务拼装数据。
 
@@ -24,16 +24,23 @@
 | 积分 | `/identity/api/users/me/points` | 账户汇总与明细并行读取 |
 | 我的订单 | `GET /order/api/orders` | 按当前用户和履约状态读取，页面不拼接其他服务业务数据 |
 | 商品 | `GET /catalog/api/products` | 认证后读取；访客展示静态编辑精选内容 |
+| 商品详情 | `GET /catalog/api/products/{id}` | 读取真实商品；编辑精选商品使用同结构的本地展示数据 |
+| SKU 列表 | `GET /catalog/api/products/{id}/skus` | 后端暂缺，前端已预留并按单 SKU 或演示规格回退 |
+| 可售库存 | `GET /inventory/api/inventory/{sku}` | 登录用户读取；失败时展示结算确认提示 |
+| 购物袋 | `/basket/api/basket` | 新增、改数量、删除、优惠码接口已封装；本地版本化草稿保证页面可操作 |
+| 我的优惠券 | `GET /catalog/api/coupons/me` | 后端暂缺消费者接口，页面自动使用演示券包 |
+| 兑换/领取优惠券 | `POST /catalog/api/coupons/me/redeem`、`POST /catalog/api/coupons/{id}/claim` | 地址已预留，演示模式支持完整交互 |
+| 商品评价 | `GET /review/api/products/{id}/reviews` | Review 上下文需求已成立但服务暂缺，页面使用演示评价 |
+| 创建订单 | `POST /order/api/orders` | 发送地址快照、SKU、支付方式、优惠码和 `Idempotency-Key` |
 
 当前后端没有注销端点，首期“退出登录”会清理浏览器内令牌与前端缓存；生产环境建议补充服务端 Cookie 注销。长期建议将 password grant 收敛为 Authorization Code + PKCE 或 BFF 会话。
 
 ## 后续阶段
 
-1. 商品详情：Catalog 查询、图片媒体模型、Inventory 可售库存。
-2. 购物车：Basket 查询/增删改、优惠码、并发版本处理。
-3. 结算下单：地址快照、价格确认、Ordering 幂等键与 Saga 状态。
-4. 支付：支付渠道选择、跳转/二维码、回调后的订单状态轮询。
-5. 订单详情：订单行、履约时间线、取消/退款允许状态。
+1. 后端补充面向消费者的 SKU、用户券包/领券与 Review 查询契约。
+2. 将本地购物袋草稿与 Basket ETag 版本合并，完善跨设备恢复与冲突提示。
+3. 支付渠道跳转/二维码、回调后的订单状态轮询。
+4. 订单详情、订单行、履约时间线、取消/退款允许状态。
 
 ## 视觉系统
 

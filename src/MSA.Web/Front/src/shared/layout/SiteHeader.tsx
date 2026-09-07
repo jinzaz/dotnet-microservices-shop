@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/auth/AuthProvider';
+import { useBasket } from '../../features/basket/basket-store';
 import { isDemoMode } from '../config/api';
 import { Icon } from '../ui/Icon';
 
@@ -18,9 +19,11 @@ export function SiteHeader() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated } = useAuth();
+  const { itemCount } = useBasket();
   const demoMode = isDemoMode(location.search);
   const hasAccountAccess = isAuthenticated || demoMode;
   const accountPath = demoMode ? '/account?demo=1' : '/account';
+  const checkoutPath = demoMode ? '/checkout?demo=1' : '/checkout';
 
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -42,7 +45,9 @@ export function SiteHeader() {
               ? location.pathname === '/' && !location.hash
               : itemHash
                 ? location.pathname === '/' && location.hash === itemHash
-                : location.pathname.startsWith(item.to);
+                : item.to === '/account'
+                  ? ['/account', '/coupons', '/orders'].some((path) => location.pathname.startsWith(path))
+                  : location.pathname.startsWith(item.to);
 
             return (
               <Link
@@ -72,9 +77,10 @@ export function SiteHeader() {
             <Icon name="user" />
             <span>{hasAccountAccess ? '我的账户' : '登录'}</span>
           </Link>
-          <Link className="header-action" to="/cart">
+          <Link className="header-action header-cart" to={checkoutPath} aria-label={`购物袋，共 ${itemCount} 件商品`}>
             <Icon name="bag" />
             <span>购物袋</span>
+            {itemCount ? <strong className="cart-count">{itemCount > 99 ? '99+' : itemCount}</strong> : null}
           </Link>
           <button
             className="menu-toggle"
