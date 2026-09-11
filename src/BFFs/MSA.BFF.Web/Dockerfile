@@ -15,19 +15,19 @@ WORKDIR /src
 COPY ["Directory.Packages.props", "."]
 COPY ["Directory.Build.props", "."]
 COPY ["NuGet.config", "."]
-COPY ["src/MSA.BM/MSA.BM.csproj", "src/MSA.BM/"]
-RUN dotnet restore "./src/MSA.BM/MSA.BM.csproj"
+COPY ["src/BFFs/MSA.BFF.Web/MSA.BFF.Web.csproj", "src/BFFs/MSA.BFF.Web/"]
+RUN dotnet restore "./src/BFFs/MSA.BFF.Web/MSA.BFF.Web.csproj"
 COPY . .
-WORKDIR "/src/src/MSA.BM"
-RUN dotnet build "./MSA.BM.csproj" -c $BUILD_CONFIGURATION -o /app/build
+WORKDIR "/src/src/BFFs/MSA.BFF.Web"
+RUN dotnet build "./MSA.BFF.Web.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 # 此阶段用于发布要复制到最终阶段的服务项目
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./MSA.BM.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "./MSA.BFF.Web.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 # 此阶段在生产中使用，或在常规模式下从 VS 运行时使用(在不使用调试配置时为默认值)
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "MSA.BM.dll"]
+ENTRYPOINT ["dotnet", "MSA.BFF.Web.dll"]

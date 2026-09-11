@@ -22,6 +22,7 @@ using OpenTelemetry.Trace;
 using System.Security.Claims;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using OpenIddict.Validation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -110,6 +111,17 @@ builder.Services.AddIntegrationEventHandler<PaymentRefundedIntegrationEvent, Pay
 builder.Services.AddIntegrationEventHandler<PaymentRefundFailedIntegrationEvent, PaymentRefundFailedHandler>();
 builder.Services.AddScoped<ISagaTimeoutHandler, OrderSagaTimeoutHandler>();
 
+
+// 如果注入了 AddControllers() , 则必须手动指定认证方案，否则会出现 409 Conflict 错误。因为 AddControllers() 会覆盖默认的认证方案。
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme =
+        OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
+
+    options.DefaultChallengeScheme =
+        OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
+});
+
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
     options.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/");
@@ -117,6 +129,7 @@ builder.Services.AddOpenIddict().AddValidation(options =>
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });
+
 builder.Services.AddAuthorization();
 
 builder.Services.AddOpenTelemetry().WithTracing(tracing =>

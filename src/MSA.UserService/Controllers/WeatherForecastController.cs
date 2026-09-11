@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 
-namespace MSA.BM.Controllers;
+namespace MSA.UserService.Controllers;
 
 [ApiController]
 [Route("[controller]")]
@@ -21,5 +21,6 @@ public class WeatherForecastController : ControllerBase
             Summary = Summaries[Random.Shared.Next(Summaries.Length)]
         })
         .ToArray();
+
     }
 }

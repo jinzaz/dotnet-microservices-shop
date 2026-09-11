@@ -7,10 +7,8 @@ using MSA.IdentityService.Domain;
 using MSA.IdentityService.Infrastructure;
 using MSA.IdentityService.Middleware;
 using MSA.Infrastrucute.Mediator.Behaviors;
-using OpenIddict.Abstractions;
 using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
-using System.Security.Cryptography.X509Certificates;
+using Quartz;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -31,67 +29,22 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseOpenIddict();
 });
 
-builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+
+builder.Services.AddIdentityDefault();
+
+builder.Services.AddQuartz(options =>
 {
-    options.Password.RequiredLength = 10;
-    options.Password.RequireDigit = true;
-    options.Password.RequireLowercase = true;
-    options.Password.RequireUppercase = true;
-    options.Password.RequireNonAlphanumeric = true;
-    options.User.RequireUniqueEmail = true;
-    options.Lockout.MaxFailedAccessAttempts = 5;
-    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
-    options.SignIn.RequireConfirmedEmail = false;
-})
-    .AddEntityFrameworkStores<ApplicationDbContext>()
-    .AddDefaultTokenProviders();
+    options.UseSimpleTypeLoader();
+    options.UseInMemoryStore();
+});
 
-builder.Services.AddOpenIddict()
-    .AddCore(options => options.UseEntityFrameworkCore().UseDbContext<ApplicationDbContext>())
-    .AddServer(options =>
-    {
-        var issuer = builder.Configuration["Authentication:Issuer"];
-        if (!string.IsNullOrWhiteSpace(issuer))
-            options.SetIssuer(new Uri(issuer));
-        options.SetAuthorizationEndpointUris("/connect/authorize");
-        options.SetTokenEndpointUris("/connect/token");
-        options.AllowAuthorizationCodeFlow().RequireProofKeyForCodeExchange();
-        options.AllowPasswordFlow();
-        options.AllowRefreshTokenFlow();
-        options.AllowClientCredentialsFlow();
-        options.DisableAccessTokenEncryption();
-        options.RegisterScopes(
-            OpenIddictConstants.Scopes.OpenId,
-            OpenIddictConstants.Scopes.Profile,
-            OpenIddictConstants.Scopes.Email,
-            OpenIddictConstants.Scopes.OfflineAccess,
-            "api",
-            "catalog.write",
-            "inventory.write",
-            "notifications.read.all");
-        if (builder.Environment.IsDevelopment())
-        {
-            options.AddDevelopmentEncryptionCertificate().AddDevelopmentSigningCertificate();
-        }
-        else
-        {
-            var path = builder.Configuration["Certificates:Path"];
-            var password = builder.Configuration["Certificates:Password"];
-            if (string.IsNullOrWhiteSpace(path))
-                throw new InvalidOperationException("A production OpenIddict certificate is required.");
-            var certificate = X509CertificateLoader.LoadPkcs12FromFile(path, password);
-            options.AddEncryptionCertificate(certificate).AddSigningCertificate(certificate);
-        }
+builder.Services.AddQuartzHostedService(options =>
+{
+    options.WaitForJobsToComplete = true;
+});
 
-        options.UseAspNetCore()
-            .EnableAuthorizationEndpointPassthrough()
-            .EnableTokenEndpointPassthrough();
-    })
-    .AddValidation(options =>
-    {
-        options.UseLocalServer();
-        options.UseAspNetCore();
-    });
+builder.Services.AddOpenIddictServer(builder.Configuration, builder.Environment);
+
 
 builder.Services.AddMediatR(configuration =>
     configuration.RegisterServicesFromAssemblyContaining<CreateUserAddressCommand>());

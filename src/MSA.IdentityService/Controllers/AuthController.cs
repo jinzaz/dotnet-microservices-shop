@@ -12,7 +12,8 @@ namespace MSA.IdentityService.Controllers;
 [ApiController]
 public sealed class AuthController(
     UserManager<ApplicationUser> users,
-    SignInManager<ApplicationUser> signIn) : ControllerBase
+    SignInManager<ApplicationUser> signIn,
+    IOpenIddictScopeManager scopeManager) : ControllerBase
 {
     [AllowAnonymous]
     [HttpPost("api/auth/register")]

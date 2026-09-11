@@ -1,13 +1,10 @@
-using Microsoft.AspNetCore.Identity;
-using OpenIddict.Abstractions;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace MSA.IdentityService;
 
 internal sealed class IdentitySeedHostedService(
     IServiceScopeFactory scopeFactory,
-    IConfiguration configuration,
-    IHostEnvironment environment) : IHostedService
+    IConfiguration configuration) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -18,21 +15,54 @@ internal sealed class IdentitySeedHostedService(
                 EnsureSucceeded(await roles.CreateAsync(new IdentityRole(roleName)));
 
         var scopes = scope.ServiceProvider.GetRequiredService<IOpenIddictScopeManager>();
-        if (await scopes.FindByNameAsync("api", cancellationToken) is null)
-            await scopes.CreateAsync(new OpenIddictScopeDescriptor { Name = "api", DisplayName = "MSA commerce API", Resources = { "api" } }, cancellationToken);
+        if (await scopes.FindByNameAsync(IdentityServiceConstants.Scopes.User, cancellationToken) is null)
+        {
+            await scopes.CreateAsync(new OpenIddictScopeDescriptor { Name = IdentityServiceConstants.Scopes.User, DisplayName = "User API", Resources = { "user-api" } }, cancellationToken);
+        }
+
+        if (await scopes.FindByNameAsync(IdentityServiceConstants.Scopes.Catalog, cancellationToken) is null)
+        {
+            await scopes.CreateAsync(new OpenIddictScopeDescriptor { Name = IdentityServiceConstants.Scopes.Catalog, DisplayName = "Catalog API", Resources = { "catalog-api" } }, cancellationToken);
+        }
+
+        if (await scopes.FindByNameAsync(IdentityServiceConstants.Scopes.Inventory, cancellationToken) is null)
+        {
+            await scopes.CreateAsync(new OpenIddictScopeDescriptor { Name = IdentityServiceConstants.Scopes.Inventory, DisplayName = "Inventory API", Resources = { "inventory-api" } }, cancellationToken);
+        }
+
+        if (await scopes.FindByNameAsync(IdentityServiceConstants.Scopes.Notification, cancellationToken) is null)
+        {
+            await scopes.CreateAsync(new OpenIddictScopeDescriptor { Name = IdentityServiceConstants.Scopes.Notification, DisplayName = "Notification API", Resources = { "notification-api" } }, cancellationToken);
+        }
+
+        if (await scopes.FindByNameAsync(IdentityServiceConstants.Scopes.Basket, cancellationToken) is null)
+        {
+            await scopes.CreateAsync(new OpenIddictScopeDescriptor { Name = IdentityServiceConstants.Scopes.Basket, DisplayName = "Basket API", Resources = { "basket-api" } }, cancellationToken);
+        }
+
+        if (await scopes.FindByNameAsync(IdentityServiceConstants.Scopes.Order, cancellationToken) is null)
+        {
+            await scopes.CreateAsync(new OpenIddictScopeDescriptor { Name = IdentityServiceConstants.Scopes.Order, DisplayName = "Order API", Resources = { "order-api" } }, cancellationToken);
+        }
+
+        if (await scopes.FindByNameAsync(IdentityServiceConstants.Scopes.Payment, cancellationToken) is null)
+        {
+            await scopes.CreateAsync(new OpenIddictScopeDescriptor { Name = IdentityServiceConstants.Scopes.Payment, DisplayName = "Payment API", Resources = { "payment-api" } }, cancellationToken);
+        }
 
         var applications = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
-        var clientId = configuration["OpenIddict:ClientId"] ?? "msa-web";
-        if (await applications.FindByClientIdAsync(clientId, cancellationToken) is null)
+        if (await applications.FindByClientIdAsync(IdentityServiceConstants.Applications.MSA_Bff_Web, cancellationToken) is null)
         {
             var descriptor = new OpenIddictApplicationDescriptor
             {
-                ClientId = clientId,
-                ClientType = ClientTypes.Public,
-                ConsentType = ConsentTypes.Implicit,
-                DisplayName = "MSA web client"
+                ClientId = IdentityServiceConstants.Applications.MSA_Bff_Web,
+                ClientType = ClientTypes.Confidential,
+                ConsentType = ConsentTypes.Explicit,
+                DisplayName = "MSA Bff Web",
+                ClientSecret = "AD4D63DB-17A5-4AD5-83F3-4A1C4DF7DCA6"
             };
-            descriptor.RedirectUris.Add(new Uri(configuration["OpenIddict:RedirectUri"] ?? "https://localhost:5173/signin-callback"));
+            descriptor.RedirectUris.Add(new Uri("https://localhost:10008/bff/callback/login"));
+            descriptor.PostLogoutRedirectUris.Add(new Uri("https://localhost:10008/bff/callback/logout"));
             descriptor.Permissions.UnionWith(new[]
             {
                 Permissions.Endpoints.Authorization,
@@ -43,10 +73,13 @@ internal sealed class IdentitySeedHostedService(
                 Permissions.ResponseTypes.Code,
                 Permissions.Scopes.Email,
                 Permissions.Scopes.Profile,
-                Permissions.Prefixes.Scope + "api",
-                Permissions.Prefixes.Scope + "catalog.write",
-                Permissions.Prefixes.Scope + "inventory.write",
-                Permissions.Prefixes.Scope + "notifications.read.all"
+                Permissions.Prefixes.Scope + "user",
+                Permissions.Prefixes.Scope + "catalog",
+                Permissions.Prefixes.Scope + "inventory",
+                Permissions.Prefixes.Scope + "notification",
+                Permissions.Prefixes.Scope + "basket",
+                Permissions.Prefixes.Scope + "order",
+                Permissions.Prefixes.Scope + "payment"
             });
             descriptor.Requirements.Add(Requirements.Features.ProofKeyForCodeExchange);
             await applications.CreateAsync(descriptor, cancellationToken);
@@ -72,25 +105,6 @@ internal sealed class IdentitySeedHostedService(
                 Permissions.Prefixes.Scope + "api"
             });
             await applications.CreateAsync(descriptor, cancellationToken);
-        }
-
-        var adminEmail = configuration["BootstrapAdmin:Email"];
-        var adminPassword = configuration["BootstrapAdmin:Password"];
-        if (!string.IsNullOrWhiteSpace(adminEmail) && !string.IsNullOrWhiteSpace(adminPassword))
-        {
-            var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-            var admin = await users.FindByEmailAsync(adminEmail);
-            if (admin is null)
-            {
-                admin = new ApplicationUser { UserName = adminEmail, Email = adminEmail, DisplayName = "Administrator", EmailConfirmed = true };
-                EnsureSucceeded(await users.CreateAsync(admin, adminPassword));
-            }
-            if (!await users.IsInRoleAsync(admin, "admin"))
-                EnsureSucceeded(await users.AddToRoleAsync(admin, "admin"));
-        }
-        else if (environment.IsDevelopment())
-        {
-            // No hard-coded bootstrap password. Configure user-secrets when an initial admin is needed.
         }
     }
 

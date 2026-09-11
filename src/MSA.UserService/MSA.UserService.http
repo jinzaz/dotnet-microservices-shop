@@ -1,0 +1,6 @@
+@MSA.UserService_HostAddress = http://localhost:5261
+
+GET {{MSA.UserService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

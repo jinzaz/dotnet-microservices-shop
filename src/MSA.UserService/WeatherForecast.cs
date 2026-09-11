@@ -1,4 +1,4 @@
-namespace MSA.BM;
+namespace MSA.UserService;
 
 public class WeatherForecast
 {

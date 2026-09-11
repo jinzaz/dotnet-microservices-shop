@@ -15,7 +15,7 @@
     <PackageVersion Include="Serilog.AspNetCore" Version="9.0.0" />
     <PackageVersion Include="Swashbuckle.AspNetCore" Version="10.2.3" />
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.24.2-preview.1" />
-    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
     <PackageVersion Include="Microsoft.OpenApi" Version="2.12.2" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.5.1" />
     <PackageVersion Include="MSTest.TestAdapter" Version="4.0.2" />
@@ -23,6 +23,8 @@
     <PackageVersion Include="Moq" Version="4.18.4" />
     <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />
     <PackageVersion Include="OpenIddict" Version="7.6.0" />
+    <PackageVersion Include="OpenIddict.AspNetCore"  Version="7.6.0" />
+    <PackageVersion Include="OpenIddict.Quartz" Version="7.6.0" />
     <PackageVersion Include="OpenIddict.Validation" Version="7.6.0" />
     <PackageVersion Include="OpenIddict.Validation.AspNetCore" Version="7.6.0" />
     <PackageVersion Include="OpenIddict.Validation.SystemNetHttp" Version="7.6.0" />
@@ -44,9 +46,11 @@
     <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.0" />
+    <PackageVersion Include="StackExchange.Redis" Version="3.1.31" />
     <PackageVersion Include="Essensoft.Paylinks.Alipay.Client" Version="5.0.4" />
     <PackageVersion Include="Essensoft.Paylinks.Alipay.Payments" Version="5.0.4" />
     <PackageVersion Include="Essensoft.Paylinks.WeChatPay.Client" Version="5.0.4" />
     <PackageVersion Include="Essensoft.Paylinks.WeChatPay.Payments" Version="5.0.4" />
+    <PackageVersion Include="Quartz.Extensions.Hosting" Version="3.9.0" />
   </ItemGroup>
 </Project>
