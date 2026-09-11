@@ -490,6 +490,12 @@
   background: #fff4f2;
 }
 
+.form-message--success {
+  border: 1px solid rgb(31 122 72 / 20%);
+  background: #f2fbf6;
+  color: #17683b;
+}
+
 .checkbox-row {
   display: inline-flex;
   align-items: center;

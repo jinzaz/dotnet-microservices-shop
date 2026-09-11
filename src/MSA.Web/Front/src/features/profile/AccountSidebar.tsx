@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Icon, type IconName } from '../../shared/ui/Icon';
 import type { UserProfile } from './types';
 
-type AccountSection = 'overview' | 'profile' | 'addresses' | 'points' | 'coupons';
+type AccountSection = 'overview' | 'profile' | 'security' | 'addresses' | 'points' | 'coupons';
 
 type AccountSidebarProps = {
   profile: UserProfile;
@@ -16,6 +16,7 @@ type AccountSidebarProps = {
 const sections: ReadonlyArray<{ id: AccountSection; label: string; icon: IconName }> = [
   { id: 'overview', label: '账户概览', icon: 'home' },
   { id: 'profile', label: '个人资料', icon: 'user' },
+  { id: 'security', label: '账户安全', icon: 'lock' },
   { id: 'addresses', label: '收货地址', icon: 'map-pin' },
   { id: 'points', label: '我的积分', icon: 'star' },
 ];

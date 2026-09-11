@@ -1,1 +1,0 @@
-import{x as e,y as t}from"./index-CS4c_XSZ.js";function n(n){let r=new URLSearchParams({skip:`0`,take:`50`});return n&&r.set(`fulfillmentStatus`,n),t(`${e.ordering}/api/orders?${r.toString()}`)}function r(n){return t(`${e.ordering}/api/orders/${encodeURIComponent(n)}`)}export{n,r as t};

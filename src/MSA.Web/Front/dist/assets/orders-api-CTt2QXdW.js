@@ -1,0 +1,1 @@
+import{h as e}from"./SiteHeader-Ct-jRq1y.js";import{u as t}from"./index-D4Kw8HbY.js";function n(n){let r=new URLSearchParams({skip:`0`,take:`50`});return n&&r.set(`fulfillmentStatus`,n),t(`${e.ordering}/api/orders?${r.toString()}`)}function r(n){return t(`${e.ordering}/api/orders/${encodeURIComponent(n)}`)}export{n,r as t};

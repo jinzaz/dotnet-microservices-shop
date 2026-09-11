@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using MSA.BFF.Web.Auth;
 using MSA.BFF.Web.Auth.Abstractions;
@@ -11,10 +12,10 @@ namespace MSA.BFF.Web.Extensions;
 
 public static class ServiceCollections
 {
-    const string BffCookie = "BffCookie";
+    internal const string BffCookie = "BffCookie";
 
     public static IServiceCollection AddBffServicesDefault(
-        this IServiceCollection services, string? redisConnectionString)
+        this IServiceCollection services, string redisConnectionString)
     {
         services.AddScoped<IUserAccessTokenProvider, UserAccessTokenProvider>();
         services.AddSingleton<RedisTicketStore>();
@@ -23,16 +24,11 @@ public static class ServiceCollections
             options.Configuration = redisConnectionString;
             options.InstanceName = "MsaWebBff:";
         });
-
-
-        services.AddAuthentication(options => {
-            options.DefaultAuthenticateScheme = BffCookie;
-            options.DefaultSignInScheme = BffCookie;
-            options.DefaultChallengeScheme =
-                OpenIddictClientAspNetCoreDefaults.AuthenticationScheme;
-        }).AddCookie(options => {
+        services.AddAuthentication(BffCookie)
+        .AddCookie(BffCookie, options => {
             options.Cookie.Name = "__Host-MSAWebSession";
             options.Cookie.HttpOnly = true;
+            options.Cookie.Path = "/";
             options.Cookie.SecurePolicy =
                 CookieSecurePolicy.Always;
             options.Cookie.SameSite =
@@ -40,8 +36,8 @@ public static class ServiceCollections
             options.ExpireTimeSpan =
                    TimeSpan.FromHours(8);
             options.SlidingExpiration = true;
-            options.LoginPath = "/login";
-            options.LogoutPath = "/logout";
+            options.LoginPath = "/bff/login";
+            options.LogoutPath = "/bff/logout";
 
             //
             // API 不要 302 去登录页。
@@ -129,8 +125,29 @@ public static class ServiceCollections
         }
     }
 
-    public static IServiceCollection AddOpenIddictDefault(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddOpenIddictDefault(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        IWebHostEnvironment environment)
     {
+        var issuerValue = configuration["OpenIddict:Issuer"];
+        if (!Uri.TryCreate(issuerValue, UriKind.Absolute, out var issuer) ||
+            issuer.Scheme != Uri.UriSchemeHttp && issuer.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new InvalidOperationException("OpenIddict:Issuer must be an absolute HTTP or HTTPS URI.");
+        }
+
+        var clientId = configuration["OpenIddict:ClientId"];
+        if (string.IsNullOrWhiteSpace(clientId))
+            throw new InvalidOperationException("OpenIddict:ClientId is required.");
+
+        var clientSecret = configuration["OpenIddict:ClientSecret"];
+        if (string.IsNullOrWhiteSpace(clientSecret))
+        {
+            throw new InvalidOperationException(
+                "OpenIddict:ClientSecret is required. Set it with OpenIddict__ClientSecret.");
+        }
+
         services.AddOpenIddict()
             .AddCore(options => {
                 options.UseEntityFrameworkCore()
@@ -144,9 +161,24 @@ public static class ServiceCollections
                     .AllowAuthorizationCodeFlow()
                     .AllowRefreshTokenFlow();
 
-                options
-                    .AddDevelopmentEncryptionCertificate()
-                    .AddDevelopmentSigningCertificate();
+                if (environment.IsDevelopment())
+                {
+                    options
+                        .AddDevelopmentEncryptionCertificate()
+                        .AddDevelopmentSigningCertificate();
+                }
+                else
+                {
+                    var path = configuration["Certificates:Path"];
+                    var password = configuration["Certificates:Password"];
+                    if (string.IsNullOrWhiteSpace(path))
+                        throw new InvalidOperationException("A production OpenIddict client certificate is required.");
+
+                    var certificate = X509CertificateLoader.LoadPkcs12FromFile(path, password);
+                    options
+                        .AddEncryptionCertificate(certificate)
+                        .AddSigningCertificate(certificate);
+                }
 
                 options
                     .UseAspNetCore()
@@ -159,12 +191,17 @@ public static class ServiceCollections
 
                 options.AddRegistration(new OpenIddictClientRegistration
                 {
-                    Issuer = new Uri(configuration["OpenIddict:Issuer"] ?? throw new InvalidOperationException("Issuer is not configured."), UriKind.Absolute),
-                    ClientId = configuration["OpenIddict:ClientId"] ?? throw new InvalidOperationException("Client ID is not configured."),
-                    ClientSecret = configuration["OpenIddict:ClientSecret"] ?? throw new InvalidOperationException("Client secret is not configured."),
+                    Issuer = issuer,
+                    RegistrationId = configuration["OpenIddict:RegistrationId"] ?? clientId,
+                    ClientId = clientId,
+                    ClientSecret = clientSecret,
+                    CodeChallengeMethods = { CodeChallengeMethods.Sha256 },
                     Scopes = {
+                        Scopes.OpenId,
                         Scopes.Email,
                         Scopes.Profile,
+                        Scopes.Roles,
+                        Scopes.OfflineAccess,
                         "user",
                         "catalog",
                         "inventory",

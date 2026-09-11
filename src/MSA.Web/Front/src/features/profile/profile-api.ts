@@ -41,6 +41,13 @@ export function updateProfile(displayName: string, phoneNumber: string | null): 
   });
 }
 
+export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  return apiRequest<void>(`${serviceRoutes.identity}/api/auth/change-password`, {
+    method: 'POST',
+    body: { currentPassword, newPassword },
+  });
+}
+
 export function createAddress(input: AddressInput): Promise<UserAddress> {
   return apiRequest<UserAddress>(`${usersBase}/addresses`, {
     method: 'POST',

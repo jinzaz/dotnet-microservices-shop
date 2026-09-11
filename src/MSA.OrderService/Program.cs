@@ -125,7 +125,7 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
     options.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/");
-    options.AddAudiences("api");
+    options.AddAudiences("order-api");
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });

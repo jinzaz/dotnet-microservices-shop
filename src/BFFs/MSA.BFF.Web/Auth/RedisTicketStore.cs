@@ -10,6 +10,7 @@ using Microsoft.Extensions.Caching.Distributed;
 public sealed class RedisTicketStore : ITicketStore
 {
     private const string KeyPrefix = "session:";
+    internal const string SessionKeyProperty = ".bff.session_key";
 
     private readonly IDistributedCache _cache;
     private readonly IDataProtector _protector;
@@ -24,30 +25,46 @@ public sealed class RedisTicketStore : ITicketStore
             "MSA.Web.BFF.RedisTicketStore.v1");
     }
 
+    public Task<string> StoreAsync(AuthenticationTicket ticket) =>
+        StoreAsync(ticket, CancellationToken.None);
+
     public async Task<string> StoreAsync(
-        AuthenticationTicket ticket)
+        AuthenticationTicket ticket,
+        CancellationToken cancellationToken)
     {
         var sessionId = WebEncoders.Base64UrlEncode(
             RandomNumberGenerator.GetBytes(32));
 
         var key = KeyPrefix + sessionId;
+        ticket.Properties.Items[SessionKeyProperty] = key;
 
-        await StoreTicketAsync(key, ticket);
+        await StoreTicketAsync(key, ticket, cancellationToken);
 
         return key;
     }
 
     public Task RenewAsync(
         string key,
-        AuthenticationTicket ticket)
+        AuthenticationTicket ticket) =>
+        RenewAsync(key, ticket, CancellationToken.None);
+
+    public Task RenewAsync(
+        string key,
+        AuthenticationTicket ticket,
+        CancellationToken cancellationToken)
     {
-        return StoreTicketAsync(key, ticket);
+        ticket.Properties.Items[SessionKeyProperty] = key;
+        return StoreTicketAsync(key, ticket, cancellationToken);
     }
 
+    public Task<AuthenticationTicket?> RetrieveAsync(string key) =>
+        RetrieveAsync(key, CancellationToken.None);
+
     public async Task<AuthenticationTicket?> RetrieveAsync(
-        string key)
+        string key,
+        CancellationToken cancellationToken)
     {
-        var data = await _cache.GetAsync(key);
+        var data = await _cache.GetAsync(key, cancellationToken);
 
         if (data is null)
             return null;
@@ -62,20 +79,21 @@ public sealed class RedisTicketStore : ITicketStore
         catch (CryptographicException)
         {
             // DataProtection Key 不匹配或数据损坏。
-            await _cache.RemoveAsync(key);
+            await _cache.RemoveAsync(key, cancellationToken);
 
             return null;
         }
     }
 
-    public Task RemoveAsync(string key)
-    {
-        return _cache.RemoveAsync(key);
-    }
+    public Task RemoveAsync(string key) => RemoveAsync(key, CancellationToken.None);
+
+    public Task RemoveAsync(string key, CancellationToken cancellationToken) =>
+        _cache.RemoveAsync(key, cancellationToken);
 
     private async Task StoreTicketAsync(
         string key,
-        AuthenticationTicket ticket)
+        AuthenticationTicket ticket,
+        CancellationToken cancellationToken)
     {
         var serialized =
             TicketSerializer.Default.Serialize(ticket);
@@ -100,6 +118,7 @@ public sealed class RedisTicketStore : ITicketStore
         await _cache.SetAsync(
             key,
             protectedData,
-            options);
+            options,
+            cancellationToken);
     }
 }

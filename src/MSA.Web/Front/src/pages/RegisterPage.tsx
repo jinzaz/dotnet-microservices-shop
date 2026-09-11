@@ -1,32 +1,32 @@
-import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../app/auth/AuthProvider';
 import { AuthPageLayout } from '../features/auth/AuthPageLayout';
-import { RegisterForm } from '../features/auth/RegisterForm';
-import type { RegistrationDetails } from '../features/auth/types';
 
 function safeRedirect(value: string | null): string {
   return value?.startsWith('/') && !value.startsWith('//') ? value : '/account';
 }
 
 export default function RegisterPage() {
-  const { isAuthenticated, register } = useAuth();
+  const { isAuthenticated, isLoading, login } = useAuth();
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
   const redirect = safeRedirect(searchParams.get('redirect'));
 
-  if (isAuthenticated) return <Navigate to="/account" replace />;
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) login(redirect);
+  }, [isAuthenticated, isLoading, login, redirect]);
 
-  const handleRegister = async (details: RegistrationDetails) => {
-    await register(details);
-    navigate(redirect, { replace: true });
-  };
+  if (isAuthenticated) return <Navigate to={redirect} replace />;
 
   return (
     <AuthPageLayout>
-      <RegisterForm
-        onSubmit={handleRegister}
-        loginTo={`/login?redirect=${encodeURIComponent(redirect)}`}
-      />
+      <div className="login-form" role="status">
+        <div className="login-form__heading">
+          <h1>正在前往创建账户</h1>
+          <p>注册由 MSA Identity 统一处理，请在身份页面选择“创建账户”。</p>
+        </div>
+        <div className="route-fallback"><span className="page-spinner" />正在连接统一身份服务…</div>
+      </div>
     </AuthPageLayout>
   );
 }

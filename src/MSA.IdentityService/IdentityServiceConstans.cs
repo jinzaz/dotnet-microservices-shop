@@ -15,10 +15,4 @@ internal static class IdentityServiceConstants
     }
     #endregion
 
-    internal static class Applications
-    {
-        internal const string MSA_Bff_Web = "MSA_Bff_Web";
-
-        internal const string MSA_Bff_BM = "MSA_Bff_BM";
-    }
 }

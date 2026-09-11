@@ -1,14 +1,17 @@
-import { clearAuthSession, getValidAccessToken } from '../../features/auth/auth-session';
+import { getCsrfToken } from '../../features/auth/auth-session';
 import { toApiError } from './api-error';
 import { apiUrl } from '../config/api';
 
 type ApiRequestOptions = Omit<RequestInit, 'body'> & {
   body?: unknown;
-  auth?: boolean;
 };
 
+function requiresCsrfToken(method: string | undefined): boolean {
+  return !['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method?.toUpperCase() ?? 'GET');
+}
+
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-  const { body, auth = true, headers: suppliedHeaders, ...requestOptions } = options;
+  const { body, headers: suppliedHeaders, ...requestOptions } = options;
   const headers = new Headers(suppliedHeaders);
   headers.set('Accept', 'application/json');
 
@@ -16,9 +19,8 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     headers.set('Content-Type', 'application/json');
   }
 
-  const accessToken = auth ? await getValidAccessToken() : null;
-  if (accessToken) {
-    headers.set('Authorization', `Bearer ${accessToken}`);
+  if (requiresCsrfToken(requestOptions.method)) {
+    headers.set('X-XSRF-TOKEN', await getCsrfToken());
   }
 
   let response: Response;
@@ -30,11 +32,10 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new Error('暂时无法连接服务，请确认 API Gateway 已启动。');
+    throw new Error('暂时无法连接服务，请确认 MSA.BFF.Web 已启动。');
   }
 
   if (!response.ok) {
-    if (response.status === 401 && auth) clearAuthSession();
     throw await toApiError(response, '服务请求失败，请稍后重试。');
   }
 

@@ -2,8 +2,11 @@ const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() ?? '';
 
 export const apiBaseUrl = configuredBaseUrl.replace(/\/$/, '');
 
-export const apiUrl = (path: string) =>
+export const bffUrl = (path: string) =>
   `${apiBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+
+export const apiUrl = (path: string) =>
+  bffUrl(`/api${path.startsWith('/') ? path : `/${path}`}`);
 
 export const serviceRoutes = {
   identity: '/identity',

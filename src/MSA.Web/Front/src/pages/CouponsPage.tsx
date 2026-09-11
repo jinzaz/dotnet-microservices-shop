@@ -111,10 +111,18 @@ export default function CouponsPage() {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    queryClient.clear();
-    navigate('/');
+  const handleLogout = async () => {
+    if (demoMode) {
+      navigate('/');
+      return;
+    }
+
+    setNotice('');
+    try {
+      await logout('/');
+    } catch (error) {
+      setNotice(getErrorMessage(error, '退出登录失败，请稍后重试。'));
+    }
   };
 
   return (
@@ -124,7 +132,7 @@ export default function CouponsPage() {
           profile={profile}
           activeSection="coupons"
           onSectionChange={goToAccountSection}
-          onLogout={handleLogout}
+          onLogout={() => void handleLogout()}
           couponsPath={`/coupons${demoSuffix}`}
           ordersPath={`/orders${demoSuffix}`}
         />

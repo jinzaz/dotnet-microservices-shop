@@ -5,12 +5,14 @@ import { useAuth } from '../app/auth/AuthProvider';
 import { AccountSidebar, type AccountSection } from '../features/profile/AccountSidebar';
 import { AddressDrawer } from '../features/profile/AddressDrawer';
 import { AddressesSection } from '../features/profile/AddressesSection';
+import { ChangePasswordDialog } from '../features/profile/ChangePasswordDialog';
 import { demoAccountSnapshot } from '../features/profile/demo-account';
 import { PointsLedger } from '../features/profile/PointsLedger';
 import { PointsOverview } from '../features/profile/PointsOverview';
 import { ProfileEditorDialog } from '../features/profile/ProfileEditorDialog';
 import { ProfileSection } from '../features/profile/ProfileSection';
 import {
+  changePassword,
   createAddress,
   deleteAddress,
   getAccountSnapshot,
@@ -33,8 +35,10 @@ export default function AccountPage() {
   const [activeSection, setActiveSection] = useState<AccountSection>('overview');
   const [drawer, setDrawer] = useState<DrawerState>(null);
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
+  const [passwordEditorOpen, setPasswordEditorOpen] = useState(false);
   const [pendingAddressId, setPendingAddressId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
+  const [actionNotice, setActionNotice] = useState('');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { logout } = useAuth();
@@ -62,6 +66,11 @@ export default function AccountPage() {
     }
     await updateProfile(displayName, phoneNumber);
     await refreshAccount();
+  };
+
+  const savePassword = async (currentPassword: string, newPassword: string) => {
+    await changePassword(currentPassword, newPassword);
+    setActionNotice('登录密码已修改。');
   };
 
   const saveAddress = async (input: AddressInput) => {
@@ -142,10 +151,18 @@ export default function AccountPage() {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    queryClient.clear();
-    navigate('/');
+  const handleLogout = async () => {
+    if (demoMode) {
+      navigate('/');
+      return;
+    }
+
+    setActionError('');
+    try {
+      await logout('/');
+    } catch (error) {
+      setActionError(getErrorMessage(error, '退出登录失败，请稍后重试。'));
+    }
   };
 
   if (!demoMode && accountQuery.isPending) {
@@ -177,7 +194,7 @@ export default function AccountPage() {
           profile={snapshot.profile}
           activeSection={activeSection}
           onSectionChange={setActiveSection}
-          onLogout={handleLogout}
+          onLogout={() => void handleLogout()}
           ordersPath={demoMode ? '/orders?demo=1' : '/orders'}
           couponsPath={demoMode ? '/coupons?demo=1' : '/coupons'}
         />
@@ -190,7 +207,28 @@ export default function AccountPage() {
           </div>
           <PointsOverview points={snapshot.points} />
           {actionError ? <p className="form-message form-message--error" role="alert">{actionError}</p> : null}
+          {actionNotice ? <p className="form-message form-message--success" role="status">{actionNotice}</p> : null}
           <ProfileSection profile={snapshot.profile} onEdit={() => setProfileEditorOpen(true)} />
+          <section className="account-section" id="security">
+            <div className="account-section__heading">
+              <h2>账户安全</h2>
+              <button
+                className="outline-action"
+                type="button"
+                disabled={demoMode}
+                title={demoMode ? '开发预览模式不会修改密码' : undefined}
+                onClick={() => {
+                  setActionNotice('');
+                  setPasswordEditorOpen(true);
+                }}
+              >
+                修改密码
+              </button>
+            </div>
+            <dl className="profile-list">
+              <div><dt>登录密码</dt><dd>{demoMode ? '开发预览模式不可修改' : '由 MSA Identity 安全管理'}</dd></div>
+            </dl>
+          </section>
           <AddressesSection
             addresses={snapshot.addresses}
             pendingAddressId={pendingAddressId}
@@ -208,6 +246,11 @@ export default function AccountPage() {
         profile={snapshot.profile}
         onClose={() => setProfileEditorOpen(false)}
         onSave={saveProfile}
+      />
+      <ChangePasswordDialog
+        open={passwordEditorOpen}
+        onClose={() => setPasswordEditorOpen(false)}
+        onSave={savePassword}
       />
       <AddressDrawer
         open={drawer !== null}

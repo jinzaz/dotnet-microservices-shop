@@ -1,160 +1,77 @@
 import { toApiError } from '../../shared/api/api-error';
-import { apiUrl, serviceRoutes } from '../../shared/config/api';
-import type { AuthSession, LoginCredentials, TokenResponse } from './types';
+import { bffUrl } from '../../shared/config/api';
 
-const storageKey = 'msa.store.auth.v1';
-const refreshLeewayMs = 45_000;
-const listeners = new Set<() => void>();
-let refreshPromise: Promise<string | null> | null = null;
-let sessionEpoch = 0;
+type CsrfResponse = { token?: string };
+type UserSessionResponse = { isAuthenticated?: boolean };
 
-function safeRead(storage: Storage): AuthSession | null {
-  try {
-    const raw = storage.getItem(storageKey);
-    return raw ? (JSON.parse(raw) as AuthSession) : null;
-  } catch {
-    return null;
-  }
-}
+let csrfTokenPromise: Promise<string> | null = null;
 
-function readSession(): AuthSession | null {
-  return safeRead(window.localStorage) ?? safeRead(window.sessionStorage);
-}
-
-function notify(): void {
-  listeners.forEach((listener) => listener());
-}
-
-function persistSession(session: AuthSession): void {
-  window.localStorage.removeItem(storageKey);
-  window.sessionStorage.removeItem(storageKey);
-  const storage = session.rememberMe ? window.localStorage : window.sessionStorage;
-  storage.setItem(storageKey, JSON.stringify(session));
-  notify();
-}
-
-function toSession(tokens: TokenResponse, rememberMe: boolean, previousRefreshToken?: string): AuthSession {
-  return {
-    accessToken: tokens.access_token,
-    refreshToken: tokens.refresh_token ?? previousRefreshToken,
-    tokenType: tokens.token_type || 'Bearer',
-    expiresAt: Date.now() + Math.max(tokens.expires_in, 1) * 1000,
-    scope: tokens.scope,
-    rememberMe,
-  };
-}
-
-async function requestTokens(parameters: URLSearchParams): Promise<TokenResponse> {
+export async function hasBffSession(): Promise<boolean> {
   let response: Response;
   try {
-    response = await fetch(apiUrl(`${serviceRoutes.identity}/connect/token`), {
-      method: 'POST',
+    response = await fetch(bffUrl('/bff/user'), {
       credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: parameters,
+      headers: { Accept: 'application/json' },
     });
   } catch {
-    throw new Error('暂时无法连接登录服务，请确认 API Gateway 已启动。');
+    throw new Error('暂时无法连接登录服务，请确认 MSA.BFF.Web 已启动。');
+  }
+
+  if (response.status === 401) return false;
+  if (!response.ok) {
+    throw await toApiError(response, '登录状态读取失败，请稍后重试。');
+  }
+
+  const session = (await response.json()) as UserSessionResponse;
+  return session.isAuthenticated === true;
+}
+
+export function beginLogin(returnUrl = '/account'): void {
+  const query = new URLSearchParams({ returnUrl });
+  window.location.assign(bffUrl(`/bff/login?${query}`));
+}
+
+async function requestCsrfToken(): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetch(bffUrl('/bff/csrf'), {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+  } catch {
+    throw new Error('暂时无法连接安全会话服务，请确认 MSA.BFF.Web 已启动。');
   }
 
   if (!response.ok) {
-    throw await toApiError(response, '登录服务暂时不可用，请稍后重试。');
+    throw await toApiError(response, '安全校验初始化失败，请稍后重试。');
   }
 
-  return (await response.json()) as TokenResponse;
+  const { token } = (await response.json()) as CsrfResponse;
+  if (!token) throw new Error('安全校验初始化失败，请刷新页面后重试。');
+  return token;
 }
 
-async function establishIdentityCookie(credentials: LoginCredentials): Promise<void> {
-  let response: Response;
-  try {
-    response = await fetch(apiUrl(`${serviceRoutes.identity}/api/auth/login`), {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email: credentials.email,
-        password: credentials.password,
-        rememberMe: credentials.rememberMe,
-      }),
-    });
-  } catch {
-    throw new Error('暂时无法连接登录服务，请确认 API Gateway 已启动。');
-  }
-
-  if (!response.ok) {
-    throw await toApiError(response, '登录服务暂时不可用，请稍后重试。');
-  }
-}
-
-export async function signIn(credentials: LoginCredentials): Promise<void> {
-  const parameters = new URLSearchParams({
-    grant_type: 'password',
-    client_id: 'msa-web',
-    username: credentials.email,
-    password: credentials.password,
-    scope: 'openid profile email api offline_access',
+export function getCsrfToken(): Promise<string> {
+  csrfTokenPromise ??= requestCsrfToken().catch((error: unknown) => {
+    csrfTokenPromise = null;
+    throw error;
   });
-
-  const tokens = await requestTokens(parameters);
-  await establishIdentityCookie(credentials);
-
-  persistSession(toSession(tokens, credentials.rememberMe));
+  return csrfTokenPromise;
 }
 
-async function refreshAccessToken(session: AuthSession, epoch: number): Promise<string | null> {
-  if (!session.refreshToken) {
-    clearAuthSession();
-    return null;
-  }
+export async function signOut(returnUrl = '/'): Promise<void> {
+  const token = await getCsrfToken();
+  const query = new URLSearchParams({ returnUrl });
+  const form = document.createElement('form');
+  const field = document.createElement('input');
 
-  try {
-    const tokens = await requestTokens(
-      new URLSearchParams({
-        grant_type: 'refresh_token',
-        client_id: 'msa-web',
-        refresh_token: session.refreshToken,
-      }),
-    );
-    if (epoch !== sessionEpoch) return null;
-    const refreshed = toSession(tokens, session.rememberMe, session.refreshToken);
-    persistSession(refreshed);
-    return refreshed.accessToken;
-  } catch {
-    if (epoch === sessionEpoch) clearAuthSession();
-    return null;
-  }
-}
-
-export async function getValidAccessToken(): Promise<string | null> {
-  const session = readSession();
-  if (!session) return null;
-  if (session.expiresAt - Date.now() > refreshLeewayMs) return session.accessToken;
-
-  const epoch = sessionEpoch;
-  refreshPromise ??= refreshAccessToken(session, epoch).finally(() => {
-    refreshPromise = null;
-  });
-  return refreshPromise;
-}
-
-export function hasAuthSession(): boolean {
-  return readSession() !== null;
-}
-
-export function clearAuthSession(): void {
-  sessionEpoch += 1;
-  window.localStorage.removeItem(storageKey);
-  window.sessionStorage.removeItem(storageKey);
-  notify();
-}
-
-export function subscribeToAuthSession(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+  form.method = 'post';
+  form.action = bffUrl(`/bff/logout?${query}`);
+  form.hidden = true;
+  field.type = 'hidden';
+  field.name = '__RequestVerificationToken';
+  field.value = token;
+  form.append(field);
+  document.body.append(form);
+  form.submit();
 }

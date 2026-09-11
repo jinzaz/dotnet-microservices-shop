@@ -39,8 +39,7 @@ export async function toApiError(response: Response, fallbackMessage: string): P
   }
 
   const unauthorizedMessage = response.status === 401
-    || (response.status === 403 && problem?.error === 'invalid_grant')
-    ? '邮箱或密码不正确，请重新输入。'
+    ? '登录状态已失效，请重新登录。'
     : undefined;
   const message =
     firstValidationMessage(problem?.errors) ??

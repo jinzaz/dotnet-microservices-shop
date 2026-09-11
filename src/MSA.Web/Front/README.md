@@ -7,7 +7,7 @@ npm install
 npm run dev
 ```
 
-开发服务器监听 `http://localhost:5173`，并将微服务前缀代理到 API Gateway `https://localhost:10000`。运行真实数据页面前请启动 Gateway、Identity、Catalog 及其依赖。
+开发服务器监听 `http://localhost:5173`，并将 `/bff` 与 `/api` 代理到 `MSA.BFF.Web`（`https://localhost:10008`）。登录、注册和注销经 BFF 的 Authorization Code + PKCE 流程完成，浏览器只保存会话 Cookie，不保存 access token 或 refresh token。运行真实数据页面前请启动 BFF、Gateway、Identity、Identity UI、Catalog 及其依赖。
 
 仓库父目录 `C#.NET` 含有 Vite 不支持的 `#` 路径字符；`npm run dev` 会先将 Windows 临时目录规范化为长路径，再创建无 `#` 的目录联接，并在正常退出时清理。这样可以同时避开 `#` 与 `ADMINI~1` 一类 8.3 短路径限制，无需调整现有仓库路径。
 

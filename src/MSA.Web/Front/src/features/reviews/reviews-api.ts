@@ -10,6 +10,5 @@ export const reviewApiPaths = {
 export function listProductReviews(productId: string): Promise<ProductReviewResult> {
   return apiRequest<ProductReviewResult>(
     `${reviewApiPaths.productReviews(productId)}?skip=0&take=20&sort=latest`,
-    { auth: false },
   );
 }

@@ -1,27 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-const gatewayPrefixes = [
-  '/identity',
-  '/catalog',
-  '/basket',
-  '/order',
-  '/inventory',
-  '/payment',
-  '/notification',
-  '/review',
-];
-
-const proxy = Object.fromEntries(
-  gatewayPrefixes.map((prefix) => [
-    `^${prefix}(?:/|$)`,
-    {
-      target: 'https://localhost:10000',
-      changeOrigin: true,
-      secure: false,
-    },
-  ]),
-);
+const bffProxy = {
+  target: 'https://localhost:10008',
+  changeOrigin: true,
+  secure: false,
+};
 
 export default defineConfig({
   plugins: [react()],
@@ -31,7 +15,10 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
-    proxy,
+    proxy: {
+      '/api': bffProxy,
+      '/bff': bffProxy,
+    },
   },
   preview: {
     port: 4173,

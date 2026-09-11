@@ -30,7 +30,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 });
 
 
-builder.Services.AddIdentityDefault();
+builder.Services.AddIdentityDefault(builder.Configuration);
 
 builder.Services.AddQuartz(options =>
 {

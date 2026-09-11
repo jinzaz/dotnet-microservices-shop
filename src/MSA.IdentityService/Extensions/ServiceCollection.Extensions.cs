@@ -1,13 +1,28 @@
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.AspNetCore.WebUtilities;
+using OpenIddict.Validation.AspNetCore;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
 internal static class ServiceCollection
 {
-    internal static IServiceCollection AddIdentityDefault(this IServiceCollection services)
+    internal static IServiceCollection AddIdentityDefault(
+        this IServiceCollection services,
+        IConfiguration configuration)
     {
+        var identityUiBaseUrl = configuration["IdentityUi:BaseUrl"];
+        if (!Uri.TryCreate(identityUiBaseUrl, UriKind.Absolute, out var identityUiBaseUri) ||
+            identityUiBaseUri.Scheme != Uri.UriSchemeHttp && identityUiBaseUri.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new InvalidOperationException("IdentityUi:BaseUrl must be an absolute HTTP or HTTPS URI.");
+        }
+
         services.AddIdentity<ApplicationUser, IdentityRole>(options =>
         {
+            options.ClaimsIdentity.UserIdClaimType = OpenIddictConstants.Claims.Subject;
+            options.ClaimsIdentity.UserNameClaimType = OpenIddictConstants.Claims.Name;
+            options.ClaimsIdentity.RoleClaimType = OpenIddictConstants.Claims.Role;
+            options.ClaimsIdentity.EmailClaimType = OpenIddictConstants.Claims.Email;
             options.Password.RequiredLength = 10;
             options.Password.RequireDigit = true;
             options.Password.RequireLowercase = true;
@@ -21,6 +36,23 @@ internal static class ServiceCollection
         .AddEntityFrameworkStores<ApplicationDbContext>()
         .AddDefaultTokenProviders();
 
+        services.ConfigureApplicationCookie(options =>
+        {
+            options.Events.OnRedirectToLogin = context =>
+            {
+                var returnUrl = context.Properties.RedirectUri;
+                if (string.IsNullOrWhiteSpace(returnUrl) ||
+                    !returnUrl.StartsWith('/') || returnUrl.StartsWith("//", StringComparison.Ordinal))
+                {
+                    returnUrl = "/";
+                }
+
+                var loginUrl = new Uri(identityUiBaseUri, "login").AbsoluteUri;
+                context.Response.Redirect(QueryHelpers.AddQueryString(loginUrl, "returnUrl", returnUrl));
+                return Task.CompletedTask;
+            };
+        });
+
         return services;
     }
 
@@ -33,16 +65,23 @@ internal static class ServiceCollection
             })
             .AddServer(options =>
             {
-                var issuer = configuration["Authentication:Issuer"];
-                if (!string.IsNullOrWhiteSpace(issuer))
-                    options.SetIssuer(new Uri(issuer));
+                var issuerValue = configuration["Authentication:Issuer"];
+                if (!Uri.TryCreate(issuerValue, UriKind.Absolute, out var issuer) ||
+                    issuer.Scheme != Uri.UriSchemeHttp && issuer.Scheme != Uri.UriSchemeHttps)
+                {
+                    throw new InvalidOperationException(
+                        "Authentication:Issuer must be an absolute HTTP or HTTPS URI.");
+                }
+
+                options.SetIssuer(issuer);
 
                 options.SetAuthorizationEndpointUris("/connect/authorize");
                 options.SetTokenEndpointUris("/connect/token");
-                options.SetEndSessionEndpointUris("connect/logout");
+                options.SetEndSessionEndpointUris("/connect/logout");
                 options.AllowAuthorizationCodeFlow().RequireProofKeyForCodeExchange();
                 options.AllowRefreshTokenFlow();
                 options.AllowClientCredentialsFlow();
+                options.DisableAccessTokenEncryption();
 
                 options.SetAccessTokenLifetime(
                     TimeSpan.FromMinutes(15));
@@ -54,6 +93,7 @@ internal static class ServiceCollection
                     OpenIddictConstants.Scopes.OpenId,
                     OpenIddictConstants.Scopes.Profile,
                     OpenIddictConstants.Scopes.Email,
+                    OpenIddictConstants.Scopes.Roles,
                     OpenIddictConstants.Scopes.OfflineAccess,
                     IdentityServiceConstants.Scopes.Catalog,
                     IdentityServiceConstants.Scopes.Inventory,
@@ -88,6 +128,12 @@ internal static class ServiceCollection
                 options.UseLocalServer();
                 options.UseAspNetCore();
             });
+
+        services.AddAuthentication(options =>
+        {
+            options.DefaultAuthenticateScheme = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
+            options.DefaultChallengeScheme = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
+        });
 
         return services;
     }

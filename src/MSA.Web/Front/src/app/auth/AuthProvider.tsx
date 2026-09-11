@@ -1,58 +1,38 @@
+import { useQuery } from '@tanstack/react-query';
 import {
   createContext,
-  useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useState,
   type ReactNode,
 } from 'react';
 import {
-  clearAuthSession,
-  hasAuthSession,
-  signIn as establishSession,
-  subscribeToAuthSession,
+  beginLogin,
+  hasBffSession,
+  signOut,
 } from '../../features/auth/auth-session';
-import { registerAccount } from '../../features/auth/auth-api';
-import type { LoginCredentials, RegistrationDetails } from '../../features/auth/types';
 
 type AuthContextValue = {
   isAuthenticated: boolean;
-  login: (credentials: LoginCredentials) => Promise<void>;
-  register: (details: RegistrationDetails) => Promise<void>;
-  logout: () => void;
+  isLoading: boolean;
+  login: (returnUrl?: string) => void;
+  logout: (returnUrl?: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(hasAuthSession);
-
-  useEffect(
-    () => subscribeToAuthSession(() => setIsAuthenticated(hasAuthSession())),
-    [],
-  );
-
-  const login = useCallback(async (credentials: LoginCredentials) => {
-    await establishSession(credentials);
-  }, []);
-
-  const register = useCallback(async (details: RegistrationDetails) => {
-    await registerAccount(details);
-    await establishSession({
-      email: details.email,
-      password: details.password,
-      rememberMe: true,
-    });
-  }, []);
-
-  const logout = useCallback(() => {
-    clearAuthSession();
-  }, []);
+  const sessionQuery = useQuery({
+    queryKey: ['bff', 'user-session'],
+    queryFn: hasBffSession,
+    retry: false,
+    staleTime: 30_000,
+  });
+  const isAuthenticated = sessionQuery.data === true;
+  const isLoading = sessionQuery.isPending;
 
   const value = useMemo(
-    () => ({ isAuthenticated, login, register, logout }),
-    [isAuthenticated, login, register, logout],
+    () => ({ isAuthenticated, isLoading, login: beginLogin, logout: signOut }),
+    [isAuthenticated, isLoading],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

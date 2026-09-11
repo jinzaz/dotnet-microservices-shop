@@ -1,7 +1,9 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Primitives;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
 using System.Security.Claims;
@@ -13,7 +15,10 @@ namespace MSA.IdentityService.Controllers;
 public sealed class AuthController(
     UserManager<ApplicationUser> users,
     SignInManager<ApplicationUser> signIn,
-    IOpenIddictScopeManager scopeManager) : ControllerBase
+    IOpenIddictApplicationManager applications,
+    IOpenIddictAuthorizationManager authorizations,
+    IOpenIddictScopeManager scopes,
+    TimeProvider timeProvider) : ControllerBase
 {
     [AllowAnonymous]
     [HttpPost("api/auth/register")]
@@ -21,9 +26,9 @@ public sealed class AuthController(
     {
         var user = new ApplicationUser
         {
-            UserName = request.Email,
-            Email = request.Email,
-            DisplayName = request.DisplayName,
+            UserName = request.Email.Trim(),
+            Email = request.Email.Trim(),
+            DisplayName = request.DisplayName.Trim(),
             EmailConfirmed = false
         };
 
@@ -39,7 +44,7 @@ public sealed class AuthController(
     [HttpPost("api/auth/login")]
     public async Task<IActionResult> Login(LoginRequest request)
     {
-        var user = await users.FindByEmailAsync(request.Email);
+        var user = await users.FindByEmailAsync(request.Email.Trim());
         if (user is null || !user.IsActive)
             return Unauthorized();
 
@@ -53,70 +58,146 @@ public sealed class AuthController(
     [AllowAnonymous]
     [HttpGet("~/connect/authorize")]
     [HttpPost("~/connect/authorize")]
-    public async Task<IActionResult> AuthorizeEndpoint()
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> AuthorizeEndpoint(CancellationToken cancellationToken)
     {
         var request = HttpContext.GetOpenIddictServerRequest()
-            ?? throw new InvalidOperationException("OpenID Connect request is unavailable.");
-        var cookie = await HttpContext.AuthenticateAsync(IdentityConstants.ApplicationScheme);
-        if (!cookie.Succeeded)
+            ?? throw new InvalidOperationException("The OpenID Connect request cannot be retrieved.");
+
+        var authentication = await HttpContext.AuthenticateAsync(IdentityConstants.ApplicationScheme);
+        var user = authentication.Succeeded
+            ? await users.GetUserAsync(authentication.Principal!)
+            : null;
+        var issuedUtc = authentication.Properties?.IssuedUtc;
+        var exceedsMaxAge = request.MaxAge is { } maxAge &&
+            (issuedUtc is null ||
+             timeProvider.GetUtcNow() - issuedUtc.Value > TimeSpan.FromSeconds(maxAge));
+
+        if (user is null || !user.IsActive || !await signIn.CanSignInAsync(user) ||
+            request.HasPromptValue(PromptValues.Login) || exceedsMaxAge)
         {
-            var returnUrl = Request.PathBase + Request.Path + Request.QueryString;
-            return Challenge(new AuthenticationProperties { RedirectUri = returnUrl }, IdentityConstants.ApplicationScheme);
+            if (authentication.Succeeded)
+                await signIn.SignOutAsync();
+
+            if (request.HasPromptValue(PromptValues.None))
+                return OAuthForbid(Errors.LoginRequired, "The user is not logged in.");
+
+            return Challenge(
+                new AuthenticationProperties
+                {
+                    RedirectUri = await GetAuthorizationReturnUrl(request, cancellationToken)
+                },
+                IdentityConstants.ApplicationScheme);
         }
 
-        var user = await users.GetUserAsync(cookie.Principal!);
-        if (user is null || !user.IsActive)
-            return Forbid(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+        var application = await applications.FindByClientIdAsync(request.ClientId!, cancellationToken)
+            ?? throw new InvalidOperationException("The calling client application cannot be found.");
+        var applicationId = await applications.GetIdAsync(application, cancellationToken)
+            ?? throw new InvalidOperationException("The calling client identifier cannot be resolved.");
 
-        return SignIn(await CreatePrincipal(user, request.GetScopes()), OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+        var grants = await authorizations.FindAsync(
+            subject: user.Id,
+            client: applicationId,
+            status: Statuses.Valid,
+            type: AuthorizationTypes.Permanent,
+            scopes: request.GetScopes(),
+            cancellationToken).ToListAsync(cancellationToken);
+
+        var consentType = await applications.GetConsentTypeAsync(application, cancellationToken);
+        var canIssue = consentType switch
+        {
+            ConsentTypes.Implicit => true,
+            ConsentTypes.External => grants.Count > 0,
+            ConsentTypes.Explicit => grants.Count > 0 && !request.HasPromptValue(PromptValues.Consent),
+            _ => false
+        };
+
+        if (!canIssue)
+            return OAuthForbid(Errors.ConsentRequired, "Interactive user consent is required.");
+
+        var principal = await CreatePrincipal(user, request.GetScopes(), cancellationToken);
+        var authorization = grants.LastOrDefault() ?? await authorizations.CreateAsync(
+            (ClaimsIdentity)principal.Identity!,
+            user.Id,
+            applicationId,
+            AuthorizationTypes.Permanent,
+            principal.GetScopes(),
+            cancellationToken);
+        principal.SetAuthorizationId(await authorizations.GetIdAsync(authorization, cancellationToken));
+
+        return SignIn(principal, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
     }
 
     [AllowAnonymous]
     [HttpPost("~/connect/token")]
     [Consumes("application/x-www-form-urlencoded")]
-    public async Task<IActionResult> Token()
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> Token(CancellationToken cancellationToken)
     {
         var request = HttpContext.GetOpenIddictServerRequest()
-            ?? throw new InvalidOperationException("OpenID Connect request is unavailable.");
+            ?? throw new InvalidOperationException("The OpenID Connect request cannot be retrieved.");
 
-        if (request.IsPasswordGrantType())
+        if (request.IsAuthorizationCodeGrantType() || request.IsRefreshTokenGrantType())
         {
-            var user = await users.FindByNameAsync(request.Username!);
-            if (user is null || !user.IsActive)
-                return Forbid(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+            var authentication = await HttpContext.AuthenticateAsync(
+                OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+            var subject = authentication.Principal?.GetClaim(Claims.Subject);
+            var user = subject is null ? null : await users.FindByIdAsync(subject);
 
-            var passwordResult = await signIn.CheckPasswordSignInAsync(user, request.Password!, lockoutOnFailure: true);
-            if (!passwordResult.Succeeded)
-                return Forbid(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+            if (user is null || !user.IsActive ||
+                !await signIn.CanSignInAsync(user) || await users.IsLockedOutAsync(user))
+            {
+                return OAuthForbid(Errors.InvalidGrant, "The token is no longer valid.");
+            }
 
-            user.LastLoginOnUtc = DateTimeOffset.UtcNow;
-            await users.UpdateAsync(user);
-            return SignIn(await CreatePrincipal(user, request.GetScopes()), OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-        }
+            var identity = new ClaimsIdentity(
+                authentication.Principal!.Claims,
+                TokenValidationParameters.DefaultAuthenticationType,
+                Claims.Name,
+                Claims.Role);
+            await SetUserClaims(identity, user);
+            identity.SetDestinations(GetDestinations);
 
-        if (request.IsRefreshTokenGrantType())
-        {
-            var result = await HttpContext.AuthenticateAsync(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-            var id = result.Principal?.GetClaim(Claims.Subject);
-            var user = id is null ? null : await users.FindByIdAsync(id);
-            if (user is null || !user.IsActive)
-                return Forbid(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-
-            return SignIn(await CreatePrincipal(user, request.GetScopes()), OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+            return SignIn(
+                new ClaimsPrincipal(identity),
+                OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
         }
 
         if (request.IsClientCredentialsGrantType())
         {
-            var identity = new ClaimsIdentity(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme, Claims.Name, Claims.Role);
-            identity.SetClaim(Claims.Subject, request.ClientId!).SetClaim(Claims.Name, request.ClientId!);
+            // OpenIddict validates the client identifier, secret and permissions before pass-through.
+            var application = await applications.FindByClientIdAsync(request.ClientId!, cancellationToken)
+                ?? throw new InvalidOperationException("The calling client application cannot be found.");
+            var identity = new ClaimsIdentity(
+                TokenValidationParameters.DefaultAuthenticationType,
+                Claims.Name,
+                Claims.Role);
+            identity
+                .SetClaim(Claims.Subject, await applications.GetClientIdAsync(application, cancellationToken))
+                .SetClaim(Claims.Name, await applications.GetDisplayNameAsync(application, cancellationToken));
+
             var principal = new ClaimsPrincipal(identity);
             principal.SetScopes(request.GetScopes());
-            principal.SetResources("api");
-            principal.SetDestinations(_ => [Destinations.AccessToken]);
+            principal.SetResources(await scopes.ListResourcesAsync(principal.GetScopes()).ToListAsync(cancellationToken));
+            principal.SetDestinations(GetDestinations);
+
             return SignIn(principal, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
         }
 
-        throw new NotSupportedException("Grant type is not supported.");
+        throw new InvalidOperationException("The specified grant type is not supported.");
+    }
+
+    [AllowAnonymous]
+    [HttpGet("~/connect/logout")]
+    [HttpPost("~/connect/logout")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> Logout()
+    {
+        await signIn.SignOutAsync();
+
+        return SignOut(
+            new AuthenticationProperties { RedirectUri = "/" },
+            OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
     }
 
     [Authorize]
@@ -131,28 +212,79 @@ public sealed class AuthController(
         return result.Succeeded ? NoContent() : IdentityValidationProblem(result);
     }
 
-    private async Task<ClaimsPrincipal> CreatePrincipal(ApplicationUser user, IEnumerable<string> requestedScopes)
+    private async Task<ClaimsPrincipal> CreatePrincipal(
+        ApplicationUser user,
+        IEnumerable<string> requestedScopes,
+        CancellationToken cancellationToken)
     {
-        var identity = new ClaimsIdentity(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme, Claims.Name, Claims.Role);
-        identity
-            .SetClaim(Claims.Subject, user.Id)
-            .SetClaim(Claims.Email, user.Email)
-            .SetClaim(Claims.Name, user.DisplayName);
-
-        foreach (var role in await users.GetRolesAsync(user))
-            identity.AddClaim(new Claim(Claims.Role, role));
+        var identity = new ClaimsIdentity(
+            TokenValidationParameters.DefaultAuthenticationType,
+            Claims.Name,
+            Claims.Role);
+        await SetUserClaims(identity, user);
 
         var principal = new ClaimsPrincipal(identity);
-        var allowedScopes = new[]
-        {
-            Scopes.OpenId, Scopes.Profile, Scopes.Email, Scopes.OfflineAccess,
-            "api", "catalog.write", "inventory.write", "notifications.read.all"
-        };
-        principal.SetScopes(requestedScopes.Intersect(allowedScopes));
-        principal.SetResources("api");
-        principal.SetDestinations(_ => [Destinations.AccessToken]);
+        principal.SetScopes(requestedScopes);
+        principal.SetResources(await scopes.ListResourcesAsync(principal.GetScopes()).ToListAsync(cancellationToken));
+        principal.SetDestinations(GetDestinations);
         return principal;
     }
+
+    private async Task SetUserClaims(ClaimsIdentity identity, ApplicationUser user) => identity
+        .SetClaim(Claims.Subject, user.Id)
+        .SetClaim(Claims.Email, user.Email)
+        .SetClaim(
+            Claims.Name,
+            !string.IsNullOrWhiteSpace(user.DisplayName) ? user.DisplayName : user.UserName ?? user.Id)
+        .SetClaim(Claims.PreferredUsername, user.UserName)
+        .SetClaims(Claims.Role, [.. await users.GetRolesAsync(user)]);
+
+    private static IEnumerable<string> GetDestinations(Claim claim) => claim.Type switch
+    {
+        Claims.Name or Claims.PreferredUsername when claim.Subject!.HasScope(Scopes.Profile) =>
+            [Destinations.AccessToken, Destinations.IdentityToken],
+        Claims.Email when claim.Subject!.HasScope(Scopes.Email) =>
+            [Destinations.AccessToken, Destinations.IdentityToken],
+        Claims.Role when claim.Subject!.HasScope(Scopes.Roles) =>
+            [Destinations.AccessToken, Destinations.IdentityToken],
+        _ => [Destinations.AccessToken]
+    };
+
+    private async Task<string> GetAuthorizationReturnUrl(
+        OpenIddictRequest request,
+        CancellationToken cancellationToken)
+    {
+        IEnumerable<KeyValuePair<string, StringValues>> parameters = Request.HasFormContentType
+            ? await Request.ReadFormAsync(cancellationToken)
+            : Request.Query;
+
+        if (request.HasPromptValue(PromptValues.Login))
+        {
+            var values = parameters
+                .Where(parameter => !string.Equals(
+                    parameter.Key,
+                    Parameters.Prompt,
+                    StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            var prompt = string.Join(' ', request.GetPromptValues()
+                .Where(value => value != PromptValues.Login));
+
+            if (!string.IsNullOrEmpty(prompt))
+                values.Add(new KeyValuePair<string, StringValues>(Parameters.Prompt, prompt));
+
+            parameters = values;
+        }
+
+        return Request.PathBase + Request.Path + QueryString.Create(parameters);
+    }
+
+    private IActionResult OAuthForbid(string error, string description) => Forbid(
+        new AuthenticationProperties(new Dictionary<string, string?>
+        {
+            [OpenIddictServerAspNetCoreConstants.Properties.Error] = error,
+            [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = description
+        }),
+        OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
 
     private IActionResult IdentityValidationProblem(IdentityResult result) => ValidationProblem(
         new ValidationProblemDetails(result.Errors
@@ -160,6 +292,16 @@ public sealed class AuthController(
             .ToDictionary(x => x.Key, x => x.Select(y => y.Description).ToArray())));
 }
 
-public sealed record RegisterRequest(string Email, string Password, string DisplayName);
-public sealed record LoginRequest(string Email, string Password, bool RememberMe = false);
-public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+public sealed record RegisterRequest(
+    [property: Required, EmailAddress, StringLength(256)] string Email,
+    [property: Required] string Password,
+    [property: Required, StringLength(100)] string DisplayName);
+
+public sealed record LoginRequest(
+    [property: Required, EmailAddress, StringLength(256)] string Email,
+    [property: Required] string Password,
+    bool RememberMe = false);
+
+public sealed record ChangePasswordRequest(
+    [property: Required] string CurrentPassword,
+    [property: Required] string NewPassword);
