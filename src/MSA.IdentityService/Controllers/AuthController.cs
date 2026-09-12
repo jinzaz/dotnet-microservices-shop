@@ -293,15 +293,15 @@ public sealed class AuthController(
 }
 
 public sealed record RegisterRequest(
-    [property: Required, EmailAddress, StringLength(256)] string Email,
-    [property: Required] string Password,
-    [property: Required, StringLength(100)] string DisplayName);
+    [Required, EmailAddress, StringLength(256)] string Email,
+    [Required] string Password,
+    [Required, StringLength(100)] string DisplayName);
 
 public sealed record LoginRequest(
-    [property: Required, EmailAddress, StringLength(256)] string Email,
-    [property: Required] string Password,
+    [Required, EmailAddress, StringLength(256)] string Email,
+    [Required] string Password,
     bool RememberMe = false);
 
 public sealed record ChangePasswordRequest(
-    [property: Required] string CurrentPassword,
-    [property: Required] string NewPassword);
+    [Required] string CurrentPassword,
+    [Required] string NewPassword);

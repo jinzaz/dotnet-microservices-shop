@@ -80,6 +80,7 @@ public static class ServiceCollections
                 options.SessionStore = store;
             });
 
+        services.AddAuthorization();
         return services;
     }
 

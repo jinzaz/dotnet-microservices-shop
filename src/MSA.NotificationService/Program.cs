@@ -36,7 +36,7 @@ builder.Services.AddHostedService<NotificationDispatchService>();
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
     options.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/");
-    options.AddAudiences("notification-api");
+    options.AddAudiences("notification-api", "notification.admin.write", "notification.admin.read");
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });

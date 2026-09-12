@@ -76,7 +76,7 @@ builder.Services.AddIntegrationEventHandler<CommitInventoryIntegrationEvent, Com
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
     options.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/");
-    options.AddAudiences("inventory-api");
+    options.AddAudiences("inventory-api", "inventory.admin.write", "inventory.admin.read");
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });

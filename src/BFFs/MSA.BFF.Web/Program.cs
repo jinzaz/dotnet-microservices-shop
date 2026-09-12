@@ -39,7 +39,6 @@ builder.Services.AddQuartzHostedService(options =>
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
-builder.Services.AddAuthorization();
 builder.Services.AddTransient<AnttiforgeryValidationMiddleware>();
 builder.Services.AddBffServicesDefault(redisConnectionString);
 builder.Services.AddOpenIddictDefault(builder.Configuration, builder.Environment);

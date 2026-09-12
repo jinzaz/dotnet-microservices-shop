@@ -9,7 +9,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
     options.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/");
-    options.AddAudiences("user-api");
+    options.AddAudiences("user-api", "user.admin.write", "user.admin.read");
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });

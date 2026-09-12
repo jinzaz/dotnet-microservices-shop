@@ -61,7 +61,7 @@ builder.Services.AddHostedService<PaymentProviderOperationDispatcher>();
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
     options.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/");
-    options.AddAudiences("payment-api");
+    options.AddAudiences("payment-api", "payment.admin.write", "payment.admin.read");
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });
