@@ -1,8 +1,7 @@
-namespace MSA.IdentityService.Domain;
+namespace MSA.UserService.Domain;
 
 public interface IUserAddressRepository
 {
-    Task<bool> UserExistsAsync(string userId, CancellationToken cancellationToken);
     Task<int> CountActiveAsync(string userId, CancellationToken cancellationToken);
     Task<UserAddress?> GetAsync(string userId, Guid addressId, CancellationToken cancellationToken);
     Task ClearDefaultAsync(string userId, DateTimeOffset changedOnUtc, CancellationToken cancellationToken);
@@ -11,7 +10,6 @@ public interface IUserAddressRepository
 
 public interface ILoyaltyPointRepository
 {
-    Task<bool> UserExistsAsync(string userId, CancellationToken cancellationToken);
     Task<LoyaltyPointAccount?> GetAccountAsync(string userId, CancellationToken cancellationToken);
     Task<LoyaltyPointEntry?> GetEntryAsync(string userId, string businessKey, CancellationToken cancellationToken);
     void AddAccount(LoyaltyPointAccount account);

@@ -1,23 +1,12 @@
-using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using MSA.IdentityService.Application;
-using MSA.IdentityService.Application.Addresses;
-using MSA.IdentityService.Domain;
-using MSA.IdentityService.Infrastructure;
-using MSA.IdentityService.Middleware;
-using MSA.Infrastrucute.Mediator.Behaviors;
 using OpenTelemetry.Resources;
 using Quartz;
-using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddControllers();
 builder.Services.AddOpenApi();
-builder.Services.AddExceptionHandler<IdentityApiExceptionHandler>();
 builder.Services.AddProblemDetails();
 
 var connection = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -46,15 +35,6 @@ builder.Services.AddQuartzHostedService(options =>
 builder.Services.AddOpenIddictServer(builder.Configuration, builder.Environment);
 
 
-builder.Services.AddMediatR(configuration =>
-    configuration.RegisterServicesFromAssemblyContaining<CreateUserAddressCommand>());
-builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
-builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(IdentityTransactionBehavior<,>));
-builder.Services.AddScoped<IdentityCustomerStore>();
-builder.Services.AddScoped<IUserAddressRepository>(services => services.GetRequiredService<IdentityCustomerStore>());
-builder.Services.AddScoped<ILoyaltyPointRepository>(services => services.GetRequiredService<IdentityCustomerStore>());
-builder.Services.AddScoped<IIdentityCustomerReadStore>(services => services.GetRequiredService<IdentityCustomerStore>());
-builder.Services.AddScoped<IUserBusinessLock, PostgresUserBusinessLock>();
 builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.AddHostedService<IdentitySeedHostedService>();

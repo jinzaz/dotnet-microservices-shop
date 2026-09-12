@@ -16,7 +16,7 @@ public abstract class MSADbContext(DbContextOptions options, IMediator mediator)
     public async Task<bool> SaveEntitiesAsync(CancellationToken cancellationToken = default)
     {
         await mediator.DispatchDomainEventsAsync(this, cancellationToken);
-        return await base.SaveChangesAsync(cancellationToken) > 0;
+        return await SaveChangesAsync(cancellationToken) > 0;
     }
 
     public async Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)

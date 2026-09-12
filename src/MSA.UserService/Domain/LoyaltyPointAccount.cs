@@ -1,6 +1,6 @@
 using MSA.Infrastrucute.Entities;
 
-namespace MSA.IdentityService.Domain;
+namespace MSA.UserService.Domain;
 
 public sealed class LoyaltyPointAccount : AggregateRoot<string>
 {
@@ -44,11 +44,11 @@ public sealed class LoyaltyPointAccount : AggregateRoot<string>
         }
         catch (OverflowException)
         {
-            throw new IdentityBusinessException("The point balance would overflow.");
+            throw new UserBusinessException("The point balance would overflow.");
         }
 
         if (nextBalance < 0)
-            throw new IdentityBusinessException("The point balance cannot become negative.");
+            throw new UserBusinessException("The point balance cannot become negative.");
 
         var before = Balance;
         Balance = nextBalance;

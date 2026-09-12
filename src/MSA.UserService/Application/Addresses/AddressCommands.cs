@@ -1,8 +1,8 @@
 using MediatR;
-using MSA.IdentityService.Domain;
+using MSA.UserService.Domain;
 using MSA.Infrastrucute.Mediator;
 
-namespace MSA.IdentityService.Application.Addresses;
+namespace MSA.UserService.Application.Addresses;
 
 public sealed record CreateUserAddressCommand(
     string UserId,
@@ -32,12 +32,9 @@ internal sealed class CreateUserAddressCommandHandler(
         CancellationToken cancellationToken)
     {
         await userLock.AcquireAsync(request.UserId, "addresses", cancellationToken);
-        if (!await addresses.UserExistsAsync(request.UserId, cancellationToken))
-            throw new IdentityResourceNotFoundException("The user does not exist.");
-
         var activeCount = await addresses.CountActiveAsync(request.UserId, cancellationToken);
         if (activeCount >= UserAddress.MaximumActiveAddressesPerUser)
-            throw new IdentityBusinessException($"A user can have at most {UserAddress.MaximumActiveAddressesPerUser} active addresses.");
+            throw new UserBusinessException($"A user can have at most {UserAddress.MaximumActiveAddressesPerUser} active addresses.");
 
         var now = clock.GetUtcNow();
         var makeDefault = request.MakeDefault || activeCount == 0;
@@ -46,7 +43,7 @@ internal sealed class CreateUserAddressCommandHandler(
 
         var address = UserAddress.Create(Guid.NewGuid(), request.UserId, request.Details, makeDefault, now);
         addresses.Add(address);
-        return IdentityCustomerResponseMapper.ToResponse(address);
+        return UserResponseMapper.ToResponse(address);
     }
 }
 
@@ -61,9 +58,9 @@ internal sealed class UpdateUserAddressCommandHandler(
     {
         await userLock.AcquireAsync(request.UserId, "addresses", cancellationToken);
         var address = await addresses.GetAsync(request.UserId, request.AddressId, cancellationToken)
-            ?? throw new IdentityResourceNotFoundException("The address does not exist.");
+            ?? throw new UserResourceNotFoundException("The address does not exist.");
         address.Update(request.Details, clock.GetUtcNow());
-        return IdentityCustomerResponseMapper.ToResponse(address);
+        return UserResponseMapper.ToResponse(address);
     }
 }
 
@@ -80,9 +77,9 @@ internal sealed class SetDefaultUserAddressCommandHandler(
         var now = clock.GetUtcNow();
         await addresses.ClearDefaultAsync(request.UserId, now, cancellationToken);
         var address = await addresses.GetAsync(request.UserId, request.AddressId, cancellationToken)
-            ?? throw new IdentityResourceNotFoundException("The address does not exist.");
+            ?? throw new UserResourceNotFoundException("The address does not exist.");
         address.MakeDefault(now);
-        return IdentityCustomerResponseMapper.ToResponse(address);
+        return UserResponseMapper.ToResponse(address);
     }
 }
 
@@ -97,7 +94,7 @@ internal sealed class DeleteUserAddressCommandHandler(
     {
         await userLock.AcquireAsync(request.UserId, "addresses", cancellationToken);
         var address = await addresses.GetAsync(request.UserId, request.AddressId, cancellationToken)
-            ?? throw new IdentityResourceNotFoundException("The address does not exist.");
+            ?? throw new UserResourceNotFoundException("The address does not exist.");
 
         var now = clock.GetUtcNow();
         address.Remove(now);

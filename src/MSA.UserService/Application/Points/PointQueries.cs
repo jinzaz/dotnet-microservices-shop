@@ -1,7 +1,7 @@
 using MediatR;
 using MSA.Infrastrucute.Mediator;
 
-namespace MSA.IdentityService.Application.Points;
+namespace MSA.UserService.Application.Points;
 
 public sealed record GetLoyaltyPointAccountQuery(string UserId) : IQuery<LoyaltyPointAccountResponse>;
 
@@ -14,7 +14,7 @@ public sealed record ListLoyaltyPointEntriesQuery(
     int Skip,
     int Take) : IQuery<IReadOnlyList<LoyaltyPointEntryResponse>>;
 
-internal sealed class GetLoyaltyPointAccountQueryHandler(IIdentityCustomerReadStore readStore)
+internal sealed class GetLoyaltyPointAccountQueryHandler(IUserReadStore readStore)
     : IRequestHandler<GetLoyaltyPointAccountQuery, LoyaltyPointAccountResponse>
 {
     public Task<LoyaltyPointAccountResponse> Handle(
@@ -23,7 +23,7 @@ internal sealed class GetLoyaltyPointAccountQueryHandler(IIdentityCustomerReadSt
         readStore.GetPointAccountAsync(request.UserId, cancellationToken);
 }
 
-internal sealed class GetLoyaltyPointEntryQueryHandler(IIdentityCustomerReadStore readStore)
+internal sealed class GetLoyaltyPointEntryQueryHandler(IUserReadStore readStore)
     : IRequestHandler<GetLoyaltyPointEntryQuery, LoyaltyPointEntryResponse?>
 {
     public Task<LoyaltyPointEntryResponse?> Handle(
@@ -32,7 +32,7 @@ internal sealed class GetLoyaltyPointEntryQueryHandler(IIdentityCustomerReadStor
         readStore.GetPointEntryAsync(request.UserId, request.EntryId, cancellationToken);
 }
 
-internal sealed class ListLoyaltyPointEntriesQueryHandler(IIdentityCustomerReadStore readStore)
+internal sealed class ListLoyaltyPointEntriesQueryHandler(IUserReadStore readStore)
     : IRequestHandler<ListLoyaltyPointEntriesQuery, IReadOnlyList<LoyaltyPointEntryResponse>>
 {
     public Task<IReadOnlyList<LoyaltyPointEntryResponse>> Handle(

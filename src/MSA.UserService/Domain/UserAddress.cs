@@ -1,6 +1,6 @@
 using MSA.Infrastrucute.Entities;
 
-namespace MSA.IdentityService.Domain;
+namespace MSA.UserService.Domain;
 
 public sealed class UserAddress : AggregateRoot<Guid>
 {
@@ -99,7 +99,7 @@ public sealed class UserAddress : AggregateRoot<Guid>
     private void EnsureActive()
     {
         if (!IsEnabled || DeletedOnUtc is not null)
-            throw new IdentityBusinessException("The address is no longer active.");
+            throw new UserBusinessException("The address is no longer active.");
     }
 
     private void Touch(DateTimeOffset now)

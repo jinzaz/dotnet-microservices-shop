@@ -10,6 +10,7 @@ export const apiUrl = (path: string) =>
 
 export const serviceRoutes = {
   identity: '/identity',
+  user: '/user',
   catalog: '/catalog',
   basket: '/basket',
   ordering: '/order',

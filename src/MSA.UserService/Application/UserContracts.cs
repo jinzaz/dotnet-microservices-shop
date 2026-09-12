@@ -1,6 +1,6 @@
-using MSA.IdentityService.Domain;
+using MSA.UserService.Domain;
 
-namespace MSA.IdentityService.Application;
+namespace MSA.UserService.Application;
 
 /// <summary>Represents one user delivery address.</summary>
 public sealed record UserAddressResponse(
@@ -39,7 +39,7 @@ public sealed record LoyaltyPointEntryResponse(
 
 public sealed record PointAdjustmentResult(LoyaltyPointEntryResponse Entry, bool IsReplay);
 
-public interface IIdentityCustomerReadStore
+public interface IUserReadStore
 {
     Task<IReadOnlyList<UserAddressResponse>> ListAddressesAsync(string userId, CancellationToken cancellationToken);
     Task<UserAddressResponse?> GetAddressAsync(string userId, Guid addressId, CancellationToken cancellationToken);
@@ -55,7 +55,7 @@ public interface IIdentityCustomerReadStore
         CancellationToken cancellationToken);
 }
 
-internal static class IdentityCustomerResponseMapper
+internal static class UserResponseMapper
 {
     public static UserAddressResponse ToResponse(UserAddress address) => new(
         address.Id,

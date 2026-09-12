@@ -1,13 +1,13 @@
 using MediatR;
 using MSA.Infrastrucute.Mediator;
 
-namespace MSA.IdentityService.Application.Addresses;
+namespace MSA.UserService.Application.Addresses;
 
 public sealed record ListUserAddressesQuery(string UserId) : IQuery<IReadOnlyList<UserAddressResponse>>;
 
 public sealed record GetUserAddressQuery(string UserId, Guid AddressId) : IQuery<UserAddressResponse?>;
 
-internal sealed class ListUserAddressesQueryHandler(IIdentityCustomerReadStore readStore)
+internal sealed class ListUserAddressesQueryHandler(IUserReadStore readStore)
     : IRequestHandler<ListUserAddressesQuery, IReadOnlyList<UserAddressResponse>>
 {
     public Task<IReadOnlyList<UserAddressResponse>> Handle(
@@ -16,7 +16,7 @@ internal sealed class ListUserAddressesQueryHandler(IIdentityCustomerReadStore r
         readStore.ListAddressesAsync(request.UserId, cancellationToken);
 }
 
-internal sealed class GetUserAddressQueryHandler(IIdentityCustomerReadStore readStore)
+internal sealed class GetUserAddressQueryHandler(IUserReadStore readStore)
     : IRequestHandler<GetUserAddressQuery, UserAddressResponse?>
 {
     public Task<UserAddressResponse?> Handle(

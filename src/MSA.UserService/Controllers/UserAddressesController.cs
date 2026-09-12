@@ -1,17 +1,17 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using MSA.IdentityService.Application;
-using MSA.IdentityService.Application.Addresses;
-using MSA.IdentityService.Domain;
+using MSA.UserService.Application;
+using MSA.UserService.Application.Addresses;
+using MSA.UserService.Domain;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 
-namespace MSA.IdentityService.Controllers;
+namespace MSA.UserService.Controllers;
 
 [Authorize]
 [ApiController]
-[Route("api/users/me/addresses")]
+[Route("api/user/me/addresses")]
 public sealed class UserAddressesController(ISender sender) : ControllerBase
 {
     [HttpGet]

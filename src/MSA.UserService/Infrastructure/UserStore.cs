@@ -1,17 +1,14 @@
 using Microsoft.EntityFrameworkCore;
-using MSA.IdentityService.Application;
-using MSA.IdentityService.Domain;
+using MSA.UserService.Application;
+using MSA.UserService.Domain;
 
-namespace MSA.IdentityService.Infrastructure;
+namespace MSA.UserService.Infrastructure;
 
-public sealed class IdentityCustomerStore(ApplicationDbContext db) :
+public sealed class UserStore(UserDbContext db) :
     IUserAddressRepository,
     ILoyaltyPointRepository,
-    IIdentityCustomerReadStore
+    IUserReadStore
 {
-    public Task<bool> UserExistsAsync(string userId, CancellationToken cancellationToken) =>
-        db.Users.AsNoTracking().AnyAsync(user => user.Id == userId, cancellationToken);
-
     public Task<int> CountActiveAsync(string userId, CancellationToken cancellationToken) =>
         db.UserAddresses.CountAsync(
             address => address.UserId == userId

@@ -1,8 +1,8 @@
 using MediatR;
-using MSA.IdentityService.Domain;
+using MSA.UserService.Domain;
 using MSA.Infrastrucute.Mediator;
 
-namespace MSA.IdentityService.Application.Points;
+namespace MSA.UserService.Application.Points;
 
 public sealed record AdjustLoyaltyPointsCommand(
     string UserId,
@@ -26,15 +26,12 @@ internal sealed class AdjustLoyaltyPointsCommandHandler(
 
         var businessKey = LoyaltyPointEntry.NormalizeBusinessKey(request.BusinessKey);
         await userLock.AcquireAsync(request.UserId, "points", cancellationToken);
-        if (!await points.UserExistsAsync(request.UserId, cancellationToken))
-            throw new IdentityResourceNotFoundException("The user does not exist.");
-
         var existing = await points.GetEntryAsync(request.UserId, businessKey, cancellationToken);
         if (existing is not null)
         {
             if (!existing.Matches(request.Delta, request.Source, request.Reason))
-                throw new IdentityIdempotencyConflictException("The business key is already bound to a different point adjustment.");
-            return new PointAdjustmentResult(IdentityCustomerResponseMapper.ToResponse(existing), true);
+                throw new UserIdempotencyConflictException("The business key is already bound to a different point adjustment.");
+            return new PointAdjustmentResult(UserResponseMapper.ToResponse(existing), true);
         }
 
         var now = clock.GetUtcNow();
@@ -58,6 +55,6 @@ internal sealed class AdjustLoyaltyPointsCommandHandler(
             request.OperatorId,
             now);
         points.AddEntry(entry);
-        return new PointAdjustmentResult(IdentityCustomerResponseMapper.ToResponse(entry), false);
+        return new PointAdjustmentResult(UserResponseMapper.ToResponse(entry), false);
     }
 }
