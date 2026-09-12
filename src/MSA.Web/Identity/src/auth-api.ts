@@ -66,13 +66,12 @@ async function readProblem(response: Response): Promise<ApiProblem | undefined> 
 }
 
 function getAntiforgeryToken(): Promise<string> {
-  antiforgeryTokenPromise ??= fetch('api/Auth/csrf', {
+  antiforgeryTokenPromise ??= fetch('/api/Auth/csrf', {
     credentials: 'include',
     headers: { Accept: 'application/json' },
     cache: 'no-store',
   })
     .then(async (response) => {
-      console.log(response.url);
       if (!response.ok) throw new Error('无法建立安全会话，请刷新页面后重试。');
       const result = await response.json() as AntiforgeryToken;
       if (!result.token) throw new Error('无法建立安全会话，请刷新页面后重试。');
@@ -127,7 +126,7 @@ async function post<T = void>(
 
 export function loginWithPassword(credentials: PasswordLoginCredentials): Promise<void> {
   return post(
-    'api/Auth/login/password',
+    '/api/Auth/login/password',
     credentials,
     '登录没有完成，请稍后重试。',
     '邮箱或密码不正确，或账户暂时不可用。',
@@ -136,7 +135,7 @@ export function loginWithPassword(credentials: PasswordLoginCredentials): Promis
 
 export function requestSmsLoginCode(phoneNumber: string): Promise<SmsLoginCodeRequested> {
   return post(
-    'api/Auth/login/sms/code',
+    '/api/Auth/login/sms/code',
     { phoneNumber },
     '验证码发送请求没有完成，请稍后重试。',
     '验证码发送请求没有完成，请稍后重试。',
@@ -145,7 +144,7 @@ export function requestSmsLoginCode(phoneNumber: string): Promise<SmsLoginCodeRe
 
 export function loginWithSms(credentials: SmsLoginCredentials): Promise<void> {
   return post(
-    'api/Auth/login/sms',
+    '/api/Auth/login/sms',
     credentials,
     '登录没有完成，请稍后重试。',
     '手机号或验证码不正确，或账户暂时不可用。',
@@ -154,7 +153,7 @@ export function loginWithSms(credentials: SmsLoginCredentials): Promise<void> {
 
 export async function registerAndLogin(details: RegistrationDetails): Promise<void> {
   await post(
-    'api/Auth/register',
+    '/api/Auth/register',
     details,
     '注册没有完成，请稍后重试。',
     '注册没有完成，请稍后重试。',

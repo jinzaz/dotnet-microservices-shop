@@ -1,5 +1,3 @@
-using System.Threading.RateLimiting;
-using Microsoft.AspNetCore.RateLimiting;
 using MSA.IdentityService.Application.Sms;
 using MSA.IdentityService.Infrastructure.Sms;
 
@@ -30,32 +28,6 @@ internal static class SmsServiceCollectionExtensions
             .ValidateOnStart();
 
         services.AddScoped<ISmsVerificationService, SmsVerificationService>();
-        services.AddRateLimiter(options =>
-        {
-            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            options.AddPolicy(IdentityServiceConstants.RateLimits.Authentication, context =>
-                CreateLimiter(context, permitLimit: 10, TimeSpan.FromMinutes(1)));
-            options.AddPolicy(IdentityServiceConstants.RateLimits.Registration, context =>
-                CreateLimiter(context, permitLimit: 5, TimeSpan.FromHours(1)));
-            options.AddPolicy(IdentityServiceConstants.RateLimits.SmsDispatch, context =>
-                CreateLimiter(context, permitLimit: 5, TimeSpan.FromMinutes(10)));
-        });
-
         return services;
     }
-
-    private static RateLimitPartition<string> CreateLimiter(
-        HttpContext context,
-        int permitLimit,
-        TimeSpan window) =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = permitLimit,
-                Window = window,
-                AutoReplenishment = true,
-                QueueLimit = 0,
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst
-            });
 }

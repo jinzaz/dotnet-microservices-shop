@@ -6,6 +6,7 @@ using MSA.UserService.Application.Addresses;
 using MSA.UserService.Domain;
 using MSA.UserService.Infrastructure;
 using MSA.UserService.Middleware;
+using OpenIddict.Validation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 var postgresql = builder.Configuration.GetConnectionString("Postgresql");
@@ -30,6 +31,7 @@ builder.Services.AddExceptionHandler<UserApiExceptionHandler>();
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
 
+builder.Services.AddAuthentication(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
     options.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/");

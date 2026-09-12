@@ -5,7 +5,7 @@ using Quartz;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllersWithViews();
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 
@@ -20,6 +20,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 
 builder.Services.AddIdentityDefault(builder.Configuration, builder.Environment);
+builder.Services.AddIdentityRateLimiting();
 builder.Services.AddSmsLogin(builder.Configuration, builder.Environment);
 
 builder.Services.AddQuartz(options =>

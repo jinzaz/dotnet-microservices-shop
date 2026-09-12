@@ -1,3 +1,5 @@
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.WebUtilities;
 using OpenIddict.Validation.AspNetCore;
@@ -6,6 +8,22 @@ namespace Microsoft.Extensions.DependencyInjection;
 
 internal static class ServiceCollection
 {
+    internal static IServiceCollection AddIdentityRateLimiting(this IServiceCollection services)
+    {
+        services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.AddPolicy(IdentityServiceConstants.RateLimits.Authentication, context =>
+                CreateIpLimiter(context, permitLimit: 10, TimeSpan.FromMinutes(1)));
+            options.AddPolicy(IdentityServiceConstants.RateLimits.Registration, context =>
+                CreateIpLimiter(context, permitLimit: 5, TimeSpan.FromHours(1)));
+            options.AddPolicy(IdentityServiceConstants.RateLimits.SmsDispatch, context =>
+                CreateIpLimiter(context, permitLimit: 5, TimeSpan.FromMinutes(10)));
+        });
+
+        return services;
+    }
+
     internal static IServiceCollection AddIdentityDefault(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -169,4 +187,19 @@ internal static class ServiceCollection
 
         return services;
     }
+
+    private static RateLimitPartition<string> CreateIpLimiter(
+        HttpContext context,
+        int permitLimit,
+        TimeSpan window) =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = permitLimit,
+                Window = window,
+                AutoReplenishment = true,
+                QueueLimit = 0,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+            });
 }
