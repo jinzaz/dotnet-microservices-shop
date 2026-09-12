@@ -9,7 +9,7 @@ import type {
   UserProfile,
 } from './types';
 
-const identityUserBase = `${serviceRoutes.identity}/api/users/me`;
+const identityUserBase = `${serviceRoutes.identity}/users/me`;
 const userBase = `${serviceRoutes.user}/me`;
 
 export function getProfile(): Promise<UserProfile> {
@@ -43,7 +43,7 @@ export function updateProfile(displayName: string, phoneNumber: string | null): 
 }
 
 export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
-  return apiRequest<void>(`${serviceRoutes.identity}/api/auth/change-password`, {
+  return apiRequest<void>(`${serviceRoutes.identity}/change-password`, {
     method: 'POST',
     body: { currentPassword, newPassword },
   });

@@ -89,7 +89,7 @@ export function ChangePasswordDialog({ open, onClose, onSave }: ChangePasswordDi
     <dialog className="form-dialog" ref={dialogRef} onCancel={onClose}>
       <form onSubmit={submit} noValidate>
         <div className="dialog-heading">
-          <div><h2>修改登录密码</h2><p>修改后请使用新密码继续登录。</p></div>
+          <div><h2>修改登录密码</h2><p>修改后现有登录会话将失效，请使用新密码重新登录。</p></div>
           <button type="button" className="dialog-close" onClick={onClose} aria-label="关闭密码表单">
             <Icon name="close" />
           </button>
@@ -101,6 +101,7 @@ export function ChangePasswordDialog({ open, onClose, onSave }: ChangePasswordDi
           value={currentPassword}
           onChange={(event) => setCurrentPassword(event.target.value)}
           autoComplete="current-password"
+          maxLength={128}
           required
           leading={<Icon name="lock" />}
           error={errors.currentPassword}
@@ -113,6 +114,7 @@ export function ChangePasswordDialog({ open, onClose, onSave }: ChangePasswordDi
           onChange={(event) => setNewPassword(event.target.value)}
           autoComplete="new-password"
           minLength={10}
+          maxLength={128}
           required
           leading={<Icon name="lock" />}
           aria-describedby="new-password-hint"
@@ -127,6 +129,7 @@ export function ChangePasswordDialog({ open, onClose, onSave }: ChangePasswordDi
           onChange={(event) => setConfirmPassword(event.target.value)}
           autoComplete="new-password"
           minLength={10}
+          maxLength={128}
           required
           leading={<Icon name="lock" />}
           error={errors.confirmPassword}

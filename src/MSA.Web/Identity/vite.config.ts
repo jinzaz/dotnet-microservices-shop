@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const identityProxy = {
-  target: 'https://localhost:10002',
+  target: 'https://localhost:10000',
   changeOrigin: true,
   secure: false,
 };
@@ -13,7 +13,7 @@ export default defineConfig({
     port: 5174,
     strictPort: true,
     proxy: {
-      '/api': identityProxy,
+      'api/Auth': identityProxy,
       '/connect': identityProxy,
     },
   },

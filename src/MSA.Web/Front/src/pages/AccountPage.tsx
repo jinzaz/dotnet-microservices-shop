@@ -60,7 +60,14 @@ export default function AccountPage() {
     if (demoMode) {
       setDemoSnapshot((current) => ({
         ...current,
-        profile: { ...current.profile, displayName, phoneNumber },
+        profile: {
+          ...current.profile,
+          displayName,
+          phoneNumber,
+          phoneNumberConfirmed: current.profile.phoneNumber === phoneNumber
+            ? current.profile.phoneNumberConfirmed
+            : false,
+        },
       }));
       return;
     }
@@ -70,7 +77,7 @@ export default function AccountPage() {
 
   const savePassword = async (currentPassword: string, newPassword: string) => {
     await changePassword(currentPassword, newPassword);
-    setActionNotice('登录密码已修改。');
+    await logout('/login');
   };
 
   const saveAddress = async (input: AddressInput) => {

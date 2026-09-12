@@ -5,6 +5,8 @@ import { FormField } from '../../shared/ui/FormField';
 import { Icon } from '../../shared/ui/Icon';
 import type { UserProfile } from './types';
 
+const phonePattern = /^\+[1-9][0-9]{7,14}$/;
+
 type ProfileEditorDialogProps = {
   open: boolean;
   profile: UserProfile;
@@ -38,11 +40,16 @@ export function ProfileEditorDialog({ open, profile, onClose, onSave }: ProfileE
       setError('请输入姓名。');
       return;
     }
+    const normalizedPhoneNumber = phoneNumber.trim();
+    if (normalizedPhoneNumber && !phonePattern.test(normalizedPhoneNumber)) {
+      setError('手机号需使用 E.164 格式，例如 +8613800138000。');
+      return;
+    }
 
     setSaving(true);
     setError('');
     try {
-      await onSave(displayName.trim(), phoneNumber.trim() || null);
+      await onSave(displayName.trim(), normalizedPhoneNumber || null);
       onClose();
     } catch (saveError) {
       setError(getErrorMessage(saveError));
@@ -55,7 +62,7 @@ export function ProfileEditorDialog({ open, profile, onClose, onSave }: ProfileE
     <dialog className="form-dialog" ref={dialogRef} onCancel={onClose}>
       <form onSubmit={submit}>
         <div className="dialog-heading">
-          <div><h2>编辑个人资料</h2><p>邮箱由登录账户管理，暂不可在此修改。</p></div>
+          <div><h2>编辑个人资料</h2><p>手机号修改后会清除验证状态。</p></div>
           <button type="button" className="dialog-close" onClick={onClose} aria-label="关闭">
             <Icon name="close" />
           </button>
@@ -72,9 +79,11 @@ export function ProfileEditorDialog({ open, profile, onClose, onSave }: ProfileE
         <FormField
           id="profile-phone"
           label="手机号"
+          type="tel"
           value={phoneNumber}
           onChange={(event) => setPhoneNumber(event.target.value)}
-          maxLength={32}
+          placeholder="+8613800138000"
+          maxLength={16}
           autoComplete="tel"
         />
         {error ? <p className="form-message form-message--error" role="alert">{error}</p> : null}

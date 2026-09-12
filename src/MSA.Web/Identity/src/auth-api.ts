@@ -1,6 +1,12 @@
-export type LoginCredentials = {
+export type PasswordLoginCredentials = {
   email: string;
   password: string;
+  rememberMe: boolean;
+};
+
+export type SmsLoginCredentials = {
+  phoneNumber: string;
+  code: string;
   rememberMe: boolean;
 };
 
@@ -10,10 +16,19 @@ export type RegistrationDetails = {
   password: string;
 };
 
+export type SmsLoginCodeRequested = {
+  expiresInSeconds: number;
+  retryAfterSeconds: number;
+};
+
 type ApiProblem = {
   title?: string;
   detail?: string;
   errors?: Record<string, string[] | string>;
+};
+
+type AntiforgeryToken = {
+  token: string;
 };
 
 export class ApiError extends Error {
@@ -26,6 +41,8 @@ export class ApiError extends Error {
     this.problem = problem;
   }
 }
+
+let antiforgeryTokenPromise: Promise<string> | undefined;
 
 function firstValidationMessage(errors?: ApiProblem['errors']): string | undefined {
   if (!errors) return undefined;
@@ -48,41 +65,107 @@ async function readProblem(response: Response): Promise<ApiProblem | undefined> 
   }
 }
 
-async function post(path: string, body: unknown, fallbackMessage: string): Promise<void> {
+function getAntiforgeryToken(): Promise<string> {
+  antiforgeryTokenPromise ??= fetch('api/Auth/csrf', {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+  })
+    .then(async (response) => {
+      console.log(response.url);
+      if (!response.ok) throw new Error('无法建立安全会话，请刷新页面后重试。');
+      const result = await response.json() as AntiforgeryToken;
+      if (!result.token) throw new Error('无法建立安全会话，请刷新页面后重试。');
+      return result.token;
+    })
+    .catch((error: unknown) => {
+      antiforgeryTokenPromise = undefined;
+      throw error;
+    });
+
+  return antiforgeryTokenPromise;
+}
+
+async function post<T = void>(
+  path: string,
+  body: unknown,
+  fallbackMessage: string,
+  unauthorizedMessage: string,
+): Promise<T> {
   let response: Response;
   try {
+    const antiforgeryToken = await getAntiforgeryToken();
     response = await fetch(path, {
       method: 'POST',
       credentials: 'include',
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
+        'X-XSRF-TOKEN': antiforgeryToken,
       },
       body: JSON.stringify(body),
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message) throw error;
     throw new Error('暂时无法连接身份服务，请稍后重试。');
   }
 
-  if (response.ok) return;
+  if (response.ok) {
+    if (response.status === 204) return undefined as T;
+    return await response.json() as T;
+  }
 
   const problem = await readProblem(response);
   const message = response.status === 401
-    ? '邮箱或密码不正确，或账户暂时不可用。'
-    : firstValidationMessage(problem?.errors) ?? problem?.detail ?? problem?.title ?? fallbackMessage;
+    ? unauthorizedMessage
+    : response.status === 429
+      ? '请求过于频繁，请稍后再试。'
+      : firstValidationMessage(problem?.errors) ?? problem?.detail ?? problem?.title ?? fallbackMessage;
 
   throw new ApiError(message, response.status, problem);
 }
 
-export function login(credentials: LoginCredentials): Promise<void> {
-  return post('/api/auth/login', credentials, '登录没有完成，请稍后重试。');
+export function loginWithPassword(credentials: PasswordLoginCredentials): Promise<void> {
+  return post(
+    'api/Auth/login/password',
+    credentials,
+    '登录没有完成，请稍后重试。',
+    '邮箱或密码不正确，或账户暂时不可用。',
+  );
+}
+
+export function requestSmsLoginCode(phoneNumber: string): Promise<SmsLoginCodeRequested> {
+  return post(
+    'api/Auth/login/sms/code',
+    { phoneNumber },
+    '验证码发送请求没有完成，请稍后重试。',
+    '验证码发送请求没有完成，请稍后重试。',
+  );
+}
+
+export function loginWithSms(credentials: SmsLoginCredentials): Promise<void> {
+  return post(
+    'api/Auth/login/sms',
+    credentials,
+    '登录没有完成，请稍后重试。',
+    '手机号或验证码不正确，或账户暂时不可用。',
+  );
 }
 
 export async function registerAndLogin(details: RegistrationDetails): Promise<void> {
-  await post('/api/auth/register', details, '注册没有完成，请稍后重试。');
+  await post(
+    'api/Auth/register',
+    details,
+    '注册没有完成，请稍后重试。',
+    '注册没有完成，请稍后重试。',
+  );
 
   try {
-    await login({ email: details.email, password: details.password, rememberMe: false });
+    await loginWithPassword({
+      email: details.email,
+      password: details.password,
+      rememberMe: false,
+    });
   } catch {
     throw new Error('账户已创建，但自动登录失败，请返回登录页重试。');
   }

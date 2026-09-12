@@ -14,7 +14,14 @@ export function ProfileSection({ profile, onEdit }: { profile: UserProfile; onEd
       <dl className="profile-list">
         <div><dt>姓名</dt><dd>{profile.displayName}</dd></div>
         <div><dt>邮箱</dt><dd>{profile.email}</dd></div>
-        <div><dt>手机号</dt><dd>{profile.phoneNumber || '未填写'}</dd></div>
+        <div>
+          <dt>手机号</dt>
+          <dd>
+            {profile.phoneNumber
+              ? `${profile.phoneNumber}（${profile.phoneNumberConfirmed ? '已验证' : '未验证'}）`
+              : '未填写'}
+          </dd>
+        </div>
       </dl>
     </section>
   );

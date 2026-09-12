@@ -19,7 +19,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 });
 
 
-builder.Services.AddIdentityDefault(builder.Configuration);
+builder.Services.AddIdentityDefault(builder.Configuration, builder.Environment);
+builder.Services.AddSmsLogin(builder.Configuration, builder.Environment);
 
 builder.Services.AddQuartz(options =>
 {
@@ -55,9 +56,14 @@ if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+if (!app.Environment.IsDevelopment())
+    app.UseHsts();
 app.UseHttpsRedirection();
+app.UseRouting();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseAntiforgery();
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 app.MapHealthChecks("/health");

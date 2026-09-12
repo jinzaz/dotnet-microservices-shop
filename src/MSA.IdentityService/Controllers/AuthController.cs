@@ -1,9 +1,13 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+using MSA.IdentityService.Application.Sms;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
 using System.Security.Claims;
@@ -12,46 +16,127 @@ using static OpenIddict.Abstractions.OpenIddictConstants;
 namespace MSA.IdentityService.Controllers;
 
 [ApiController]
+[Route("Auth")]
 public sealed class AuthController(
     UserManager<ApplicationUser> users,
     SignInManager<ApplicationUser> signIn,
+    ApplicationDbContext db,
     IOpenIddictApplicationManager applications,
     IOpenIddictAuthorizationManager authorizations,
+    IOpenIddictTokenManager tokens,
     IOpenIddictScopeManager scopes,
+    IAntiforgery antiforgery,
+    ISmsVerificationService smsVerification,
+    IOptions<SmsOptions> smsOptions,
+    ILogger<AuthController> logger,
     TimeProvider timeProvider) : ControllerBase
 {
     [AllowAnonymous]
-    [HttpPost("api/auth/register")]
-    public async Task<IActionResult> Register(RegisterRequest request)
+    [HttpGet("csrf")]
+    [ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
+    public ActionResult<AntiforgeryTokenResponse> GetAntiforgeryToken()
     {
+        var tokenSet = antiforgery.GetAndStoreTokens(HttpContext);
+        return Ok(new AntiforgeryTokenResponse(tokenSet.RequestToken!));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("register")]
+    [ValidateAntiForgeryToken]
+    [EnableRateLimiting(IdentityServiceConstants.RateLimits.Registration)]
+    public async Task<IActionResult> Register(RegisterRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.DisplayName))
+            return ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                [nameof(request.DisplayName)] = ["显示名称不能为空。"]
+            }));
+
         var user = new ApplicationUser
         {
             UserName = request.Email.Trim(),
             Email = request.Email.Trim(),
             DisplayName = request.DisplayName.Trim(),
-            EmailConfirmed = false
+            EmailConfirmed = false,
+            LockoutEnabled = true,
+            CreatedOnUtc = timeProvider.GetUtcNow()
         };
 
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var result = await users.CreateAsync(user, request.Password);
         if (!result.Succeeded)
             return IdentityValidationProblem(result);
 
-        await users.AddToRoleAsync(user, "customer");
-        return Created($"/api/users/{user.Id}", new { user.Id, user.Email, user.DisplayName });
+        result = await users.AddToRoleAsync(user, "customer");
+        if (!result.Succeeded)
+            return IdentityValidationProblem(result);
+
+        await transaction.CommitAsync(cancellationToken);
+        return Created(
+            $"/Auth/users/{user.Id}",
+            new RegisteredUserResponse(user.Id, user.Email!, user.DisplayName));
     }
 
     [AllowAnonymous]
-    [HttpPost("api/auth/login")]
-    public async Task<IActionResult> Login(LoginRequest request)
+    [HttpPost("login/password")]
+    [ValidateAntiForgeryToken]
+    [EnableRateLimiting(IdentityServiceConstants.RateLimits.Authentication)]
+    public async Task<IActionResult> PasswordLogin(PasswordLoginRequest request)
     {
         var user = await users.FindByEmailAsync(request.Email.Trim());
         if (user is null || !user.IsActive)
-            return Unauthorized();
+            return InvalidLogin();
 
-        var result = await signIn.PasswordSignInAsync(user, request.Password, request.RememberMe, lockoutOnFailure: true);
+        var result = await signIn.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: true);
         if (!result.Succeeded)
-            return Unauthorized();
+            return InvalidLogin();
 
+        return await CompleteLogin(user, request.RememberMe, "pwd");
+    }
+
+    [AllowAnonymous]
+    [HttpPost("login/sms/code")]
+    [ValidateAntiForgeryToken]
+    [EnableRateLimiting(IdentityServiceConstants.RateLimits.SmsDispatch)]
+    public async Task<ActionResult<SmsLoginCodeRequestedResponse>> RequestSmsLoginCode(
+        RequestSmsLoginCodeRequest request,
+        CancellationToken cancellationToken)
+    {
+        await smsVerification.RequestLoginCodeAsync(request.PhoneNumber, cancellationToken);
+        return Accepted(new SmsLoginCodeRequestedResponse(
+            smsOptions.Value.CodeLifetimeSeconds,
+            smsOptions.Value.ResendCooldownSeconds));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("login/sms")]
+    [ValidateAntiForgeryToken]
+    [EnableRateLimiting(IdentityServiceConstants.RateLimits.Authentication)]
+    public async Task<IActionResult> SmsLogin(
+        SmsLoginRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = await smsVerification.ConsumeLoginCodeAsync(
+            request.PhoneNumber,
+            request.Code,
+            cancellationToken);
+        var user = userId is null ? null : await users.FindByIdAsync(userId);
+        if (user is null || !user.IsActive || !user.PhoneNumberConfirmed
+            || !string.Equals(user.PhoneNumber, request.PhoneNumber.Trim(), StringComparison.Ordinal)
+            || !await signIn.CanSignInAsync(user) || await users.IsLockedOutAsync(user))
+        {
+            return InvalidLogin();
+        }
+
+        return await CompleteLogin(user, request.RememberMe, "sms");
+    }
+
+    [AllowAnonymous]
+    [HttpPost("logout")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> LogoutSession()
+    {
+        await signIn.SignOutAsync();
         return NoContent();
     }
 
@@ -73,7 +158,8 @@ public sealed class AuthController(
             (issuedUtc is null ||
              timeProvider.GetUtcNow() - issuedUtc.Value > TimeSpan.FromSeconds(maxAge));
 
-        if (user is null || !user.IsActive || !await signIn.CanSignInAsync(user) ||
+        if (user is null || !user.IsActive || !await signIn.CanSignInAsync(user)
+            || await users.IsLockedOutAsync(user) ||
             request.HasPromptValue(PromptValues.Login) || exceedsMaxAge)
         {
             if (authentication.Succeeded)
@@ -201,15 +287,54 @@ public sealed class AuthController(
     }
 
     [Authorize]
-    [HttpPost("api/auth/change-password")]
-    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
+    [HttpPost("change-password")]
+    [EnableRateLimiting(IdentityServiceConstants.RateLimits.Authentication)]
+    public async Task<IActionResult> ChangePassword(
+        ChangePasswordRequest request,
+        CancellationToken cancellationToken)
     {
         var user = await users.GetUserAsync(User);
         if (user is null)
-            return Unauthorized();
+            return InvalidLogin();
 
+        if (string.Equals(request.CurrentPassword, request.NewPassword, StringComparison.Ordinal))
+        {
+            return ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                ["PasswordReuse"] = ["新密码不能与当前密码相同。"]
+            }));
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var result = await users.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
-        return result.Succeeded ? NoContent() : IdentityValidationProblem(result);
+        if (!result.Succeeded)
+            return IdentityValidationProblem(result);
+
+        await tokens.RevokeBySubjectAsync(user.Id, cancellationToken);
+        await authorizations.RevokeBySubjectAsync(user.Id, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        await signIn.SignOutAsync();
+        logger.LogInformation("User {UserId} changed their password and revoked existing sessions.", user.Id);
+        return NoContent();
+    }
+
+    private async Task<IActionResult> CompleteLogin(
+        ApplicationUser user,
+        bool rememberMe,
+        string authenticationMethod)
+    {
+        user.LastLoginOnUtc = timeProvider.GetUtcNow();
+        var updateResult = await users.UpdateAsync(user);
+        if (!updateResult.Succeeded)
+        {
+            logger.LogWarning(
+                "Could not update the last-login timestamp for user {UserId}: {ErrorCodes}.",
+                user.Id,
+                string.Join(',', updateResult.Errors.Select(error => error.Code)));
+        }
+
+        await signIn.SignInAsync(user, rememberMe, authenticationMethod);
+        return NoContent();
     }
 
     private async Task<ClaimsPrincipal> CreatePrincipal(
@@ -286,22 +411,36 @@ public sealed class AuthController(
         }),
         OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
 
+    private ObjectResult InvalidLogin() => Problem(
+        statusCode: StatusCodes.Status401Unauthorized,
+        title: "登录失败",
+        detail: "登录凭据无效或账户暂时不可用。");
+
     private IActionResult IdentityValidationProblem(IdentityResult result) => ValidationProblem(
         new ValidationProblemDetails(result.Errors
             .GroupBy(x => x.Code)
             .ToDictionary(x => x.Key, x => x.Select(y => y.Description).ToArray())));
 }
 
+/// <summary>注册 Identity 账户。</summary>
 public sealed record RegisterRequest(
     [Required, EmailAddress, StringLength(256)] string Email,
-    [Required] string Password,
+    [Required, StringLength(128, MinimumLength = 10)] string Password,
     [Required, StringLength(100)] string DisplayName);
 
-public sealed record LoginRequest(
+/// <summary>使用邮箱和密码登录。</summary>
+public sealed record PasswordLoginRequest(
     [Required, EmailAddress, StringLength(256)] string Email,
-    [Required] string Password,
+    [Required, StringLength(128)] string Password,
     bool RememberMe = false);
 
+/// <summary>修改当前账户密码。</summary>
 public sealed record ChangePasswordRequest(
-    [Required] string CurrentPassword,
-    [Required] string NewPassword);
+    [Required, StringLength(128)] string CurrentPassword,
+    [Required, StringLength(128, MinimumLength = 10)] string NewPassword);
+
+/// <summary>注册成功后的账户摘要。</summary>
+public sealed record RegisteredUserResponse(string Id, string Email, string DisplayName);
+
+/// <summary>由客户端回传到 X-XSRF-TOKEN 请求头的防伪令牌。</summary>
+public sealed record AntiforgeryTokenResponse(string Token);

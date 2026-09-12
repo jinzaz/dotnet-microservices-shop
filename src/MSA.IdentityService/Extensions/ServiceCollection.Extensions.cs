@@ -8,7 +8,8 @@ internal static class ServiceCollection
 {
     internal static IServiceCollection AddIdentityDefault(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IWebHostEnvironment environment)
     {
         var identityUiBaseUrl = configuration["IdentityUi:BaseUrl"];
         if (!Uri.TryCreate(identityUiBaseUrl, UriKind.Absolute, out var identityUiBaseUri) ||
@@ -31,6 +32,7 @@ internal static class ServiceCollection
             options.User.RequireUniqueEmail = true;
             options.Lockout.MaxFailedAccessAttempts = 5;
             options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+            options.Lockout.AllowedForNewUsers = true;
             options.SignIn.RequireConfirmedEmail = false;
         })
         .AddEntityFrameworkStores<ApplicationDbContext>()
@@ -38,6 +40,18 @@ internal static class ServiceCollection
 
         services.ConfigureApplicationCookie(options =>
         {
+            options.Cookie.Name = environment.IsDevelopment()
+                ? ".MSA.Identity.Session"
+                : "__Host-MSA.Identity.Session";
+            options.Cookie.HttpOnly = true;
+            options.Cookie.IsEssential = true;
+            options.Cookie.Path = "/";
+            options.Cookie.SameSite = SameSiteMode.Lax;
+            options.Cookie.SecurePolicy = environment.IsDevelopment()
+                ? CookieSecurePolicy.None
+                : CookieSecurePolicy.Always;
+            options.ExpireTimeSpan = TimeSpan.FromHours(8);
+            options.SlidingExpiration = true;
             options.Events.OnRedirectToLogin = context =>
             {
                 var returnUrl = context.Properties.RedirectUri;
@@ -51,6 +65,23 @@ internal static class ServiceCollection
                 context.Response.Redirect(QueryHelpers.AddQueryString(loginUrl, "returnUrl", returnUrl));
                 return Task.CompletedTask;
             };
+        });
+
+        services.Configure<SecurityStampValidatorOptions>(options =>
+            options.ValidationInterval = TimeSpan.FromMinutes(5));
+        services.AddAntiforgery(options =>
+        {
+            options.HeaderName = "X-XSRF-TOKEN";
+            options.Cookie.Name = environment.IsDevelopment()
+                ? ".MSA.Identity.Antiforgery"
+                : "__Host-MSA.Identity.Antiforgery";
+            options.Cookie.HttpOnly = true;
+            options.Cookie.IsEssential = true;
+            options.Cookie.Path = "/";
+            options.Cookie.SameSite = SameSiteMode.Strict;
+            options.Cookie.SecurePolicy = environment.IsDevelopment()
+                ? CookieSecurePolicy.None
+                : CookieSecurePolicy.Always;
         });
 
         return services;
@@ -126,6 +157,7 @@ internal static class ServiceCollection
             .AddValidation(options =>
             {
                 options.UseLocalServer();
+                options.EnableTokenEntryValidation();
                 options.UseAspNetCore();
             });
 

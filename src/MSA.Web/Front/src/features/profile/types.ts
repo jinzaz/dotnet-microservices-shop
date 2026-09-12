@@ -3,6 +3,7 @@ export type UserProfile = {
   email: string;
   displayName: string;
   phoneNumber: string | null;
+  phoneNumberConfirmed: boolean;
   isActive: boolean;
   createdOnUtc: string;
   roles: string[];

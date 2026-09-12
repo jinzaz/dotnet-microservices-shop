@@ -76,10 +76,12 @@ namespace MSA.IdentityService.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("PhoneNumber")
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasComment("用于账号安全验证的 E.164 手机号");
 
                     b.Property<bool>("PhoneNumberConfirmed")
-                        .HasColumnType("boolean");
+                        .HasColumnType("boolean")
+                        .HasComment("手机号是否已完成归属验证");
 
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
@@ -100,7 +102,119 @@ namespace MSA.IdentityService.Migrations
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex");
 
+                    b.HasIndex("PhoneNumber")
+                        .IsUnique()
+                        .HasDatabaseName("PhoneNumberIndex")
+                        .HasFilter("\"PhoneNumber\" IS NOT NULL AND \"PhoneNumberConfirmed\" = TRUE");
+
                     b.ToTable("AspNetUsers", (string)null);
+                });
+
+            modelBuilder.Entity("MSA.IdentityService.Domain.SmsVerificationMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ConsumedOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("验证码成功消费时间");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("验证码创建时间");
+
+                    b.Property<DateTimeOffset>("ExpiresOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("验证码失效时间");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasComment("不包含敏感信息的发送失败代码");
+
+                    b.Property<string>("PhoneNumber")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasComment("接收短信的 E.164 手机号");
+
+                    b.Property<string>("ProtectedCode")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasComment("经 Data Protection 加密的验证码载荷");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasComment("短信云服务商适配器名称");
+
+                    b.Property<string>("ProviderMessageId")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasComment("短信云服务商消息 Id");
+
+                    b.Property<int>("Purpose")
+                        .HasColumnType("integer")
+                        .HasComment("验证码用途");
+
+                    b.Property<DateTimeOffset?>("SentOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("短信服务商接受消息的时间");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasComment("发送与消费状态");
+
+                    b.Property<string>("TemplateKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasComment("与云厂商无关的逻辑模板键");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("记录最近更新时间");
+
+                    b.Property<string>("UserId")
+                        .HasColumnType("text")
+                        .HasComment("关联的 ASP.NET Core Identity 用户 Id");
+
+                    b.Property<int>("VerificationAttempts")
+                        .HasColumnType("integer")
+                        .HasComment("已失败的验证码校验次数");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasComment("乐观并发版本号");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("Provider", "ProviderMessageId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_identity_sms_messages_provider_message")
+                        .HasFilter("\"ProviderMessageId\" IS NOT NULL");
+
+                    b.HasIndex("Status", "ExpiresOnUtc")
+                        .HasDatabaseName("IX_identity_sms_messages_status_expires");
+
+                    b.HasIndex("PhoneNumber", "Purpose", "CreatedOnUtc")
+                        .IsDescending(false, false, true)
+                        .HasDatabaseName("IX_identity_sms_messages_phone_purpose_created");
+
+                    b.ToTable("identity_sms_messages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_identity_sms_messages_attempts", "\"VerificationAttempts\" >= 0");
+
+                            t.HasCheckConstraint("CK_identity_sms_messages_status", "\"Status\" BETWEEN 0 AND 5");
+
+                            t.HasCheckConstraint("CK_identity_sms_messages_timestamps", "\"ExpiresOnUtc\" > \"CreatedOnUtc\" AND \"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+                        });
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -441,6 +555,14 @@ namespace MSA.IdentityService.Migrations
                     b.HasIndex("ApplicationId", "Status", "Subject", "Type");
 
                     b.ToTable("OpenIddictTokens", (string)null);
+                });
+
+            modelBuilder.Entity("MSA.IdentityService.Domain.SmsVerificationMessage", b =>
+                {
+                    b.HasOne("MSA.IdentityService.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>

@@ -9,7 +9,7 @@ export const apiUrl = (path: string) =>
   bffUrl(`/api${path.startsWith('/') ? path : `/${path}`}`);
 
 export const serviceRoutes = {
-  identity: '/identity',
+  identity: '/Auth',
   user: '/user',
   catalog: '/catalog',
   basket: '/basket',

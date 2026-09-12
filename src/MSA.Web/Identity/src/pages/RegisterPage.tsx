@@ -126,6 +126,7 @@ export default function RegisterPage() {
           placeholder="至少 10 位安全密码"
           autoComplete="new-password"
           minLength={10}
+          maxLength={128}
           required
           leading={<Icon name="lock" />}
           trailing={passwordToggle}
@@ -142,6 +143,7 @@ export default function RegisterPage() {
           placeholder="再次输入密码"
           autoComplete="new-password"
           minLength={10}
+          maxLength={128}
           required
           leading={<Icon name="lock" />}
           error={errors.confirmPassword}
