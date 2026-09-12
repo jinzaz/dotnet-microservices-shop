@@ -82,7 +82,7 @@ internal sealed class PostgresCouponRedemptionStore(OrderDbContext db) : ICoupon
                 var affected = consume
                     ? await ExecuteAsync(
                         """
-                        UPDATE coupon_quota_buckets
+                        UPDATE order_coupon_quota_buckets
                         SET "ReservedCount" = "ReservedCount" - 1,
                             "ConsumedCount" = "ConsumedCount" + 1,
                             "Version" = "Version" + 1
@@ -92,7 +92,7 @@ internal sealed class PostgresCouponRedemptionStore(OrderDbContext db) : ICoupon
                         cancellationToken)
                     : await ExecuteAsync(
                         """
-                        UPDATE coupon_quota_buckets
+                        UPDATE order_coupon_quota_buckets
                         SET "ReservedCount" = "ReservedCount" - 1,
                             "Version" = "Version" + 1
                         WHERE "Id" = @bucketId AND "ReservedCount" > 0;
@@ -156,14 +156,14 @@ internal sealed class PostgresCouponRedemptionStore(OrderDbContext db) : ICoupon
             WITH candidate AS
             (
                 SELECT "Id"
-                FROM coupon_quota_buckets
+                FROM order_coupon_quota_buckets
                 WHERE "CouponId" = @couponId
                   AND "ReservedCount" + "ConsumedCount" < "Capacity"
                 ORDER BY mod("BucketNumber" - @preferredBucket + @bucketCount, @bucketCount)
                 {{lockClause}}
                 LIMIT 1
             )
-            UPDATE coupon_quota_buckets AS bucket
+            UPDATE order_coupon_quota_buckets AS bucket
             SET "ReservedCount" = bucket."ReservedCount" + 1,
                 "Version" = bucket."Version" + 1
             FROM candidate

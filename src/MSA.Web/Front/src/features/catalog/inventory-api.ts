@@ -11,6 +11,6 @@ export type InventoryAvailability = {
 
 export function getInventoryAvailability(sku: string): Promise<InventoryAvailability> {
   return apiRequest<InventoryAvailability>(
-    `${serviceRoutes.inventory}/api/inventory/${encodeURIComponent(sku)}`,
+    `${serviceRoutes.inventory}/${encodeURIComponent(sku)}`,
   );
 }

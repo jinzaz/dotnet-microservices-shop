@@ -51,7 +51,7 @@ namespace MSA.BasketService.Infrastructure.Migrations
                     b.HasIndex("UserId")
                         .IsUnique();
 
-                    b.ToTable("baskets", null, t =>
+                    b.ToTable("basket_baskets", null, t =>
                         {
                             t.HasCheckConstraint("CK_baskets_timestamps", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
 
@@ -280,7 +280,7 @@ namespace MSA.BasketService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "NextAttemptOnUtc", "LockedUntilUtc");
 
-                    b.ToTable("outbox_messages", (string)null);
+                    b.ToTable("basket_outbox_messages", (string)null);
                 });
 
             modelBuilder.Entity("MSA.Repositories.Persistence.InboxMessage", b =>
@@ -300,7 +300,7 @@ namespace MSA.BasketService.Infrastructure.Migrations
 
                     b.HasKey("MessageId", "Consumer");
 
-                    b.ToTable("inbox_messages", (string)null);
+                    b.ToTable("basket_inbox_messages", (string)null);
                 });
 
             modelBuilder.Entity("MSA.Saga.SagaState", b =>
@@ -363,7 +363,7 @@ namespace MSA.BasketService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "TimeoutOnUtc", "TimeoutLockedUntilUtc");
 
-                    b.ToTable("saga_states", (string)null);
+                    b.ToTable("basket_saga_states", (string)null);
                 });
 
             modelBuilder.Entity("MSA.BasketService.Domain.BasketCoupon", b =>

@@ -583,7 +583,7 @@ internal static class InventoryRowLocks
         Guid campaignId,
         CancellationToken cancellationToken) =>
         await db.FlashSaleCampaigns
-            .FromSqlInterpolated($"SELECT * FROM flash_sale_campaigns WHERE \"Id\" = {campaignId} FOR UPDATE")
+            .FromSqlInterpolated($"SELECT * FROM inventory_flash_sale_campaigns WHERE \"Id\" = {campaignId} FOR UPDATE")
             .SingleAsync(cancellationToken);
 
     public static Task<FlashSaleStockBucket> LockBucketAsync(
@@ -591,6 +591,6 @@ internal static class InventoryRowLocks
         long bucketId,
         CancellationToken cancellationToken) =>
         db.FlashSaleStockBuckets
-            .FromSqlInterpolated($"SELECT * FROM flash_sale_stock_buckets WHERE \"Id\" = {bucketId} FOR UPDATE")
+            .FromSqlInterpolated($"SELECT * FROM inventory_flash_sale_stock_buckets WHERE \"Id\" = {bucketId} FOR UPDATE")
             .SingleAsync(cancellationToken);
 }

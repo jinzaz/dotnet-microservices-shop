@@ -10,7 +10,7 @@ namespace MSA.OrderService.Controllers;
 
 [Authorize(Roles = "admin,operator")]
 [ApiController]
-[Route("api/admin/orders/{orderId:guid}/fulfillment")]
+[Route("order/admin/orders/{orderId:guid}/fulfillment")]
 public sealed class AdminOrderFulfillmentController(ISender sender) : ControllerBase
 {
     public sealed record ShipOrderRequest(

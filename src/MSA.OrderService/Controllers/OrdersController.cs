@@ -12,7 +12,7 @@ namespace MSA.OrderService.Controllers;
 
 [Authorize]
 [ApiController]
-[Route("api/orders")]
+[Route("order/orders")]
 public sealed class OrdersController(ISender sender) : ControllerBase
 {
     public sealed record CreateOrderItemRequest(string Sku, int Quantity);

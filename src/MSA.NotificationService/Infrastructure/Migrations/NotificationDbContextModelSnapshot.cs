@@ -78,7 +78,7 @@ namespace MSA.NotificationService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "NextAttemptOnUtc", "LockedUntilUtc");
 
-                    b.ToTable("outbox_messages", (string)null);
+                    b.ToTable("notification_outbox_messages", (string)null);
                 });
 
             modelBuilder.Entity("MSA.NotificationService.Domain.Notification", b =>
@@ -151,7 +151,7 @@ namespace MSA.NotificationService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "NextAttemptOnUtc", "LockedUntilUtc");
 
-                    b.ToTable("notifications", (string)null);
+                    b.ToTable("notification_notifications", (string)null);
                 });
 
             modelBuilder.Entity("MSA.NotificationService.Domain.NotificationTemplate", b =>
@@ -209,7 +209,7 @@ namespace MSA.NotificationService.Infrastructure.Migrations
                     b.HasIndex("UserId")
                         .IsUnique();
 
-                    b.ToTable("user_notification_preferences", (string)null);
+                    b.ToTable("notification_user_notification_preferences", (string)null);
                 });
 
             modelBuilder.Entity("MSA.Repositories.Persistence.InboxMessage", b =>
@@ -229,7 +229,7 @@ namespace MSA.NotificationService.Infrastructure.Migrations
 
                     b.HasKey("MessageId", "Consumer");
 
-                    b.ToTable("inbox_messages", (string)null);
+                    b.ToTable("notification_inbox_messages", (string)null);
                 });
 
             modelBuilder.Entity("MSA.Saga.SagaState", b =>
@@ -292,7 +292,7 @@ namespace MSA.NotificationService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "TimeoutOnUtc", "TimeoutLockedUntilUtc");
 
-                    b.ToTable("saga_states", (string)null);
+                    b.ToTable("notification_saga_states", (string)null);
                 });
 #pragma warning restore 612, 618
         }

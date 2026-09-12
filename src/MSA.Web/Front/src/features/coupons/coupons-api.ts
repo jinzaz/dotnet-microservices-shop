@@ -3,11 +3,11 @@ import { serviceRoutes } from '../../shared/config/api';
 import type { CouponStatus, CustomerCoupon, RedeemCouponResponse } from './types';
 
 export const couponApiPaths = {
-  myCoupons: `${serviceRoutes.catalog}/api/coupons/me`,
-  redeem: `${serviceRoutes.catalog}/api/coupons/me/redeem`,
-  claim: (couponId: string) => `${serviceRoutes.catalog}/api/coupons/${couponId}/claim`,
+  myCoupons: `${serviceRoutes.catalog}/coupons/me`,
+  redeem: `${serviceRoutes.catalog}/coupons/me/redeem`,
+  claim: (couponId: string) => `${serviceRoutes.catalog}/coupons/${couponId}/claim`,
   availableForProduct: (productId: string) =>
-    `${serviceRoutes.catalog}/api/coupons/available?productId=${encodeURIComponent(productId)}`,
+    `${serviceRoutes.catalog}/coupons/available?productId=${encodeURIComponent(productId)}`,
 } as const;
 
 export function listMyCoupons(status?: CouponStatus): Promise<CustomerCoupon[]> {

@@ -2,13 +2,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using MSA.CatalogService.Domain;
 
-namespace MSA.CatalogService.Infrastructure.Persistence;
+namespace MSA.CatalogService.Infrastructure.EntityConfigurations;
 
 internal sealed class CategoryConfiguration : IEntityTypeConfiguration<Category>
 {
     public void Configure(EntityTypeBuilder<Category> entity)
     {
-        entity.ToTable("categories", table =>
+        entity.ToTable("catalog_categories", table =>
         {
             table.HasCheckConstraint(
                 "CK_categories_status",
@@ -38,7 +38,7 @@ internal sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
 {
     public void Configure(EntityTypeBuilder<Product> entity)
     {
-        entity.ToTable("products", table =>
+        entity.ToTable("catalog_products", table =>
         {
             table.HasCheckConstraint("CK_products_price", "\"Price\" >= 0");
             table.HasCheckConstraint("CK_products_currency", "\"Currency\" ~ '^[A-Z]{3}$'");
@@ -83,7 +83,7 @@ internal sealed class PromotionConfiguration : IEntityTypeConfiguration<Promotio
 {
     public void Configure(EntityTypeBuilder<Promotion> entity)
     {
-        entity.ToTable("promotions", table =>
+        entity.ToTable("catalog_promotions", table =>
         {
             table.HasCheckConstraint("CK_promotions_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
             table.HasCheckConstraint("CK_promotions_revision", "\"Revision\" > 0 AND \"Version\" > 0");
@@ -156,7 +156,7 @@ internal abstract class PromotionComponentConfiguration<T> : IEntityTypeConfigur
 
 internal sealed class PromotionRuleConfiguration : PromotionComponentConfiguration<PromotionRule>
 {
-    protected override string TableName => "promotion_rules";
+    protected override string TableName => "catalog_promotion_rules";
 
     public override void Configure(EntityTypeBuilder<PromotionRule> entity)
     {
@@ -168,7 +168,7 @@ internal sealed class PromotionRuleConfiguration : PromotionComponentConfigurati
 
 internal sealed class PromotionBenefitConfiguration : PromotionComponentConfiguration<PromotionBenefit>
 {
-    protected override string TableName => "promotion_benefits";
+    protected override string TableName => "catalog_promotion_benefits";
 
     public override void Configure(EntityTypeBuilder<PromotionBenefit> entity)
     {
@@ -180,7 +180,7 @@ internal sealed class PromotionBenefitConfiguration : PromotionComponentConfigur
 
 internal sealed class PromotionTargetConfiguration : PromotionComponentConfiguration<PromotionTarget>
 {
-    protected override string TableName => "promotion_targets";
+    protected override string TableName => "catalog_promotion_targets";
 
     public override void Configure(EntityTypeBuilder<PromotionTarget> entity)
     {
@@ -196,7 +196,7 @@ internal sealed class CouponConfiguration : IEntityTypeConfiguration<Coupon>
 {
     public void Configure(EntityTypeBuilder<Coupon> entity)
     {
-        entity.ToTable("coupons", table =>
+        entity.ToTable("catalog_coupons", table =>
         {
             table.HasCheckConstraint("CK_coupons_window", "\"ValidFromUtc\" < \"ValidUntilUtc\"");
             table.HasCheckConstraint("CK_coupons_total_limit", "\"TotalLimit\" IS NULL OR \"TotalLimit\" > 0");
@@ -244,7 +244,7 @@ internal sealed class CouponQuotaBucketConfiguration : IEntityTypeConfiguration<
 {
     public void Configure(EntityTypeBuilder<CouponQuotaBucket> entity)
     {
-        entity.ToTable("coupon_quota_buckets", table =>
+        entity.ToTable("catalog_coupon_quota_buckets", table =>
         {
             table.HasCheckConstraint("CK_coupon_quota_buckets_number", "\"BucketNumber\" BETWEEN 0 AND 127");
             table.HasCheckConstraint("CK_coupon_quota_buckets_capacity", "\"Capacity\" > 0");

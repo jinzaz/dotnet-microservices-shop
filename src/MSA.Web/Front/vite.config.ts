@@ -17,7 +17,6 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': bffProxy,
-      '/bff': bffProxy,
     },
   },
   preview: {

@@ -128,7 +128,7 @@ internal sealed class GetExpiredFlashSalesQueryHandler(
         GetExpiredFlashSalesQuery request,
         CancellationToken cancellationToken) =>
         await db.FlashSaleCampaigns
-            .FromSqlInterpolated($"SELECT * FROM flash_sale_campaigns WHERE \"Status\" = 0 AND \"EndsOnUtc\" <= CURRENT_TIMESTAMP ORDER BY \"EndsOnUtc\" LIMIT {request.BatchSize}")
+            .FromSqlInterpolated($"SELECT * FROM inventory_flash_sale_campaigns WHERE \"Status\" = 0 AND \"EndsOnUtc\" <= CURRENT_TIMESTAMP ORDER BY \"EndsOnUtc\" LIMIT {request.BatchSize}")
             .AsNoTracking()
             .OrderBy(campaign => campaign.EndsOnUtc)
             .Select(campaign => campaign.Id)

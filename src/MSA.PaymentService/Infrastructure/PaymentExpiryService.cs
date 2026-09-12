@@ -48,7 +48,7 @@ internal sealed class PaymentExpiryService(
                 .FromSqlInterpolated(
                     $"""
                     SELECT payment.*
-                    FROM payments AS payment
+                    FROM payment_payments AS payment
                     WHERE payment."Status" = {(int)PaymentStatus.Pending}
                       AND payment."ExpiresOnUtc" <= {now}
                     ORDER BY payment."ExpiresOnUtc", payment."Id"

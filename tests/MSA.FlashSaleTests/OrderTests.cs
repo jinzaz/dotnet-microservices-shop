@@ -28,6 +28,6 @@ public sealed class OrderTests
         Assert.IsFalse(duplicateCancellation);
         Assert.AreEqual(OrderStatus.Cancelled, order.Status);
         Assert.AreEqual("Payment failed.", order.CancellationReason);
-        Assert.AreEqual(1L, order.Version);
+        Assert.AreEqual(2L, order.Version);
     }
 }

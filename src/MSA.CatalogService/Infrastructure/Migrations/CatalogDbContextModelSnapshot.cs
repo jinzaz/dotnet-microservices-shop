@@ -122,7 +122,7 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "Name", "Id");
 
-                    b.ToTable("categories", null, t =>
+                    b.ToTable("catalog_categories", null, t =>
                         {
                             t.HasCheckConstraint("CK_categories_audit", "\"Version\" > 0 AND \"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
 
@@ -217,7 +217,7 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "ValidUntilUtc", "Id");
 
-                    b.ToTable("coupons", null, t =>
+                    b.ToTable("catalog_coupons", null, t =>
                         {
                             t.HasCheckConstraint("CK_coupons_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
 
@@ -252,7 +252,7 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasKey("CouponId", "BucketNumber");
 
-                    b.ToTable("coupon_quota_buckets", null, t =>
+                    b.ToTable("catalog_coupon_quota_buckets", null, t =>
                         {
                             t.HasCheckConstraint("CK_coupon_quota_buckets_capacity", "\"Capacity\" > 0");
 
@@ -360,7 +360,7 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasIndex("LifecycleStatus", "EffectiveOnUtc", "Id");
 
-                    b.ToTable("products", null, t =>
+                    b.ToTable("catalog_products", null, t =>
                         {
                             t.HasCheckConstraint("CK_products_active_lifecycle", "(\"IsActive\" AND \"LifecycleStatus\" = 1 AND \"EffectiveOnUtc\" IS NOT NULL) OR (NOT \"IsActive\" AND \"LifecycleStatus\" <> 1)");
 
@@ -475,7 +475,7 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "StartsOnUtc", "EndsOnUtc");
 
-                    b.ToTable("promotions", null, t =>
+                    b.ToTable("catalog_promotions", null, t =>
                         {
                             t.HasCheckConstraint("CK_promotions_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
 
@@ -532,11 +532,11 @@ namespace MSA.CatalogService.Infrastructure.Migrations
                     b.HasIndex("PromotionId", "Sequence")
                         .IsUnique();
 
-                    b.ToTable("promotion_benefits", null, t =>
+                    b.ToTable("catalog_promotion_benefits", null, t =>
                         {
-                            t.HasCheckConstraint("CK_promotion_benefits_schema_version", "\"SchemaVersion\" > 0");
+                            t.HasCheckConstraint("CK_catalog_promotion_benefits_schema_version", "\"SchemaVersion\" > 0");
 
-                            t.HasCheckConstraint("CK_promotion_benefits_sequence", "\"Sequence\" >= 0");
+                            t.HasCheckConstraint("CK_catalog_promotion_benefits_sequence", "\"Sequence\" >= 0");
                         });
                 });
 
@@ -575,11 +575,11 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasIndex("RuleType", "SchemaVersion");
 
-                    b.ToTable("promotion_rules", null, t =>
+                    b.ToTable("catalog_promotion_rules", null, t =>
                         {
-                            t.HasCheckConstraint("CK_promotion_rules_schema_version", "\"SchemaVersion\" > 0");
+                            t.HasCheckConstraint("CK_catalog_promotion_rules_schema_version", "\"SchemaVersion\" > 0");
 
-                            t.HasCheckConstraint("CK_promotion_rules_sequence", "\"Sequence\" >= 0");
+                            t.HasCheckConstraint("CK_catalog_promotion_rules_sequence", "\"Sequence\" >= 0");
                         });
                 });
 
@@ -627,11 +627,11 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasIndex("TargetType", "TargetKey", "IsExcluded");
 
-                    b.ToTable("promotion_targets", null, t =>
+                    b.ToTable("catalog_promotion_targets", null, t =>
                         {
-                            t.HasCheckConstraint("CK_promotion_targets_schema_version", "\"SchemaVersion\" > 0");
+                            t.HasCheckConstraint("CK_catalog_promotion_targets_schema_version", "\"SchemaVersion\" > 0");
 
-                            t.HasCheckConstraint("CK_promotion_targets_sequence", "\"Sequence\" >= 0");
+                            t.HasCheckConstraint("CK_catalog_promotion_targets_sequence", "\"Sequence\" >= 0");
                         });
                 });
 
@@ -691,7 +691,7 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "NextAttemptOnUtc", "LockedUntilUtc");
 
-                    b.ToTable("outbox_messages", (string)null);
+                    b.ToTable("catalog_outbox_messages", (string)null);
                 });
 
             modelBuilder.Entity("MSA.Repositories.Persistence.InboxMessage", b =>
@@ -711,7 +711,7 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasKey("MessageId", "Consumer");
 
-                    b.ToTable("inbox_messages", (string)null);
+                    b.ToTable("catalog_inbox_messages", (string)null);
                 });
 
             modelBuilder.Entity("MSA.Saga.SagaState", b =>
@@ -774,7 +774,7 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "TimeoutOnUtc", "TimeoutLockedUntilUtc");
 
-                    b.ToTable("saga_states", (string)null);
+                    b.ToTable("catalog_saga_states", (string)null);
                 });
 
             modelBuilder.Entity("MSA.CatalogService.Domain.Coupon", b =>

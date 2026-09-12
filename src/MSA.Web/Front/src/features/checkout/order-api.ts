@@ -30,7 +30,7 @@ export type CreateOrderResponse = {
 };
 
 export function createOrder(request: CreateOrderRequest, idempotencyKey: string): Promise<CreateOrderResponse> {
-  return apiRequest<CreateOrderResponse>(`${serviceRoutes.ordering}/api/orders`, {
+  return apiRequest<CreateOrderResponse>(`${serviceRoutes.ordering}/orders`, {
     method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey },
     body: request,

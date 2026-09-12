@@ -7,14 +7,14 @@ internal static class CatalogEndpoints
 {
     public static IEndpointRouteBuilder MapCatalogEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        MapCompatibilityEndpoints(endpoints);
+        MapPublicEndpoints(endpoints);
         MapAdminEndpoints(endpoints);
         return endpoints;
     }
 
-    private static void MapCompatibilityEndpoints(IEndpointRouteBuilder endpoints)
+    private static void MapPublicEndpoints(IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/products", async (
+        endpoints.MapGet("/catalog/products", async (
             ISender sender,
             int skip = 0,
             int take = 20,
@@ -22,7 +22,7 @@ internal static class CatalogEndpoints
             Results.Ok(await sender.Send(new ListProductsQuery(skip, take), cancellationToken)))
             .RequireAuthorization();
 
-        endpoints.MapGet("/api/products/{id:guid}", async (
+        endpoints.MapGet("/catalog/products/{id:guid}", async (
             Guid id,
             ISender sender,
             CancellationToken cancellationToken) =>
@@ -31,48 +31,11 @@ internal static class CatalogEndpoints
             return product is null ? Results.NotFound() : Results.Ok(product);
         }).RequireAuthorization();
 
-        endpoints.MapPost("/api/categories", async (
-            CreateCategoryRequest request,
-            ISender sender,
-            CancellationToken cancellationToken) =>
-        {
-            var id = await sender.Send(new CreateCategoryCommand(request.Name), cancellationToken);
-            return Results.Created($"/api/admin/catalog/categories/{id}", new { id });
-        }).RequireAuthorization("catalog.write");
-
-        endpoints.MapPost("/api/products", async (
-            CreateProductRequest request,
-            ISender sender,
-            CancellationToken cancellationToken) =>
-        {
-            var id = await sender.Send(
-                new CreateProductCommand(
-                    request.CategoryId,
-                    request.Sku,
-                    request.Name,
-                    request.Description,
-                    request.Price,
-                    request.Currency),
-                cancellationToken);
-            return Results.Created($"/api/products/{id}", new { id });
-        }).RequireAuthorization("catalog.write");
-
-        endpoints.MapPut("/api/products/{id:guid}", async (
-            Guid id,
-            UpdateProductRequest request,
-            ISender sender,
-            CancellationToken cancellationToken) =>
-        {
-            await sender.Send(
-                new UpdateProductCommand(id, request.Name, request.Description, request.Price, request.IsActive),
-                cancellationToken);
-            return Results.NoContent();
-        }).RequireAuthorization("catalog.write");
     }
 
     private static void MapAdminEndpoints(IEndpointRouteBuilder endpoints)
     {
-        var admin = endpoints.MapGroup("/api/admin/catalog")
+        var admin = endpoints.MapGroup("/catalog/admin")
             .RequireAuthorization("catalog.write");
 
         admin.MapGet("/categories", async (
@@ -92,7 +55,7 @@ internal static class CatalogEndpoints
             var id = await sender.Send(
                 new CreateCategoryAdminCommand(request.Code, request.Name, GetActor(context)),
                 cancellationToken);
-            return Results.Created($"/api/admin/catalog/categories/{id}", new { id });
+            return Results.Created($"/api/catalog/admin/categories/{id}", new { id });
         });
 
         admin.MapPut("/categories/{id:guid}/name", async (
@@ -167,7 +130,7 @@ internal static class CatalogEndpoints
                     request.Currency,
                     GetActor(context)),
                 cancellationToken);
-            return Results.Created($"/api/admin/catalog/products/{id}", new { id });
+            return Results.Created($"/api/catalog/admin/products/{id}", new { id });
         });
 
         admin.MapPut("/products/{id:guid}/details", async (
@@ -277,7 +240,7 @@ internal static class CatalogEndpoints
                     request.Targets,
                     GetActor(context)),
                 cancellationToken);
-            return Results.Created($"/api/admin/catalog/promotions/{id}", new { id });
+            return Results.Created($"/api/catalog/admin/promotions/{id}", new { id });
         });
 
         admin.MapPut("/promotions/{id:guid}", async (
@@ -389,7 +352,7 @@ internal static class CatalogEndpoints
                     request.BucketCount,
                     GetActor(context)),
                 cancellationToken);
-            return Results.Created($"/api/admin/catalog/coupons/{id}", new { id });
+            return Results.Created($"/api/catalog/admin/coupons/{id}", new { id });
         });
 
         admin.MapPost("/coupons/{id:guid}/activate", async (

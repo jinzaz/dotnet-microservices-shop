@@ -9,7 +9,9 @@ internal static class FlashSaleEndpoints
 {
     public static IEndpointRouteBuilder MapFlashSaleEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/flash-sales").RequireAuthorization();
+        var group = endpoints.MapGroup("/inventory/flash-sales").RequireAuthorization();
+        var admin = endpoints.MapGroup("/inventory/admin/flash-sales")
+            .RequireAuthorization("inventory.write");
 
         group.MapGet("/{campaignId:guid}", GetAsync)
             .WithName("GetFlashSale")
@@ -17,20 +19,18 @@ internal static class FlashSaleEndpoints
             .Produces<FlashSaleAvailabilityDto>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
 
-        group.MapPost("/", CreateAsync)
+        admin.MapPost("/", CreateAsync)
             .WithName("CreateFlashSale")
             .WithSummary("Allocate inventory and create a flash-sale campaign")
             .Produces<FlashSaleCreatedResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
-            .ProducesProblem(StatusCodes.Status409Conflict)
-            .RequireAuthorization("inventory.write");
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
-        group.MapPost("/{campaignId:guid}/close", CloseAsync)
+        admin.MapPost("/{campaignId:guid}/close", CloseAsync)
             .WithName("CloseFlashSale")
             .WithSummary("Close a campaign and release inventory not held by orders")
             .Produces(StatusCodes.Status204NoContent)
-            .Produces(StatusCodes.Status404NotFound)
-            .RequireAuthorization("inventory.write");
+            .Produces(StatusCodes.Status404NotFound);
 
         return endpoints;
     }
@@ -60,7 +60,7 @@ internal static class FlashSaleEndpoints
                 request.BucketCount),
             cancellationToken);
         return TypedResults.Created(
-            $"/api/flash-sales/{campaignId}",
+            $"/api/inventory/flash-sales/{campaignId}",
             new FlashSaleCreatedResponse(campaignId));
     }
 

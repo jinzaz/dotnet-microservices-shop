@@ -2,7 +2,7 @@ import { apiRequest } from '../../shared/api/http';
 import { serviceRoutes } from '../../shared/config/api';
 import type { Basket } from './types';
 
-const basketBase = `${serviceRoutes.basket}/api/basket`;
+const basketBase = serviceRoutes.basket;
 
 export function getBasket(): Promise<Basket> {
   return apiRequest<Basket>(`${basketBase}/`);

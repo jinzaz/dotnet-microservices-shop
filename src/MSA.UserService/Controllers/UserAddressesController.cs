@@ -11,7 +11,7 @@ namespace MSA.UserService.Controllers;
 
 [Authorize]
 [ApiController]
-[Route("api/user/me/addresses")]
+[Route("user/me/addresses")]
 public sealed class UserAddressesController(ISender sender) : ControllerBase
 {
     [HttpGet]
@@ -42,7 +42,7 @@ public sealed class UserAddressesController(ISender sender) : ControllerBase
         var response = await sender.Send(
             new CreateUserAddressCommand(CurrentUserId(), request.ToDetails(), request.MakeDefault),
             cancellationToken);
-        return CreatedAtAction(nameof(Get), new { addressId = response.Id }, response);
+        return Created($"/api/user/me/addresses/{response.Id}", response);
     }
 
     [HttpPut("{addressId:guid}")]

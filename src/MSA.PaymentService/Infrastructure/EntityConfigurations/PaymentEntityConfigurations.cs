@@ -2,13 +2,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using MSA.PaymentService.Domain;
 
-namespace MSA.PaymentService.Infrastructure;
+namespace MSA.PaymentService.Infrastructure.EntityConfigurations;
 
 internal sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
 {
     public void Configure(EntityTypeBuilder<Payment> entity)
     {
-        entity.ToTable("payments", table =>
+        entity.ToTable("payment_payments", table =>
         {
             table.HasCheckConstraint("CK_payments_amount", "\"Amount\" > 0");
             table.HasCheckConstraint(

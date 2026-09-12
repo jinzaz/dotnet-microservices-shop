@@ -78,7 +78,7 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "NextAttemptOnUtc", "LockedUntilUtc");
 
-                    b.ToTable("outbox_messages", (string)null);
+                    b.ToTable("order_outbox_messages", (string)null);
                 });
 
             modelBuilder.Entity("MSA.OrderService.Domain.CouponProjection", b =>
@@ -143,7 +143,7 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasIndex("PromotionId", "Status");
 
-                    b.ToTable("coupon_projections", null, t =>
+                    b.ToTable("order_coupon_projections", null, t =>
                         {
                             t.HasCheckConstraint("CK_coupon_projections_limits", "(\"TotalLimit\" IS NULL OR \"TotalLimit\" > 0) AND \"PerUserLimit\" > 0");
 
@@ -187,7 +187,7 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.HasIndex("CouponId", "BucketNumber")
                         .IsUnique();
 
-                    b.ToTable("coupon_quota_buckets", null, t =>
+                    b.ToTable("order_coupon_quota_buckets", null, t =>
                         {
                             t.HasCheckConstraint("CK_coupon_quota_buckets_capacity", "\"Capacity\" > 0");
 
@@ -237,7 +237,7 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasIndex("IsOpen", "StartsOnUtc", "EndsOnUtc");
 
-                    b.ToTable("flash_sale_campaign_projections", null, t =>
+                    b.ToTable("order_flash_sale_campaign_projections", null, t =>
                         {
                             t.HasCheckConstraint("CK_flash_sale_campaign_projections_limit", "\"PurchaseLimit\" > 0");
 
@@ -410,7 +410,7 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("\"SourceBasketId\" IS NOT NULL AND \"SourceBasketVersion\" IS NOT NULL");
 
-                    b.ToTable("orders", null, t =>
+                    b.ToTable("order_orders", null, t =>
                         {
                             t.HasCheckConstraint("CK_orders_amounts", "\"SubtotalAmount\" > 0 AND \"DiscountAmount\" >= 0 AND \"Amount\" > 0 AND \"Amount\" = \"SubtotalAmount\" - \"DiscountAmount\"");
 
@@ -719,7 +719,7 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasIndex("IsActive", "CategoryId");
 
-                    b.ToTable("product_projections", null, t =>
+                    b.ToTable("order_product_projections", null, t =>
                         {
                             t.HasCheckConstraint("CK_product_projections_price", "\"Price\" >= 0");
                         });
@@ -838,7 +838,7 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "StartsOnUtc", "EndsOnUtc", "Priority");
 
-                    b.ToTable("promotion_projections", null, t =>
+                    b.ToTable("order_promotion_projections", null, t =>
                         {
                             t.HasCheckConstraint("CK_promotion_projections_revision", "\"SourceRevision\" >= 0");
 
@@ -863,7 +863,7 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasKey("MessageId", "Consumer");
 
-                    b.ToTable("inbox_messages", (string)null);
+                    b.ToTable("order_inbox_messages", (string)null);
                 });
 
             modelBuilder.Entity("MSA.Saga.SagaState", b =>
@@ -926,7 +926,7 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "TimeoutOnUtc", "TimeoutLockedUntilUtc");
 
-                    b.ToTable("saga_states", (string)null);
+                    b.ToTable("order_saga_states", (string)null);
                 });
 
             modelBuilder.Entity("MSA.OrderService.Domain.CouponQuotaBucket", b =>
@@ -1004,7 +1004,7 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                             b1.HasKey("OrderId");
 
-                            b1.ToTable("orders");
+                            b1.ToTable("order_orders");
 
                             b1.WithOwner()
                                 .HasForeignKey("OrderId");

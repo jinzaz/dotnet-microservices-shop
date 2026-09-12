@@ -7,10 +7,10 @@ export function listOrders(fulfillmentStatus?: OrderFulfillmentStatus): Promise<
   if (fulfillmentStatus) parameters.set('fulfillmentStatus', fulfillmentStatus);
 
   return apiRequest<OrderListItem[]>(
-    `${serviceRoutes.ordering}/api/orders?${parameters.toString()}`,
+    `${serviceRoutes.ordering}/orders?${parameters.toString()}`,
   );
 }
 
 export function getOrder(orderId: string): Promise<OrderDetails> {
-  return apiRequest<OrderDetails>(`${serviceRoutes.ordering}/api/orders/${encodeURIComponent(orderId)}`);
+  return apiRequest<OrderDetails>(`${serviceRoutes.ordering}/orders/${encodeURIComponent(orderId)}`);
 }

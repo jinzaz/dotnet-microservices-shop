@@ -16,25 +16,25 @@
 
 | 能力 | BFF 路径 | 前端策略 |
 | --- | --- | --- |
-| 登录与注册 | `GET /bff/login` | 启动 Authorization Code + PKCE；凭据只在 Identity UI 输入 |
-| 登录状态 | `GET /bff/user` | 以 BFF 服务端会话为准，不读取浏览器存储 |
-| 注销 | `POST /bff/logout` | 携带 CSRF 表单令牌并完成本地会话及 Identity 注销 |
+| 登录与注册 | `GET /api/bff/login` | 启动 Authorization Code + PKCE；凭据只在 Identity UI 输入 |
+| 登录状态 | `GET /api/bff/user` | 以 BFF 服务端会话为准，不读取浏览器存储 |
+| 注销 | `POST /api/bff/logout` | 携带 CSRF 表单令牌并完成本地会话及 Identity 注销 |
 | 修改密码 | `POST /api/identity/api/auth/change-password` | BFF 注入 access token，Front 只提交当前密码和新密码 |
 | 当前用户 | `GET/PUT /api/identity/api/users/me` | 展示与编辑资料 |
-| 地址 | `/api/identity/api/users/me/addresses` | 列表、新增、编辑、删除、设为默认 |
-| 积分 | `/api/identity/api/users/me/points` | 账户汇总与明细并行读取 |
-| 我的订单 | `GET /api/order/api/orders` | 按当前用户和履约状态读取，页面不拼接其他服务业务数据 |
-| 商品 | `GET /api/catalog/api/products` | 认证后读取；访客展示静态编辑精选内容 |
-| 商品详情 | `GET /api/catalog/api/products/{id}` | 读取真实商品；编辑精选商品使用同结构的本地展示数据 |
-| SKU 列表 | `GET /api/catalog/api/products/{id}/skus` | 后端暂缺，前端已预留并按单 SKU 或演示规格回退 |
-| 可售库存 | `GET /api/inventory/api/inventory/{sku}` | 登录用户读取；失败时展示结算确认提示 |
-| 购物袋 | `/api/basket/api/basket` | 新增、改数量、删除、优惠码接口已封装；本地版本化草稿保证页面可操作 |
-| 我的优惠券 | `GET /api/catalog/api/coupons/me` | 后端暂缺消费者接口，页面自动使用演示券包 |
-| 兑换/领取优惠券 | `POST /api/catalog/api/coupons/me/redeem`、`POST /api/catalog/api/coupons/{id}/claim` | 地址已预留，演示模式支持完整交互 |
-| 商品评价 | `GET /api/review/api/products/{id}/reviews` | Review 上下文需求已成立但服务暂缺，页面使用演示评价 |
-| 创建订单 | `POST /api/order/api/orders` | 发送地址快照、SKU、支付方式、优惠码和 `Idempotency-Key` |
+| 地址 | `/api/user/me/addresses` | 列表、新增、编辑、删除、设为默认 |
+| 积分 | `/api/user/me/points` | 账户汇总与明细并行读取 |
+| 我的订单 | `GET /api/order/orders` | 按当前用户和履约状态读取，页面不拼接其他服务业务数据 |
+| 商品 | `GET /api/catalog/products` | 认证后读取；访客展示静态编辑精选内容 |
+| 商品详情 | `GET /api/catalog/products/{id}` | 读取真实商品；编辑精选商品使用同结构的本地展示数据 |
+| SKU 列表 | `GET /api/catalog/products/{id}/skus` | 后端暂缺，前端已预留并按单 SKU 或演示规格回退 |
+| 可售库存 | `GET /api/inventory/{sku}` | 登录用户读取；失败时展示结算确认提示 |
+| 购物袋 | `/api/basket` | 新增、改数量、删除、优惠码接口已封装；本地版本化草稿保证页面可操作 |
+| 我的优惠券 | `GET /api/catalog/coupons/me` | 后端暂缺消费者接口，页面自动使用演示券包 |
+| 兑换/领取优惠券 | `POST /api/catalog/coupons/me/redeem`、`POST /api/catalog/coupons/{id}/claim` | 地址已预留，演示模式支持完整交互 |
+| 商品评价 | `GET /api/review/products/{id}/reviews` | Review 上下文需求已成立但服务暂缺，页面使用演示评价 |
+| 创建订单 | `POST /api/order/orders` | 发送地址快照、SKU、支付方式、优惠码和 `Idempotency-Key` |
 
-所有非安全方法会先从 `/bff/csrf` 获取请求令牌并通过 `X-XSRF-TOKEN` 发送；注销使用表单字段提交同一令牌，以便浏览器继续处理身份提供方的重定向链。
+所有非安全方法会先从 `/api/bff/csrf` 获取请求令牌并通过 `X-XSRF-TOKEN` 发送；注销使用表单字段提交同一令牌，以便浏览器继续处理身份提供方的重定向链。
 
 ## 后续阶段
 

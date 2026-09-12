@@ -768,7 +768,7 @@ internal static class OrderRowLock
         Guid orderId,
         CancellationToken cancellationToken) =>
         db.Orders
-            .FromSqlInterpolated($"SELECT * FROM orders WHERE \"Id\" = {orderId} FOR UPDATE")
+            .FromSqlInterpolated($"SELECT * FROM order_orders WHERE \"Id\" = {orderId} FOR UPDATE")
             .SingleAsync(cancellationToken);
 }
 

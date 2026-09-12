@@ -12,7 +12,7 @@ namespace MSA.OrderService.Controllers;
 [Authorize]
 [EnableRateLimiting("FlashSaleSubmission")]
 [ApiController]
-[Route("api/flash-sales/{campaignId:guid}/orders")]
+[Route("order/flash-sales/{campaignId:guid}/orders")]
 public sealed class FlashSaleOrdersController(ISender sender) : ControllerBase
 {
     [HttpPost]

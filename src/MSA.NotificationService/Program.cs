@@ -60,7 +60,7 @@ app.UseExceptionHandler();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealthChecks("/health");
-app.MapGet("/api/notifications/{userId}", async (
+app.MapGet("/notification/users/{userId}", async (
     string userId,
     int skip,
     int take,

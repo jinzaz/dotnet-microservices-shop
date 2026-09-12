@@ -8,7 +8,7 @@ using System.Data;
 namespace MSA.PaymentService.Infrastructure;
 
 public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options, IMediator mediator)
-    : MessagingDbContext(options, mediator)
+    : MessagingDbContext(options, mediator, "payment")
 {
     public DbSet<Payment> Payments => Set<Payment>();
     internal DbSet<PaymentProviderOperation> ProviderOperations => Set<PaymentProviderOperation>();
@@ -30,7 +30,7 @@ public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options,
         CancellationToken cancellationToken) =>
         Database.ExecuteSqlInterpolatedAsync(
             $"""
-            INSERT INTO inbox_messages ("MessageId", "Consumer", "ProcessedOnUtc")
+            INSERT INTO payment_inbox_messages ("MessageId", "Consumer", "ProcessedOnUtc")
             VALUES ({messageId}, {consumer}, {processedOnUtc})
             ON CONFLICT ("MessageId", "Consumer") DO NOTHING
             """,
@@ -44,7 +44,7 @@ public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options,
             .FromSqlInterpolated(
                 $"""
                 SELECT *
-                FROM payments
+                FROM payment_payments
                 WHERE "MerchantTradeNo" = {merchantTradeNo}
                 FOR UPDATE
                 """)
@@ -61,7 +61,7 @@ public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options,
             .FromSqlInterpolated(
                 $"""
                 SELECT *
-                FROM payments
+                FROM payment_payments
                 WHERE "Id" = {paymentId}
                 FOR UPDATE
                 """)
@@ -79,7 +79,7 @@ public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options,
             .FromSqlInterpolated(
                 $"""
                 SELECT *
-                FROM payments
+                FROM payment_payments
                 WHERE "OrderId" = {orderId}
                 FOR UPDATE
                 """)

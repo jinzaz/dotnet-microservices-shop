@@ -12,7 +12,7 @@ namespace MSA.UserService.Controllers;
 [ApiController]
 public sealed class LoyaltyPointsController(ISender sender) : ControllerBase
 {
-    [HttpGet("api/user/me/points")]
+    [HttpGet("user/me/points")]
     [ProducesResponseType<LoyaltyPointAccountResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<LoyaltyPointAccountResponse>> GetAccount(CancellationToken cancellationToken)
     {
@@ -20,7 +20,7 @@ public sealed class LoyaltyPointsController(ISender sender) : ControllerBase
         return Ok(response);
     }
 
-    [HttpGet("api/user/me/points/entries")]
+    [HttpGet("user/me/points/entries")]
     [ProducesResponseType<IReadOnlyList<LoyaltyPointEntryResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<LoyaltyPointEntryResponse>>> ListEntries(
         [FromQuery] int skip = 0,
@@ -34,7 +34,7 @@ public sealed class LoyaltyPointsController(ISender sender) : ControllerBase
     }
 
     [Authorize(Roles = "admin")]
-    [HttpGet("api/user/{userId}/points")]
+    [HttpGet("user/admin/points/{userId}")]
     [ProducesResponseType<LoyaltyPointAccountResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<LoyaltyPointAccountResponse>> GetUserAccount(
         string userId,
@@ -47,7 +47,7 @@ public sealed class LoyaltyPointsController(ISender sender) : ControllerBase
     }
 
     [Authorize(Roles = "admin")]
-    [HttpGet("api/user/{userId}/points/entries")]
+    [HttpGet("user/admin/points/{userId}/entries")]
     [ProducesResponseType<IReadOnlyList<LoyaltyPointEntryResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<LoyaltyPointEntryResponse>>> ListUserEntries(
         string userId,
@@ -62,7 +62,7 @@ public sealed class LoyaltyPointsController(ISender sender) : ControllerBase
     }
 
     [Authorize(Roles = "admin")]
-    [HttpGet("api/user/{userId}/points/entries/{entryId:guid}")]
+    [HttpGet("user/admin/points/{userId}/entries/{entryId:guid}")]
     [ProducesResponseType<LoyaltyPointEntryResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<LoyaltyPointEntryResponse>> GetEntry(
@@ -77,7 +77,7 @@ public sealed class LoyaltyPointsController(ISender sender) : ControllerBase
     }
 
     [Authorize(Roles = "admin")]
-    [HttpPost("api/user/{userId}/points/adjustments")]
+    [HttpPost("user/admin/points/{userId}/adjustments")]
     [ProducesResponseType<LoyaltyPointEntryResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<LoyaltyPointEntryResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -99,7 +99,7 @@ public sealed class LoyaltyPointsController(ISender sender) : ControllerBase
             cancellationToken);
         if (result.IsReplay)
             return Ok(result.Entry);
-        return Created($"/api/user/{userId}/points/entries/{result.Entry.Id}", result.Entry);
+        return Created($"/api/user/admin/points/{userId}/entries/{result.Entry.Id}", result.Entry);
     }
 
     private string CurrentUserId() =>

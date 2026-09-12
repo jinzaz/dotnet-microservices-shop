@@ -4,7 +4,7 @@ import type { ProductReviewResult } from './types';
 
 export const reviewApiPaths = {
   productReviews: (productId: string) =>
-    `${serviceRoutes.review}/api/products/${encodeURIComponent(productId)}/reviews`,
+    `${serviceRoutes.review}/products/${encodeURIComponent(productId)}/reviews`,
 } as const;
 
 export function listProductReviews(productId: string): Promise<ProductReviewResult> {

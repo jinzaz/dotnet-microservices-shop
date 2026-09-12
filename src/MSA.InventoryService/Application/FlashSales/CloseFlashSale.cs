@@ -25,7 +25,7 @@ internal sealed class CloseFlashSaleCommandHandler(
         CancellationToken cancellationToken)
     {
         var campaign = await db.FlashSaleCampaigns
-            .FromSqlInterpolated($"SELECT * FROM flash_sale_campaigns WHERE \"Id\" = {request.CampaignId} FOR UPDATE")
+            .FromSqlInterpolated($"SELECT * FROM inventory_flash_sale_campaigns WHERE \"Id\" = {request.CampaignId} FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken);
         if (campaign is null)
             return new CloseFlashSaleResult(false, false, 0);

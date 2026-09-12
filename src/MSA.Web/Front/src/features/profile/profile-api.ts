@@ -10,7 +10,7 @@ import type {
 } from './types';
 
 const identityUserBase = `${serviceRoutes.identity}/api/users/me`;
-const userBase = `${serviceRoutes.user}/api/user/me`;
+const userBase = `${serviceRoutes.user}/me`;
 
 export function getProfile(): Promise<UserProfile> {
   return apiRequest<UserProfile>(identityUserBase);

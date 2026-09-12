@@ -78,7 +78,7 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "NextAttemptOnUtc", "LockedUntilUtc");
 
-                    b.ToTable("outbox_messages", (string)null);
+                    b.ToTable("payment_outbox_messages", (string)null);
                 });
 
             modelBuilder.Entity("MSA.PaymentService.Domain.Payment", b =>
@@ -184,7 +184,7 @@ namespace MSA.PaymentService.Infrastructure.Migrations
                         .HasDatabaseName("IX_payments_pending_expiry")
                         .HasFilter("\"Status\" = 0");
 
-                    b.ToTable("payments", null, t =>
+                    b.ToTable("payment_payments", null, t =>
                         {
                             t.HasCheckConstraint("CK_payments_amount", "\"Amount\" > 0");
 
@@ -603,7 +603,7 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.HasKey("MessageId", "Consumer");
 
-                    b.ToTable("inbox_messages", (string)null);
+                    b.ToTable("payment_inbox_messages", (string)null);
                 });
 
             modelBuilder.Entity("MSA.Saga.SagaState", b =>
@@ -666,7 +666,7 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "TimeoutOnUtc", "TimeoutLockedUntilUtc");
 
-                    b.ToTable("saga_states", (string)null);
+                    b.ToTable("payment_saga_states", (string)null);
                 });
 
             modelBuilder.Entity("MSA.PaymentService.Domain.PaymentNotificationRecord", b =>

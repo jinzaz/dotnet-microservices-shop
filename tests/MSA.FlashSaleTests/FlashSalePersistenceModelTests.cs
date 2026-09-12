@@ -81,7 +81,7 @@ public sealed class FlashSalePersistenceModelTests
 
         // Assert
         Assert.IsNotNull(allocatedConstraint);
-        Assert.AreEqual("\"AllocatedQuantity\" > 0", allocatedConstraint.Sql);
+        Assert.AreEqual("\"AllocatedQuantity\" >= 0", allocatedConstraint.Sql);
         Assert.IsNotNull(counterConstraint);
         Assert.AreEqual(
             "\"ReservedQuantity\" >= 0 AND \"SoldQuantity\" >= 0 AND \"ReleasedQuantity\" >= 0 AND \"ReservedQuantity\" + \"SoldQuantity\" + \"ReleasedQuantity\" <= \"AllocatedQuantity\"",

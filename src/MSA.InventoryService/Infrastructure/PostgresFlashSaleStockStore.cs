@@ -103,10 +103,10 @@ internal sealed class PostgresFlashSaleStockStore(
         CancellationToken cancellationToken) =>
         ExecuteReservationAsync(
             """
-            UPDATE flash_sale_stock_buckets AS bucket
+            UPDATE inventory_flash_sale_stock_buckets AS bucket
             SET "ReservedQuantity" = bucket."ReservedQuantity" + @quantity,
                 "Version" = bucket."Version" + 1
-            FROM flash_sale_campaigns AS campaign
+            FROM inventory_flash_sale_campaigns AS campaign
             WHERE bucket."CampaignId" = @campaignId
               AND bucket."BucketNumber" = 0
               AND campaign."Id" = bucket."CampaignId"
@@ -135,8 +135,8 @@ internal sealed class PostgresFlashSaleStockStore(
             WITH candidate AS
             (
                 SELECT bucket."Id"
-                FROM flash_sale_stock_buckets AS bucket
-                INNER JOIN flash_sale_campaigns AS campaign ON campaign."Id" = bucket."CampaignId"
+                FROM inventory_flash_sale_stock_buckets AS bucket
+                INNER JOIN inventory_flash_sale_campaigns AS campaign ON campaign."Id" = bucket."CampaignId"
                 WHERE campaign."Id" = @campaignId
                   AND campaign."Status" = 0
                   AND campaign."StartsOnUtc" <= @now
@@ -146,7 +146,7 @@ internal sealed class PostgresFlashSaleStockStore(
                 {{lockClause}}
                 LIMIT 1
             )
-            UPDATE flash_sale_stock_buckets AS bucket
+            UPDATE inventory_flash_sale_stock_buckets AS bucket
             SET "ReservedQuantity" = bucket."ReservedQuantity" + @quantity,
                 "Version" = bucket."Version" + 1
             FROM candidate
@@ -199,14 +199,14 @@ internal sealed class PostgresFlashSaleStockStore(
         CancellationToken cancellationToken)
     {
         var campaign = await db.FlashSaleCampaigns
-            .FromSqlInterpolated($"SELECT * FROM flash_sale_campaigns WHERE \"Id\" = {campaignId} AND \"Status\" = 0 AND \"StartsOnUtc\" <= {now} AND \"EndsOnUtc\" > {now} FOR UPDATE")
+            .FromSqlInterpolated($"SELECT * FROM inventory_flash_sale_campaigns WHERE \"Id\" = {campaignId} AND \"Status\" = 0 AND \"StartsOnUtc\" <= {now} AND \"EndsOnUtc\" > {now} FOR UPDATE")
             .AsNoTracking()
             .SingleOrDefaultAsync(cancellationToken);
         if (campaign is null)
             return null;
 
         var buckets = await db.FlashSaleStockBuckets
-            .FromSqlInterpolated($"SELECT * FROM flash_sale_stock_buckets WHERE \"CampaignId\" = {campaignId} ORDER BY \"BucketNumber\" FOR UPDATE")
+            .FromSqlInterpolated($"SELECT * FROM inventory_flash_sale_stock_buckets WHERE \"CampaignId\" = {campaignId} ORDER BY \"BucketNumber\" FOR UPDATE")
             .ToListAsync(cancellationToken);
         if (buckets.Sum(bucket => bucket.AvailableQuantity) < quantity)
             return null;

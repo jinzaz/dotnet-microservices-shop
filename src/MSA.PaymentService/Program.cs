@@ -86,7 +86,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealthChecks("/health");
 
-app.MapGet("/api/payments/orders/{orderId:guid}", async (Guid orderId, ClaimsPrincipal user, ISender sender, CancellationToken ct) =>
+app.MapGet("/payment/orders/{orderId:guid}", async (Guid orderId, ClaimsPrincipal user, ISender sender, CancellationToken ct) =>
 {
     var subject = user.FindFirstValue("sub") ?? string.Empty;
     var canReadAll = user.IsInRole("admin") || user.IsInRole("operator");
@@ -94,7 +94,7 @@ app.MapGet("/api/payments/orders/{orderId:guid}", async (Guid orderId, ClaimsPri
     return payment is null ? Results.NotFound() : Results.Ok(payment);
 }).RequireAuthorization();
 
-app.MapPost("/api/payments/callbacks/alipay", async (
+app.MapPost("/payment/callbacks/alipay", async (
     HttpRequest request,
     IEnumerable<IPaymentNotificationVerifier> verifiers,
     ISender sender,
@@ -121,7 +121,7 @@ app.MapPost("/api/payments/callbacks/alipay", async (
     return Results.Text("success");
 }).AllowAnonymous();
 
-app.MapPost("/api/payments/callbacks/wechatpay", async (
+app.MapPost("/payment/callbacks/wechatpay", async (
     HttpRequest request,
     IEnumerable<IPaymentNotificationVerifier> verifiers,
     ISender sender,

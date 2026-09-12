@@ -9,7 +9,9 @@ internal static class InventoryEndpoints
 {
     public static IEndpointRouteBuilder MapInventoryEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/inventory").RequireAuthorization();
+        var group = endpoints.MapGroup("/inventory").RequireAuthorization();
+        var admin = endpoints.MapGroup("/inventory/admin")
+            .RequireAuthorization("inventory.write");
 
         group.MapGet("/{sku}", GetAvailabilityAsync)
             .WithName("GetInventoryAvailability")
@@ -17,28 +19,25 @@ internal static class InventoryEndpoints
             .Produces<InventoryAvailabilityDto>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
 
-        group.MapPost("/stock", AddStockAsync)
+        admin.MapPost("/stock", AddStockAsync)
             .WithName("AddInventoryStock")
             .WithSummary("Add on-hand inventory for a SKU")
             .Produces<StockMutationResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
-            .ProducesProblem(StatusCodes.Status409Conflict)
-            .RequireAuthorization("inventory.write");
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
-        group.MapPost("/stock/adjustments", AdjustStockAsync)
+        admin.MapPost("/stock/adjustments", AdjustStockAsync)
             .WithName("AdjustInventoryStock")
             .WithSummary("Apply an idempotent audited stock adjustment")
             .Produces<AdjustStockResult>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status409Conflict)
-            .RequireAuthorization("inventory.write");
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
-        group.MapGet("/stock/{sku}/movements", GetStockMovementsAsync)
+        admin.MapGet("/stock/{sku}/movements", GetStockMovementsAsync)
             .WithName("GetInventoryStockMovements")
             .WithSummary("Get recent audited stock movements for a SKU")
-            .Produces<IReadOnlyList<StockMovementDto>>(StatusCodes.Status200OK)
-            .RequireAuthorization("inventory.write");
+            .Produces<IReadOnlyList<StockMovementDto>>(StatusCodes.Status200OK);
 
         return endpoints;
     }

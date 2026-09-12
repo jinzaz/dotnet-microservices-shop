@@ -36,8 +36,8 @@ public static class ServiceCollections
             options.ExpireTimeSpan =
                    TimeSpan.FromHours(8);
             options.SlidingExpiration = true;
-            options.LoginPath = "/bff/login";
-            options.LogoutPath = "/bff/logout";
+            options.LoginPath = "/api/bff/login";
+            options.LogoutPath = "/api/bff/logout";
 
             //
             // API 不要 302 去登录页。
@@ -216,8 +216,8 @@ public static class ServiceCollections
                     // URI per provider, unless all the registered providers support returning a special "iss"
                     // parameter containing their URL as part of authorization responses. For more information,
                     // see https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics#section-4.4.
-                    RedirectUri = new Uri("bff/callback/login", UriKind.Relative),
-                    PostLogoutRedirectUri = new Uri("bff/callback/logout", UriKind.Relative),
+                    RedirectUri = new Uri("api/bff/callback/login", UriKind.Relative),
+                    PostLogoutRedirectUri = new Uri("api/bff/callback/logout", UriKind.Relative),
                 });
             });
         return services;

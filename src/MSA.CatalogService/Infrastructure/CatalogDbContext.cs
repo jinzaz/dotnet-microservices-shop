@@ -7,7 +7,7 @@ namespace MSA.CatalogService.Infrastructure;
 
 public sealed class CatalogDbContext(
     DbContextOptions<CatalogDbContext> options,
-    IMediator mediator) : MessagingDbContext(options, mediator)
+    IMediator mediator) : MessagingDbContext(options, mediator, "catalog")
 {
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Product> Products => Set<Product>();

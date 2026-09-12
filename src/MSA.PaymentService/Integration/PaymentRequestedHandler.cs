@@ -184,5 +184,5 @@ internal sealed class PaymentRequestedHandler(
 public sealed class PaymentEndpointOptions
 {
     public string NotifyBaseUrl { get; set; } =
-        "https://localhost:10005/api/payments/callbacks";
+        "https://localhost:10005/payment/callbacks";
 }

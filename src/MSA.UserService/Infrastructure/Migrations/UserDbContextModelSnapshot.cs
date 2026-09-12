@@ -55,7 +55,7 @@ namespace MSA.UserService.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("loyalty_point_accounts", null, t =>
+                    b.ToTable("user_loyalty_point_accounts", null, t =>
                         {
                             t.HasCheckConstraint("CK_loyalty_point_accounts_balances", "\"Balance\" >= 0 AND \"LifetimeEarned\" >= 0 AND \"LifetimeSpent\" >= 0 AND \"Balance\" = \"LifetimeEarned\" - \"LifetimeSpent\"");
 
@@ -122,7 +122,7 @@ namespace MSA.UserService.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "OccurredOnUtc");
 
-                    b.ToTable("loyalty_point_entries", null, t =>
+                    b.ToTable("user_loyalty_point_entries", null, t =>
                         {
                             t.HasCheckConstraint("CK_loyalty_point_entries_balances", "\"BalanceBefore\" >= 0 AND \"BalanceAfter\" >= 0 AND \"BalanceAfter\" = \"BalanceBefore\" + \"Delta\"");
 

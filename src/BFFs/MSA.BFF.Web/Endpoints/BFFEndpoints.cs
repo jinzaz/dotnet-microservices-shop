@@ -13,7 +13,7 @@ internal static class BFFEndpoints
 {
     internal static IEndpointRouteBuilder MapBFFEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var bffGroup = endpoints.MapGroup("/bff")
+        var bffGroup = endpoints.MapGroup("/api/bff")
             .WithTags("bff");
 
         bffGroup.MapGet("/csrf", GetCSRF)

@@ -9,7 +9,7 @@ let csrfTokenPromise: Promise<string> | null = null;
 export async function hasBffSession(): Promise<boolean> {
   let response: Response;
   try {
-    response = await fetch(bffUrl('/bff/user'), {
+    response = await fetch(bffUrl('/api/bff/user'), {
       credentials: 'include',
       headers: { Accept: 'application/json' },
     });
@@ -28,13 +28,13 @@ export async function hasBffSession(): Promise<boolean> {
 
 export function beginLogin(returnUrl = '/account'): void {
   const query = new URLSearchParams({ returnUrl });
-  window.location.assign(bffUrl(`/bff/login?${query}`));
+  window.location.assign(bffUrl(`/api/bff/login?${query}`));
 }
 
 async function requestCsrfToken(): Promise<string> {
   let response: Response;
   try {
-    response = await fetch(bffUrl('/bff/csrf'), {
+    response = await fetch(bffUrl('/api/bff/csrf'), {
       credentials: 'include',
       headers: { Accept: 'application/json' },
     });
@@ -66,7 +66,7 @@ export async function signOut(returnUrl = '/'): Promise<void> {
   const field = document.createElement('input');
 
   form.method = 'post';
-  form.action = bffUrl(`/bff/logout?${query}`);
+  form.action = bffUrl(`/api/bff/logout?${query}`);
   form.hidden = true;
   field.type = 'hidden';
   field.name = '__RequestVerificationToken';

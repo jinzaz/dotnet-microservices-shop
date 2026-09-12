@@ -78,7 +78,7 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "NextAttemptOnUtc", "LockedUntilUtc");
 
-                    b.ToTable("outbox_messages", (string)null);
+                    b.ToTable("inventory_outbox_messages", (string)null);
                 });
 
             modelBuilder.Entity("MSA.InventoryService.Domain.FlashSaleCampaign", b =>
@@ -136,7 +136,7 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "EndsOnUtc");
 
-                    b.ToTable("flash_sale_campaigns", null, t =>
+                    b.ToTable("inventory_flash_sale_campaigns", null, t =>
                         {
                             t.HasCheckConstraint("CK_flash_sale_campaigns_bucket_count", "\"BucketCount\" BETWEEN 1 AND 128 AND \"BucketCount\" * \"PurchaseLimit\" <= \"TotalQuantity\"");
 
@@ -189,7 +189,7 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     b.HasIndex("CampaignId", "BucketNumber")
                         .IsUnique();
 
-                    b.ToTable("flash_sale_stock_buckets", null, t =>
+                    b.ToTable("inventory_flash_sale_stock_buckets", null, t =>
                         {
                             t.HasCheckConstraint("CK_flash_sale_stock_buckets_allocated", "\"AllocatedQuantity\" >= 0");
 
@@ -390,7 +390,7 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     b.HasIndex("Sku")
                         .IsUnique();
 
-                    b.ToTable("stock_items", null, t =>
+                    b.ToTable("inventory_stock_items", null, t =>
                         {
                             t.HasCheckConstraint("CK_stock_items_quantities", "\"OnHand\" >= 0 AND \"Reserved\" >= 0 AND \"Reserved\" <= \"OnHand\"");
 
@@ -482,7 +482,7 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("\"ReferenceId\" IS NOT NULL");
 
-                    b.ToTable("stock_movements", null, t =>
+                    b.ToTable("inventory_stock_movements", null, t =>
                         {
                             t.HasCheckConstraint("CK_stock_movements_balances", "\"OnHandAfter\" >= 0 AND \"ReservedAfter\" >= 0 AND \"ReservedAfter\" <= \"OnHandAfter\"");
 
@@ -517,7 +517,7 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.HasKey("MessageId", "Consumer");
 
-                    b.ToTable("inbox_messages", (string)null);
+                    b.ToTable("inventory_inbox_messages", (string)null);
                 });
 
             modelBuilder.Entity("MSA.Saga.SagaState", b =>
@@ -580,7 +580,7 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "TimeoutOnUtc", "TimeoutLockedUntilUtc");
 
-                    b.ToTable("saga_states", (string)null);
+                    b.ToTable("inventory_saga_states", (string)null);
                 });
 
             modelBuilder.Entity("MSA.InventoryService.Domain.FlashSaleStockBucket", b =>
