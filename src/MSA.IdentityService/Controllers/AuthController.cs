@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using MSA.IdentityService.Application.Sms;
@@ -28,9 +29,14 @@ public sealed class AuthController(
     IAntiforgery antiforgery,
     ISmsVerificationService smsVerification,
     IOptions<SmsOptions> smsOptions,
+    IConfiguration configuration,
     ILogger<AuthController> logger,
     TimeProvider timeProvider) : ControllerBase
 {
+    private const string ConsentDecisionParameter = "consent";
+    private const string ApproveConsent = "approve";
+    private const string DenyConsent = "deny";
+
     [AllowAnonymous]
     [HttpGet("csrf")]
     [ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
@@ -142,9 +148,27 @@ public sealed class AuthController(
 
     [AllowAnonymous]
     [HttpGet("~/connect/authorize")]
-    [HttpPost("~/connect/authorize")]
     [IgnoreAntiforgeryToken]
-    public async Task<IActionResult> AuthorizeEndpoint(CancellationToken cancellationToken)
+    public Task<IActionResult> AuthorizeEndpoint(CancellationToken cancellationToken) =>
+        HandleAuthorizationAsync(consentDecision: null, cancellationToken);
+
+    [AllowAnonymous]
+    [HttpPost("~/connect/authorize")]
+    [Consumes("application/x-www-form-urlencoded")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AuthorizeEndpointPost(CancellationToken cancellationToken)
+    {
+        var form = await Request.ReadFormAsync(cancellationToken);
+        var consentDecision = form[ConsentDecisionParameter].ToString();
+        if (consentDecision is not (ApproveConsent or DenyConsent))
+            return BadRequest(new ProblemDetails { Title = "A valid consent decision is required." });
+
+        return await HandleAuthorizationAsync(consentDecision, cancellationToken);
+    }
+
+    private async Task<IActionResult> HandleAuthorizationAsync(
+        string? consentDecision,
+        CancellationToken cancellationToken)
     {
         var request = HttpContext.GetOpenIddictServerRequest()
             ?? throw new InvalidOperationException("The OpenID Connect request cannot be retrieved.");
@@ -189,17 +213,41 @@ public sealed class AuthController(
             scopes: request.GetScopes(),
             cancellationToken).ToListAsync(cancellationToken);
 
+        if (consentDecision == DenyConsent)
+            return OAuthForbid(Errors.AccessDenied, "The resource owner denied the authorization request.");
+
         var consentType = await applications.GetConsentTypeAsync(application, cancellationToken);
         var canIssue = consentType switch
         {
             ConsentTypes.Implicit => true,
             ConsentTypes.External => grants.Count > 0,
-            ConsentTypes.Explicit => grants.Count > 0 && !request.HasPromptValue(PromptValues.Consent),
+            ConsentTypes.Explicit => consentDecision == ApproveConsent ||
+                                     grants.Count > 0 && !request.HasPromptValue(PromptValues.Consent),
+            ConsentTypes.Systematic => consentDecision == ApproveConsent,
             _ => false
         };
 
         if (!canIssue)
-            return OAuthForbid(Errors.ConsentRequired, "Interactive user consent is required.");
+        {
+            if (request.HasPromptValue(PromptValues.None) ||
+                consentType is not (ConsentTypes.Explicit or ConsentTypes.Systematic))
+            {
+                return OAuthForbid(Errors.ConsentRequired, "Interactive user consent is required.");
+            }
+
+            var returnUrl = await GetAuthorizationReturnUrl(request, cancellationToken);
+            var consentUrl = QueryHelpers.AddQueryString(
+                new Uri(new Uri(configuration["IdentityUi:BaseUrl"]!), "consent").AbsoluteUri,
+                new Dictionary<string, string?>
+                {
+                    ["returnUrl"] = returnUrl,
+                    ["clientId"] = request.ClientId,
+                    ["clientName"] = await applications.GetDisplayNameAsync(application, cancellationToken)
+                        ?? request.ClientId,
+                    ["scopes"] = string.Join(' ', request.GetScopes())
+                });
+            return Redirect(consentUrl);
+        }
 
         var principal = await CreatePrincipal(user, request.GetScopes(), cancellationToken);
         var authorization = grants.LastOrDefault() ?? await authorizations.CreateAsync(
@@ -382,6 +430,10 @@ public sealed class AuthController(
         IEnumerable<KeyValuePair<string, StringValues>> parameters = Request.HasFormContentType
             ? await Request.ReadFormAsync(cancellationToken)
             : Request.Query;
+
+        parameters = parameters.Where(parameter =>
+            !string.Equals(parameter.Key, ConsentDecisionParameter, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(parameter.Key, "__RequestVerificationToken", StringComparison.OrdinalIgnoreCase));
 
         if (request.HasPromptValue(PromptValues.Login))
         {

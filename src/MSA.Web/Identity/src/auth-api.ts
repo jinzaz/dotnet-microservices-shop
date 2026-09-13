@@ -65,7 +65,7 @@ async function readProblem(response: Response): Promise<ApiProblem | undefined> 
   }
 }
 
-function getAntiforgeryToken(): Promise<string> {
+export function getAntiforgeryToken(): Promise<string> {
   antiforgeryTokenPromise ??= fetch('/api/Auth/csrf', {
     credentials: 'include',
     headers: { Accept: 'application/json' },
