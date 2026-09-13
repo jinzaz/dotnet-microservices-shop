@@ -11,6 +11,8 @@
     <File Path="NuGet.config" />
   </Folder>
   <Folder Name="/2.Src/1.Libraries/">
+    <Project Path="src/BFFs/MSA.BFF.Common/MSA.BFF.Common.csproj" />
+    <Project Path="src/MSA.Common/MSA.Common.csproj" Id="3cde7dcb-f6a5-4272-a4d6-3788b13f46c0" />
     <Project Path="src/MSA.Contracts/MSA.Contracts.csproj" />
     <Project Path="src/MSA.EventBus/MSA.EventBus.csproj" Id="95fde12a-5ab9-4184-aace-8dff777978a8" />
     <Project Path="src/MSA.EventBusOutbox/MSA.EventBusOutbox.csproj" Id="bff37e24-c0f0-4a51-94ed-89a6ca9952a6" />

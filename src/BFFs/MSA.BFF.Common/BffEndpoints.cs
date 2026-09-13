@@ -2,54 +2,64 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http.HttpResults;
-using MSA.BFF.Web.Extensions;
 using OpenIddict.Abstractions;
 using OpenIddict.Client.AspNetCore;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
-namespace MSA.BFF.Web.Endpoints;
+namespace MSA.BFF.Common;
 
-internal static class BFFEndpoints
+public static class BffEndpoints
 {
-    internal static IEndpointRouteBuilder MapBFFEndpoints(this IEndpointRouteBuilder endpoints)
+    public static IEndpointRouteBuilder MapBffEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var bffGroup = endpoints.MapGroup("/api/bff")
-            .WithTags("bff");
+        var bff = endpoints.MapGroup(BffDefaults.EndpointPrefix).WithTags("bff");
 
-        bffGroup.MapGet("/csrf", GetCSRF)
+        bff.MapGet("/csrf", GetCsrf)
             .AllowAnonymous()
-            .WithName("GetCSRF")
-            .WithSummary("Retrieve the CSRF token for the current session.")
-            .Produces<CSRFResponse>()
+            .WithName("GetBffCsrf")
+            .WithSummary("Retrieve the CSRF token for the current BFF session.")
+            .Produces<CsrfResponse>()
             .Produces(StatusCodes.Status204NoContent);
 
-        bffGroup.MapGet("/login", Login)
+        bff.MapGet("/login", Login)
             .AllowAnonymous()
-            .WithName("Login")
-            .WithSummary("Start the authorization code login flow.")
+            .WithName("BffLogin")
+            .WithSummary("Start the authorization code with PKCE login flow.")
             .Produces(StatusCodes.Status302Found);
 
-        bffGroup.MapPost("/logout", Logout)
+        bff.MapPost("/logout", Logout)
             .AllowAnonymous()
-            .WithName("Logout")
-            .WithSummary("Clear the local session and start the identity-provider logout flow.")
+            .WithName("BffLogout")
+            .WithSummary("Clear the local session and start identity-provider logout.")
             .Produces(StatusCodes.Status302Found);
 
-        bffGroup.MapMethods("/callback/login", [HttpMethods.Get, HttpMethods.Post], LoginCallback)
+        bff.MapMethods("/callback/login", [HttpMethods.Get, HttpMethods.Post], LoginCallback)
             .AllowAnonymous()
             .DisableAntiforgery()
-            .WithName("LoginCallback")
+            .WithName("BffLoginCallback")
             .WithSummary("Complete the authorization code login flow.");
 
-        bffGroup.MapMethods("/callback/logout", [HttpMethods.Get, HttpMethods.Post], LogoutCallback)
+        bff.MapMethods("/callback/logout", [HttpMethods.Get, HttpMethods.Post], LogoutCallback)
             .AllowAnonymous()
             .DisableAntiforgery()
-            .WithName("LogoutCallback")
+            .WithName("BffLogoutCallback")
             .WithSummary("Complete the identity-provider logout flow.");
 
-        bffGroup.MapGet("/user", (Delegate)GetUserAsync)
+        endpoints.MapMethods("/api/bff/callback/login", [HttpMethods.Get, HttpMethods.Post], LoginCallback)
             .AllowAnonymous()
-            .WithName("GetUserSession")
+            .DisableAntiforgery()
+            .WithName("ConfiguredBffLoginCallback")
+            .ExcludeFromDescription();
+
+        endpoints.MapMethods("/api/bff/callback/logout", [HttpMethods.Get, HttpMethods.Post], LogoutCallback)
+            .AllowAnonymous()
+            .DisableAntiforgery()
+            .WithName("ConfiguredBffLogoutCallback")
+            .ExcludeFromDescription();
+
+        bff.MapGet("/user", (Delegate)GetUserAsync)
+            .AllowAnonymous()
+            .WithName("GetBffUserSession")
             .WithSummary("Retrieve the user represented by the current BFF session.")
             .Produces<UserSessionResponse>()
             .ProducesProblem(StatusCodes.Status401Unauthorized);
@@ -57,20 +67,17 @@ internal static class BFFEndpoints
         return endpoints;
     }
 
-    private static Results<NoContent, Ok<CSRFResponse>> GetCSRF(
+    private static Results<NoContent, Ok<CsrfResponse>> GetCsrf(
         HttpContext context,
         IAntiforgery antiforgery)
     {
         var token = antiforgery.GetAndStoreTokens(context).RequestToken;
-
         return string.IsNullOrEmpty(token)
             ? TypedResults.NoContent()
-            : TypedResults.Ok(new CSRFResponse(token));
+            : TypedResults.Ok(new CsrfResponse(token));
     }
 
-    private static IResult Login(
-        IConfiguration configuration,
-        string? returnUrl)
+    private static IResult Login(IConfiguration configuration, string? returnUrl)
     {
         var properties = new AuthenticationProperties
         {
@@ -88,13 +95,11 @@ internal static class BFFEndpoints
         string? returnUrl)
     {
         var redirectUri = GetFrontendReturnUrl(configuration, returnUrl);
-        var result = await context.AuthenticateAsync(ServiceCollections.BffCookie);
-
+        var result = await context.AuthenticateAsync(BffDefaults.CookieScheme);
         if (result is not { Succeeded: true, Properties: not null })
             return TypedResults.Redirect(redirectUri);
 
-        await context.SignOutAsync(ServiceCollections.BffCookie);
-
+        await context.SignOutAsync(BffDefaults.CookieScheme);
         var properties = new AuthenticationProperties(new Dictionary<string, string?>
         {
             [OpenIddictClientAspNetCoreConstants.Properties.IdentityTokenHint] =
@@ -116,7 +121,6 @@ internal static class BFFEndpoints
     {
         var result = await context.AuthenticateAsync(
             OpenIddictClientAspNetCoreDefaults.AuthenticationScheme);
-
         if (result is not
             {
                 Succeeded: true,
@@ -130,7 +134,7 @@ internal static class BFFEndpoints
         }
 
         var identity = new ClaimsIdentity(
-            ServiceCollections.BffCookie,
+            BffDefaults.CookieScheme,
             Claims.Name,
             Claims.Role);
         identity
@@ -152,7 +156,6 @@ internal static class BFFEndpoints
             ExpiresUtc = null,
             IsPersistent = true
         };
-
         properties.StoreTokens(result.Properties.GetTokens().Where(token => token.Name is
             OpenIddictClientAspNetCoreConstants.Tokens.BackchannelAccessToken or
             OpenIddictClientAspNetCoreConstants.Tokens.BackchannelAccessTokenExpirationDate or
@@ -162,7 +165,7 @@ internal static class BFFEndpoints
         return TypedResults.SignIn(
             new ClaimsPrincipal(identity),
             properties,
-            ServiceCollections.BffCookie);
+            BffDefaults.CookieScheme);
     }
 
     private static async Task<IResult> LogoutCallback(
@@ -171,7 +174,6 @@ internal static class BFFEndpoints
     {
         var result = await context.AuthenticateAsync(
             OpenIddictClientAspNetCoreDefaults.AuthenticationScheme);
-
         return TypedResults.Redirect(
             GetSafeCallbackReturnUrl(configuration, result?.Properties?.RedirectUri));
     }
@@ -179,8 +181,7 @@ internal static class BFFEndpoints
     private static async Task<Results<Ok<UserSessionResponse>, ProblemHttpResult>> GetUserAsync(
         HttpContext context)
     {
-        var result = await context.AuthenticateAsync(ServiceCollections.BffCookie);
-
+        var result = await context.AuthenticateAsync(BffDefaults.CookieScheme);
         if (result is not { Succeeded: true, Principal: not null })
         {
             return TypedResults.Problem(
@@ -195,7 +196,7 @@ internal static class BFFEndpoints
                             claim.Type == ClaimTypes.Role ||
                             claim.Type == roleClaimType)
             .Select(claim => claim.Value)
-            .Distinct(StringComparer.Ordinal)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         return TypedResults.Ok(new UserSessionResponse(
@@ -210,9 +211,7 @@ internal static class BFFEndpoints
             Roles: roles));
     }
 
-    private static string GetFrontendReturnUrl(
-        IConfiguration configuration,
-        string? returnUrl)
+    private static string GetFrontendReturnUrl(IConfiguration configuration, string? returnUrl)
     {
         var path = IsStrictLocalUrl(returnUrl) ? returnUrl! : "/";
         return new Uri(GetFrontendBaseUri(configuration), path).AbsoluteUri;
@@ -223,7 +222,6 @@ internal static class BFFEndpoints
         string? returnUrl)
     {
         var frontendBaseUri = GetFrontendBaseUri(configuration);
-
         if (IsStrictLocalUrl(returnUrl))
             return new Uri(frontendBaseUri, returnUrl!).AbsoluteUri;
 
@@ -266,7 +264,7 @@ internal static class BFFEndpoints
 }
 
 /// <summary>Contains the antiforgery request token for the current BFF session.</summary>
-public sealed record CSRFResponse(string Token);
+public sealed record CsrfResponse(string Token);
 
 /// <summary>Describes the user represented by the current BFF session.</summary>
 public sealed record UserSessionResponse(

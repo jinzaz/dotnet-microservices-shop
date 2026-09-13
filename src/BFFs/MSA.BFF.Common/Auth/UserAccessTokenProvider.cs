@@ -1,26 +1,24 @@
-namespace MSA.BFF.Web.Auth;
-
 using System.Globalization;
 using Microsoft.AspNetCore.Authentication;
-using MSA.BFF.Web.Auth.Abstractions;
-using MSA.BFF.Web.Extensions;
 using OpenIddict.Abstractions;
 using OpenIddict.Client;
 using OpenIddict.Client.AspNetCore;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
-public sealed class UserAccessTokenProvider(
+namespace MSA.BFF.Common.Auth;
+
+internal sealed class UserAccessTokenProvider(
     OpenIddictClientService client,
-    RedisTicketStore tickets) : IUserAccessTokenProvider
+    RedisTicketStore tickets)
 {
     // ponytail: one process-wide lock; use a distributed per-session lock when multiple BFF replicas refresh concurrently.
     private static readonly SemaphoreSlim RefreshLock = new(1, 1);
 
-    public async Task<string?> GetAccessTokenAsync(
+    internal async Task<string?> GetAccessTokenAsync(
         HttpContext context,
         CancellationToken cancellationToken = default)
     {
-        var authentication = await context.AuthenticateAsync(ServiceCollections.BffCookie);
+        var authentication = await context.AuthenticateAsync(BffDefaults.CookieScheme);
         if (authentication is not
             {
                 Succeeded: true,
@@ -39,20 +37,17 @@ public sealed class UserAccessTokenProvider(
                 out var sessionKey) ||
             string.IsNullOrWhiteSpace(sessionKey))
         {
-            await context.SignOutAsync(ServiceCollections.BffCookie);
+            await context.SignOutAsync(BffDefaults.CookieScheme);
             return null;
         }
 
         try
         {
-            return await RefreshAsync(
-                context,
-                sessionKey,
-                cancellationToken);
+            return await RefreshAsync(context, sessionKey, cancellationToken);
         }
         catch (OpenIddictExceptions.ProtocolException)
         {
-            await context.SignOutAsync(ServiceCollections.BffCookie);
+            await context.SignOutAsync(BffDefaults.CookieScheme);
             return null;
         }
     }
@@ -68,14 +63,14 @@ public sealed class UserAccessTokenProvider(
             var ticket = await tickets.RetrieveAsync(sessionKey, cancellationToken);
             if (ticket is null)
             {
-                await context.SignOutAsync(ServiceCollections.BffCookie);
+                await context.SignOutAsync(BffDefaults.CookieScheme);
                 return null;
             }
 
             if (TryGetUsableAccessToken(ticket.Properties, out var accessToken))
             {
                 await context.SignInAsync(
-                    ServiceCollections.BffCookie,
+                    BffDefaults.CookieScheme,
                     ticket.Principal,
                     ticket.Properties);
                 return accessToken;
@@ -86,7 +81,7 @@ public sealed class UserAccessTokenProvider(
             var registrationId = ticket.Principal.GetClaim(Claims.Private.RegistrationId);
             if (string.IsNullOrWhiteSpace(refreshToken) || string.IsNullOrWhiteSpace(registrationId))
             {
-                await context.SignOutAsync(ServiceCollections.BffCookie);
+                await context.SignOutAsync(BffDefaults.CookieScheme);
                 return null;
             }
 
@@ -100,7 +95,7 @@ public sealed class UserAccessTokenProvider(
 
             if (string.IsNullOrWhiteSpace(refreshed.AccessToken))
             {
-                await context.SignOutAsync(ServiceCollections.BffCookie);
+                await context.SignOutAsync(BffDefaults.CookieScheme);
                 return null;
             }
 
@@ -128,7 +123,7 @@ public sealed class UserAccessTokenProvider(
             }
 
             await context.SignInAsync(
-                ServiceCollections.BffCookie,
+                BffDefaults.CookieScheme,
                 ticket.Principal,
                 properties);
 
@@ -146,15 +141,11 @@ public sealed class UserAccessTokenProvider(
     {
         accessToken = properties.GetTokenValue(
             OpenIddictClientAspNetCoreConstants.Tokens.BackchannelAccessToken);
-        if (string.IsNullOrWhiteSpace(accessToken))
-            return false;
-
         var expiration = properties.GetTokenValue(
             OpenIddictClientAspNetCoreConstants.Tokens.BackchannelAccessTokenExpirationDate);
-        if (string.IsNullOrWhiteSpace(expiration))
-            return false;
 
-        return DateTimeOffset.TryParse(
+        return !string.IsNullOrWhiteSpace(accessToken) &&
+               DateTimeOffset.TryParse(
                    expiration,
                    CultureInfo.InvariantCulture,
                    DateTimeStyles.AssumeUniversal,

@@ -16,6 +16,7 @@ COPY ["Directory.Packages.props", "."]
 COPY ["Directory.Build.props", "."]
 COPY ["NuGet.config", "."]
 COPY ["src/BFFs/MSA.BFF.BM/MSA.BFF.BM.csproj", "src/BFFs/MSA.BFF.BM/"]
+COPY ["src/BFFs/MSA.BFF.Common/MSA.BFF.Common.csproj", "src/BFFs/MSA.BFF.Common/"]
 RUN dotnet restore "./src/BFFs/MSA.BFF.BM/MSA.BFF.BM.csproj"
 COPY . .
 WORKDIR "/src/src/BFFs/MSA.BFF.BM"

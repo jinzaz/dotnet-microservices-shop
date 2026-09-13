@@ -1,5 +1,3 @@
-namespace MSA.BFF.Web.Auth;
-
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -7,7 +5,9 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Caching.Distributed;
 
-public sealed class RedisTicketStore : ITicketStore
+namespace MSA.BFF.Common.Auth;
+
+internal sealed class RedisTicketStore : ITicketStore
 {
     private const string KeyPrefix = "session:";
     internal const string SessionKeyProperty = ".bff.session_key";
@@ -17,12 +17,11 @@ public sealed class RedisTicketStore : ITicketStore
 
     public RedisTicketStore(
         IDistributedCache cache,
-        IDataProtectionProvider dataProtectionProvider)
+        IDataProtectionProvider dataProtectionProvider,
+        BffApplicationOptions application)
     {
         _cache = cache;
-
-        _protector = dataProtectionProvider.CreateProtector(
-            "MSA.Web.BFF.RedisTicketStore.v1");
+        _protector = dataProtectionProvider.CreateProtector(application.TicketProtectionPurpose);
     }
 
     public Task<string> StoreAsync(AuthenticationTicket ticket) =>
@@ -32,20 +31,13 @@ public sealed class RedisTicketStore : ITicketStore
         AuthenticationTicket ticket,
         CancellationToken cancellationToken)
     {
-        var sessionId = WebEncoders.Base64UrlEncode(
-            RandomNumberGenerator.GetBytes(32));
-
-        var key = KeyPrefix + sessionId;
+        var key = KeyPrefix + WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
         ticket.Properties.Items[SessionKeyProperty] = key;
-
         await StoreTicketAsync(key, ticket, cancellationToken);
-
         return key;
     }
 
-    public Task RenewAsync(
-        string key,
-        AuthenticationTicket ticket) =>
+    public Task RenewAsync(string key, AuthenticationTicket ticket) =>
         RenewAsync(key, ticket, CancellationToken.None);
 
     public Task RenewAsync(
@@ -65,22 +57,16 @@ public sealed class RedisTicketStore : ITicketStore
         CancellationToken cancellationToken)
     {
         var data = await _cache.GetAsync(key, cancellationToken);
-
         if (data is null)
             return null;
 
         try
         {
-            // Redis 中保存的内容也是加密的。
-            var unprotected = _protector.Unprotect(data);
-
-            return TicketSerializer.Default.Deserialize(unprotected);
+            return TicketSerializer.Default.Deserialize(_protector.Unprotect(data));
         }
         catch (CryptographicException)
         {
-            // DataProtection Key 不匹配或数据损坏。
             await _cache.RemoveAsync(key, cancellationToken);
-
             return null;
         }
     }
@@ -90,34 +76,22 @@ public sealed class RedisTicketStore : ITicketStore
     public Task RemoveAsync(string key, CancellationToken cancellationToken) =>
         _cache.RemoveAsync(key, cancellationToken);
 
-    private async Task StoreTicketAsync(
+    private Task StoreTicketAsync(
         string key,
         AuthenticationTicket ticket,
         CancellationToken cancellationToken)
     {
-        var serialized =
-            TicketSerializer.Default.Serialize(ticket);
-
-        // Redis 里不要直接明文保存 AccessToken / RefreshToken。
-        var protectedData =
-            _protector.Protect(serialized);
-
-        var options =
-            new DistributedCacheEntryOptions();
-
-        if (ticket.Properties.ExpiresUtc is { } expiresUtc)
+        var options = new DistributedCacheEntryOptions
         {
-            options.AbsoluteExpiration = expiresUtc;
-        }
-        else
-        {
-            options.AbsoluteExpirationRelativeToNow =
-                TimeSpan.FromHours(8);
-        }
+            AbsoluteExpiration = ticket.Properties.ExpiresUtc,
+            AbsoluteExpirationRelativeToNow = ticket.Properties.ExpiresUtc is null
+                ? TimeSpan.FromHours(8)
+                : null
+        };
 
-        await _cache.SetAsync(
+        return _cache.SetAsync(
             key,
-            protectedData,
+            _protector.Protect(TicketSerializer.Default.Serialize(ticket)),
             options,
             cancellationToken);
     }

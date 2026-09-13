@@ -1,23 +1,82 @@
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+using MSA.BFF.BM;
+using MSA.BFF.BM.Authorization;
+using MSA.BFF.BM.Endpoints;
+using MSA.BFF.Common;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+var postgresql = builder.Configuration.GetConnectionString("Postgresql")
+    ?? throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
+var redis = builder.Configuration.GetConnectionString("Redis")
+    ?? throw new InvalidOperationException("ConnectionStrings:Redis is required.");
 
-builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+builder.Services.AddDbContext<BffBmDbContext>(options =>
+{
+    options.UseNpgsql(postgresql, npgsql =>
+        npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "bff_bm"));
+    options.UseOpenIddict();
+});
 builder.Services.AddOpenApi();
+builder.Services.AddProblemDetails();
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(
+        new JsonStringEnumConverter(allowIntegerValues: false)));
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddBff(redis, "MSABm");
+builder.Services.AddBffOpenIddictClient<BffBmDbContext>(
+    builder.Configuration,
+    builder.Environment,
+    typeof(Program).Assembly);
+builder.Services.AddBffReverseProxy(builder.Configuration.GetSection("ReverseProxy"));
+
+builder.Services.AddOptions<PbacOptions>()
+    .Bind(builder.Configuration.GetSection(PbacOptions.SectionName))
+    .Validate(options => options.BootstrapAdminUserIds.All(value =>
+            !string.IsNullOrWhiteSpace(value) &&
+            value.Length <= 200 &&
+            value == value.Trim()),
+        "Pbac bootstrap user IDs must contain 1 to 200 characters without surrounding whitespace.")
+    .ValidateOnStart();
+builder.Services.AddScoped<PbacAuthorizer>();
+builder.Services.AddScoped<BmDirectoryStore>();
+builder.Services.AddScoped<PbacPolicyStore>();
+builder.Services.AddScoped<IAuthorizationHandler, PbacProxyAuthorizationHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, PbacPermissionAuthorizationHandler>();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(PbacDefaults.ProxyPolicy, policy =>
+        policy.RequireAuthenticatedUser().AddRequirements(new PbacProxyRequirement()));
+    foreach (var action in Enum.GetValues<PbacAction>())
+    {
+        options.AddPolicy(PbacDefaults.ManagementPolicy(action), policy =>
+            policy.RequireAuthenticatedUser().AddRequirements(
+                new PbacPermissionRequirement(PbacDefaults.ManagementPermission(action))));
+    }
+});
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 {
-    app.MapOpenApi();
+    await using var scope = app.Services.CreateAsyncScope();
+    await scope.ServiceProvider.GetRequiredService<BffBmDbContext>().Database.MigrateAsync();
 }
 
+app.UseExceptionHandler();
+app.UseStatusCodePages();
+if (app.Environment.IsDevelopment())
+    app.MapOpenApi();
+
 app.UseHttpsRedirection();
-
+app.UseAuthentication();
 app.UseAuthorization();
+app.UseBffAntiforgery();
 
-app.MapControllers();
+app.MapBffEndpoints();
+app.MapPbacEndpoints();
+app.MapReverseProxy().RequireAuthorization(PbacDefaults.ProxyPolicy);
 
 app.Run();

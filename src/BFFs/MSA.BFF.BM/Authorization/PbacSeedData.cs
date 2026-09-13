@@ -1,0 +1,151 @@
+using System.Security.Cryptography;
+using System.Text;
+
+namespace MSA.BFF.BM.Authorization;
+
+internal static class PbacSeedData
+{
+    internal static readonly Guid SystemAdministratorRoleId = StableGuid("role:system-administrator");
+    internal static readonly Guid SystemAdministratorPolicyId = StableGuid("policy:system-administrators");
+
+    private static readonly (string Code, string DisplayName)[] Modules =
+    [
+        ("system.authorization", "权限管理"),
+        ("identity.users", "用户账号"),
+        ("user.loyalty-points", "会员积分"),
+        ("catalog.categories", "商品分类"),
+        ("catalog.products", "商品"),
+        ("catalog.promotions", "促销活动"),
+        ("catalog.coupons", "优惠券"),
+        ("inventory.stock", "库存"),
+        ("inventory.flash-sales", "秒杀库存"),
+        ("order.fulfillment", "订单履约"),
+        ("payment.transactions", "支付交易"),
+        ("notification.messages", "用户通知")
+    ];
+
+    internal static readonly BmRole[] SystemAdministratorRole =
+    [
+        new(
+            SystemAdministratorRoleId,
+            "system-administrator",
+            "系统管理员",
+            true,
+            new DateTimeOffset(2026, 9, 13, 0, 0, 0, TimeSpan.Zero))
+    ];
+
+    internal static readonly PbacPermission[] Permissions = CreatePermissions();
+
+    private static readonly IReadOnlyDictionary<string, Guid> PermissionIds = Permissions
+        .ToDictionary(permission => permission.Code, permission => permission.Id, StringComparer.Ordinal);
+
+    internal static readonly PbacRoutePermission[] Routes = CreateRoutes();
+
+    internal static readonly PbacPolicy[] SystemAdministratorPolicy =
+    [
+        new(
+            SystemAdministratorPolicyId,
+            "System administrators",
+            PbacEffect.Allow,
+            new DateTimeOffset(2026, 9, 13, 0, 0, 0, TimeSpan.Zero))
+    ];
+
+    internal static readonly PbacPolicyPermission[] SystemAdministratorPermissions = Permissions
+        .Select(permission => new PbacPolicyPermission(SystemAdministratorPolicyId, permission.Id))
+        .ToArray();
+
+    internal static readonly PbacRolePolicy[] SystemAdministratorRolePolicy =
+    [
+        new(SystemAdministratorPolicyId, SystemAdministratorRoleId)
+    ];
+
+    private static PbacPermission[] CreatePermissions()
+    {
+        var actionNames = new Dictionary<PbacAction, string>
+        {
+            [PbacAction.Query] = "查询",
+            [PbacAction.Create] = "创建",
+            [PbacAction.Edit] = "编辑",
+            [PbacAction.Delete] = "删除"
+        };
+
+        return Modules
+            .SelectMany(module => Enum.GetValues<PbacAction>().Select(action =>
+            {
+                var code = $"{module.Code}.{action.ToString().ToLowerInvariant()}";
+                return new PbacPermission(
+                    StableGuid($"permission:{code}"),
+                    code,
+                    module.Code,
+                    action,
+                    $"{module.DisplayName}-{actionNames[action]}");
+            }))
+            .ToArray();
+    }
+
+    private static PbacRoutePermission[] CreateRoutes()
+    {
+        (string Permission, string Method, string Path)[] definitions =
+        [
+            ("identity.users.query", HttpMethods.Get, "/api/Auth/users/admin"),
+            ("identity.users.edit", HttpMethods.Post, "/api/Auth/users/admin/{id}/roles/{role}"),
+            ("identity.users.edit", HttpMethods.Post, "/api/Auth/users/admin/{id}/activation"),
+            ("user.loyalty-points.query", HttpMethods.Get, "/api/user/admin/points/{userId}"),
+            ("user.loyalty-points.query", HttpMethods.Get, "/api/user/admin/points/{userId}/entries"),
+            ("user.loyalty-points.query", HttpMethods.Get, "/api/user/admin/points/{userId}/entries/{entryId}"),
+            ("user.loyalty-points.edit", HttpMethods.Post, "/api/user/admin/points/{userId}/adjustments"),
+            ("catalog.categories.query", HttpMethods.Get, "/api/catalog/admin/categories"),
+            ("catalog.categories.create", HttpMethods.Post, "/api/catalog/admin/categories"),
+            ("catalog.categories.edit", HttpMethods.Put, "/api/catalog/admin/categories/{id}/name"),
+            ("catalog.categories.edit", HttpMethods.Post, "/api/catalog/admin/categories/{id}/activate"),
+            ("catalog.categories.edit", HttpMethods.Post, "/api/catalog/admin/categories/{id}/archive"),
+            ("catalog.products.query", HttpMethods.Get, "/api/catalog/admin/products"),
+            ("catalog.products.query", HttpMethods.Get, "/api/catalog/admin/products/{id}"),
+            ("catalog.products.create", HttpMethods.Post, "/api/catalog/admin/products"),
+            ("catalog.products.edit", HttpMethods.Put, "/api/catalog/admin/products/{id}/details"),
+            ("catalog.products.edit", HttpMethods.Post, "/api/catalog/admin/products/{id}/price"),
+            ("catalog.products.edit", HttpMethods.Post, "/api/catalog/admin/products/{id}/publish"),
+            ("catalog.products.edit", HttpMethods.Post, "/api/catalog/admin/products/{id}/unpublish"),
+            ("catalog.products.edit", HttpMethods.Post, "/api/catalog/admin/products/{id}/archive"),
+            ("catalog.promotions.query", HttpMethods.Get, "/api/catalog/admin/promotions"),
+            ("catalog.promotions.query", HttpMethods.Get, "/api/catalog/admin/promotions/{id}"),
+            ("catalog.promotions.create", HttpMethods.Post, "/api/catalog/admin/promotions"),
+            ("catalog.promotions.edit", HttpMethods.Put, "/api/catalog/admin/promotions/{id}"),
+            ("catalog.promotions.edit", HttpMethods.Post, "/api/catalog/admin/promotions/{id}/publish"),
+            ("catalog.promotions.edit", HttpMethods.Post, "/api/catalog/admin/promotions/{id}/pause"),
+            ("catalog.promotions.edit", HttpMethods.Post, "/api/catalog/admin/promotions/{id}/resume"),
+            ("catalog.promotions.edit", HttpMethods.Post, "/api/catalog/admin/promotions/{id}/end"),
+            ("catalog.coupons.query", HttpMethods.Get, "/api/catalog/admin/coupons"),
+            ("catalog.coupons.query", HttpMethods.Get, "/api/catalog/admin/coupons/{id}"),
+            ("catalog.coupons.create", HttpMethods.Post, "/api/catalog/admin/coupons"),
+            ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupons/{id}/activate"),
+            ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupons/{id}/disable"),
+            ("inventory.stock.query", HttpMethods.Get, "/api/inventory/admin/stock/{sku}/movements"),
+            ("inventory.stock.create", HttpMethods.Post, "/api/inventory/admin/stock"),
+            ("inventory.stock.edit", HttpMethods.Post, "/api/inventory/admin/stock/adjustments"),
+            ("inventory.flash-sales.query", HttpMethods.Get, "/api/inventory/flash-sales/{campaignId}"),
+            ("inventory.flash-sales.create", HttpMethods.Post, "/api/inventory/admin/flash-sales"),
+            ("inventory.flash-sales.edit", HttpMethods.Post, "/api/inventory/admin/flash-sales/{campaignId}/close"),
+            ("order.fulfillment.edit", HttpMethods.Post, "/api/order/admin/orders/{orderId}/fulfillment/ship"),
+            ("order.fulfillment.edit", HttpMethods.Post, "/api/order/admin/orders/{orderId}/fulfillment/in-transit"),
+            ("order.fulfillment.edit", HttpMethods.Post, "/api/order/admin/orders/{orderId}/fulfillment/delivered"),
+            ("payment.transactions.query", HttpMethods.Get, "/api/payment/orders/{orderId}"),
+            ("notification.messages.query", HttpMethods.Get, "/api/notification/users/{userId}")
+        ];
+
+        return definitions
+            .Select((route, order) => new PbacRoutePermission(
+                StableGuid($"route:{route.Method}:{route.Path}"),
+                PermissionIds[route.Permission],
+                route.Method,
+                route.Path,
+                order))
+            .ToArray();
+    }
+
+    private static Guid StableGuid(string value)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+        return new Guid(hash.AsSpan(0, 16));
+    }
+}
