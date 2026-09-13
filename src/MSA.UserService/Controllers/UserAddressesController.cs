@@ -9,7 +9,7 @@ using System.Security.Claims;
 
 namespace MSA.UserService.Controllers;
 
-[Authorize]
+[Authorize(Policy = "user-api")]
 [ApiController]
 [Route("user/me/addresses")]
 public sealed class UserAddressesController(ISender sender) : ControllerBase

@@ -80,12 +80,11 @@ builder.Services.AddOpenIddict().AddValidation(options =>
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });
-builder.Services.AddAuthorization(options =>
-    options.AddPolicy("inventory.write", policy =>
-        policy.RequireAssertion(context => context.User.Claims
-            .Where(claim => claim.Type == "scope")
-            .SelectMany(claim => claim.Value.Split(' '))
-            .Contains("inventory.write"))));
+builder.Services.AddMsaApiAuthorization(
+    "inventory-api",
+    "inventory.admin.read",
+    "inventory.admin.write",
+    "inventory-api-or-admin-read");
 
 builder.Services.AddValidation();
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -123,6 +122,8 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     Predicate = registration => registration.Tags.Contains("ready")
 });
 app.MapInventoryEndpoints();
+app.MapInventoryAdminEndpoints();
 app.MapFlashSaleEndpoints();
+app.MapFlashSaleAdminEndpoints();
 
 app.Run();

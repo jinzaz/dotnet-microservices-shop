@@ -8,7 +8,7 @@ using System.Security.Claims;
 
 namespace MSA.OrderService.Controllers;
 
-[Authorize(Roles = "admin,operator")]
+[Authorize(Policy = "order.admin.write")]
 [ApiController]
 [Route("order/admin/orders/{orderId:guid}/fulfillment")]
 public sealed class AdminOrderFulfillmentController(ISender sender) : ControllerBase

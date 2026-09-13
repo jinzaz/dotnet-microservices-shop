@@ -75,7 +75,10 @@ builder.Services.AddOpenIddict().AddValidation(options =>
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });
-builder.Services.AddAuthorization();
+builder.Services.AddMsaApiAuthorization(
+    "basket-api",
+    "basket.admin.read",
+    "basket.admin.write");
 
 builder.Services.AddValidation();
 builder.Services.AddOpenApi();

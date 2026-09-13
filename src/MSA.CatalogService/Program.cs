@@ -69,12 +69,10 @@ builder.Services.AddOpenIddict().AddValidation(options =>
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });
-builder.Services.AddAuthorization(options => options.AddPolicy(
-    "catalog.write",
-    policy => policy.RequireAssertion(context => context.User.Claims
-        .Where(claim => claim.Type == "scope")
-        .SelectMany(claim => claim.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-        .Contains("catalog.write", StringComparer.Ordinal))));
+builder.Services.AddMsaApiAuthorization(
+    "catalog-api",
+    "catalog.admin.read",
+    "catalog.admin.write");
 
 builder.Services.AddOpenTelemetry().WithTracing(tracing => tracing
     .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(builder.Environment.ApplicationName))
@@ -94,4 +92,5 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealthChecks("/health");
 app.MapCatalogEndpoints();
+app.MapCatalogAdminEndpoints();
 app.Run();

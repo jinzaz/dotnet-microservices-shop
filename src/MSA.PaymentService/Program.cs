@@ -65,7 +65,11 @@ builder.Services.AddOpenIddict().AddValidation(options =>
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });
-builder.Services.AddAuthorization();
+builder.Services.AddMsaApiAuthorization(
+    "payment-api",
+    "payment.admin.read",
+    "payment.admin.write",
+    "payment-api-or-admin-read");
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
 builder.Services.AddOpenTelemetry().WithTracing(tracing => tracing
@@ -89,10 +93,10 @@ app.MapHealthChecks("/health");
 app.MapGet("/payment/orders/{orderId:guid}", async (Guid orderId, ClaimsPrincipal user, ISender sender, CancellationToken ct) =>
 {
     var subject = user.FindFirstValue("sub") ?? string.Empty;
-    var canReadAll = user.IsInRole("admin") || user.IsInRole("operator");
+    var canReadAll = user.HasMsaScope("payment.admin.read");
     var payment = await sender.Send(new GetPaymentByOrderQuery(orderId, subject, canReadAll), ct);
     return payment is null ? Results.NotFound() : Results.Ok(payment);
-}).RequireAuthorization();
+}).RequireAuthorization("payment-api-or-admin-read");
 
 app.MapPost("/payment/callbacks/alipay", async (
     HttpRequest request,

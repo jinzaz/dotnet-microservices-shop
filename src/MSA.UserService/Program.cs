@@ -39,7 +39,10 @@ builder.Services.AddOpenIddict().AddValidation(options =>
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });
-builder.Services.AddAuthorization();
+builder.Services.AddMsaApiAuthorization(
+    "user-api",
+    "user.admin.read",
+    "user.admin.write");
 
 var app = builder.Build();
 if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))

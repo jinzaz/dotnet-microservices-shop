@@ -13,7 +13,7 @@ internal static class BasketEndpoints
     public static IEndpointRouteBuilder MapBasketEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/basket")
-            .RequireAuthorization()
+            .RequireAuthorization("basket-api")
             .WithTags("Basket");
 
         group.MapGet("/", GetAsync)

@@ -40,7 +40,11 @@ builder.Services.AddOpenIddict().AddValidation(options =>
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });
-builder.Services.AddAuthorization();
+builder.Services.AddMsaApiAuthorization(
+    "notification-api",
+    "notification.admin.read",
+    "notification.admin.write",
+    "notification-api-or-admin-read");
 builder.Services.AddHealthChecks();
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenTelemetry().WithTracing(tracing => tracing
@@ -68,8 +72,7 @@ app.MapGet("/notification/users/{userId}", async (
     NotificationDbContext db,
     CancellationToken ct) =>
 {
-    var scopes = user.Claims.Where(x => x.Type == "scope").SelectMany(x => x.Value.Split(' '));
-    if (user.FindFirstValue("sub") != userId && !scopes.Contains("notifications.read.all"))
+    if (user.FindFirstValue("sub") != userId && !user.HasMsaScope("notification.admin.read"))
         return Results.Forbid();
 
     var rows = await db.Notifications.AsNoTracking()
@@ -80,6 +83,6 @@ app.MapGet("/notification/users/{userId}", async (
         .Select(x => new { x.Id, x.Subject, x.Body, x.Status, x.CreatedOnUtc, x.SentOnUtc })
         .ToListAsync(ct);
     return Results.Ok(rows);
-}).RequireAuthorization();
+}).RequireAuthorization("notification-api-or-admin-read");
 
 app.Run();

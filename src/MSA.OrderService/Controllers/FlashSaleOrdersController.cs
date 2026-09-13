@@ -9,7 +9,7 @@ using System.Security.Claims;
 
 namespace MSA.OrderService.Controllers;
 
-[Authorize]
+[Authorize(Policy = "order-api")]
 [EnableRateLimiting("FlashSaleSubmission")]
 [ApiController]
 [Route("order/flash-sales/{campaignId:guid}/orders")]

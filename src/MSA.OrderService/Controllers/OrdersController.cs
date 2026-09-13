@@ -5,12 +5,12 @@ using MSA.OrderService.Application.CreateOrder;
 using MSA.OrderService.Application.GetOrder;
 using MSA.OrderService.Application.GetOrders;
 using MSA.OrderService.Domain;
+using MSA.Infrastrucute.Extensions;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 
 namespace MSA.OrderService.Controllers;
 
-[Authorize]
 [ApiController]
 [Route("order/orders")]
 public sealed class OrdersController(ISender sender) : ControllerBase
@@ -26,6 +26,7 @@ public sealed class OrdersController(ISender sender) : ControllerBase
         long? SourceBasketVersion = null);
 
     [HttpPost]
+    [Authorize(Policy = "order-api")]
     public async Task<ActionResult> Create(
         CreateOrderRequest request,
         [FromHeader(Name = "Idempotency-Key")] string idempotencyKey,
@@ -47,6 +48,7 @@ public sealed class OrdersController(ISender sender) : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Policy = "order-api-or-admin-read")]
     public Task<IReadOnlyList<OrderListItemDto>> List(
         [FromQuery] string? userId,
         [FromQuery] OrderFulfillmentStatus? fulfillmentStatus,
@@ -55,7 +57,7 @@ public sealed class OrdersController(ISender sender) : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var requestingUserId = User.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
-        var canReadAll = User.IsInRole("admin") || User.IsInRole("operator");
+        var canReadAll = User.HasMsaScope("order.admin.read");
         return sender.Send(
             new GetOrdersQuery(
                 requestingUserId,
@@ -68,6 +70,7 @@ public sealed class OrdersController(ISender sender) : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [Authorize(Policy = "order-api-or-admin-read")]
     public async Task<ActionResult<OrderDto>> Get(Guid id, CancellationToken cancellationToken)
     {
         var userId = User.FindFirstValue("sub") ?? string.Empty;
@@ -75,7 +78,7 @@ public sealed class OrdersController(ISender sender) : ControllerBase
             new GetOrderQuery(
                 id,
                 userId,
-                User.IsInRole("admin") || User.IsInRole("operator")),
+                User.HasMsaScope("order.admin.read")),
             cancellationToken);
         return value is null ? NotFound() : Ok(value);
     }

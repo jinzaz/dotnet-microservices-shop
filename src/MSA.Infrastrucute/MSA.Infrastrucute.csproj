@@ -15,6 +15,10 @@
 		<PackageReference Include="Microsoft.Extensions.Configuration.Json" />
 	</ItemGroup>
 
+	<ItemGroup>
+	  <FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
 
 	<ItemGroup>
 	  <ProjectReference Include="..\MSA.EventBusOutbox\MSA.EventBusOutbox.csproj" />

@@ -130,7 +130,11 @@ builder.Services.AddOpenIddict().AddValidation(options =>
     options.UseAspNetCore();
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddMsaApiAuthorization(
+    "order-api",
+    "order.admin.read",
+    "order.admin.write",
+    "order-api-or-admin-read");
 
 builder.Services.AddOpenTelemetry().WithTracing(tracing =>
 {
