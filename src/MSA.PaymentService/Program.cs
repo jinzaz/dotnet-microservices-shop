@@ -8,6 +8,7 @@ using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
 using MSA.PaymentCore;
 using MSA.PaymentService.Application;
+using MSA.PaymentService.Domain;
 using MSA.PaymentService.Infrastructure;
 using MSA.PaymentService.Integration;
 using OpenTelemetry.Resources;
@@ -97,6 +98,22 @@ app.MapGet("/payment/orders/{orderId:guid}", async (Guid orderId, ClaimsPrincipa
     var payment = await sender.Send(new GetPaymentByOrderQuery(orderId, subject, canReadAll), ct);
     return payment is null ? Results.NotFound() : Results.Ok(payment);
 }).RequireAuthorization("payment-api-or-admin-read");
+
+app.MapGet("/payment/admin/payments", async (
+    ISender sender,
+    CancellationToken cancellationToken,
+    PaymentStatus? status = null,
+    PaymentChannel? channel = null,
+    Guid? orderId = null,
+    string? userId = null,
+    int skip = 0,
+    int take = 50) => TypedResults.Ok(await sender.Send(
+        new ListPaymentsQuery(status, channel, orderId, userId, skip, take),
+        cancellationToken)))
+    .RequireAuthorization("payment.admin.read")
+    .WithName("ListAdminPayments")
+    .WithSummary("List payment transactions with admin filters")
+    .Produces<PaymentPage>(StatusCodes.Status200OK);
 
 app.MapPost("/payment/callbacks/alipay", async (
     HttpRequest request,

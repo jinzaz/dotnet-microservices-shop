@@ -9,17 +9,24 @@ internal static class FlashSaleAdminEndpoints
 {
     public static IEndpointRouteBuilder MapFlashSaleAdminEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var admin = endpoints.MapGroup("/inventory/admin/flash-sales")
+        var read = endpoints.MapGroup("/inventory/admin/flash-sales")
+            .RequireAuthorization("inventory.admin.read");
+        var write = endpoints.MapGroup("/inventory/admin/flash-sales")
             .RequireAuthorization("inventory.admin.write");
 
-        admin.MapPost("/", CreateAsync)
+        read.MapGet("/", ListAsync)
+            .WithName("ListFlashSales")
+            .WithSummary("List flash-sale campaigns and their durable counters")
+            .Produces<FlashSalePage>(StatusCodes.Status200OK);
+
+        write.MapPost("/", CreateAsync)
             .WithName("CreateFlashSale")
             .WithSummary("Allocate inventory and create a flash-sale campaign")
             .Produces<FlashSaleCreatedResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
-        admin.MapPost("/{campaignId:guid}/close", CloseAsync)
+        write.MapPost("/{campaignId:guid}/close", CloseAsync)
             .WithName("CloseFlashSale")
             .WithSummary("Close a campaign and release inventory not held by orders")
             .Produces(StatusCodes.Status204NoContent)
@@ -27,6 +34,16 @@ internal static class FlashSaleAdminEndpoints
 
         return endpoints;
     }
+
+    private static async Task<Ok<FlashSalePage>> ListAsync(
+        ISender sender,
+        CancellationToken cancellationToken,
+        string? sku = null,
+        FlashSaleCampaignStatus? status = null,
+        int skip = 0,
+        int take = 50) => TypedResults.Ok(await sender.Send(
+            new ListFlashSalesQuery(sku, status, skip, take),
+            cancellationToken));
 
     private static async Task<Created<FlashSaleCreatedResponse>> CreateAsync(
         CreateFlashSaleRequest request,

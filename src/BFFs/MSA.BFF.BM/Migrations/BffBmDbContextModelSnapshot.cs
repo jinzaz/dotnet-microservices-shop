@@ -1279,6 +1279,102 @@ namespace MSA.BFF.BM.Migrations
                             Order = 43,
                             PathTemplate = "/api/notification/users/{userId}",
                             PermissionId = new Guid("ededa9aa-140d-3b5b-91b8-87828e6dd382")
+                        },
+                        new
+                        {
+                            Id = new Guid("9fcfd659-019a-86f5-8f8d-a6b8cb37e566"),
+                            HttpMethod = "GET",
+                            Order = 44,
+                            PathTemplate = "/api/Auth/users/admin/roles",
+                            PermissionId = new Guid("b7379cac-a286-03dd-d7fc-3a2d65837018")
+                        },
+                        new
+                        {
+                            Id = new Guid("e8cdbf1a-83f9-d631-1b07-e815953daafe"),
+                            HttpMethod = "GET",
+                            Order = 45,
+                            PathTemplate = "/api/Auth/users/admin/{id}",
+                            PermissionId = new Guid("b7379cac-a286-03dd-d7fc-3a2d65837018")
+                        },
+                        new
+                        {
+                            Id = new Guid("b80dd25b-72f1-c10e-23ef-6f88e5743099"),
+                            HttpMethod = "DELETE",
+                            Order = 46,
+                            PathTemplate = "/api/Auth/users/admin/{id}/roles/{role}",
+                            PermissionId = new Guid("2c382e8f-e49a-3a8e-94e9-20902758e580")
+                        },
+                        new
+                        {
+                            Id = new Guid("28865ed9-b5cf-12b4-a566-b6cd5df345c5"),
+                            HttpMethod = "GET",
+                            Order = 47,
+                            PathTemplate = "/api/inventory/admin/stock",
+                            PermissionId = new Guid("4f3d0ea0-bcb6-d85d-f161-9104884fffc6")
+                        },
+                        new
+                        {
+                            Id = new Guid("2c9b5cf4-af69-2e41-6be0-6e6207cf9500"),
+                            HttpMethod = "GET",
+                            Order = 48,
+                            PathTemplate = "/api/inventory/admin/flash-sales",
+                            PermissionId = new Guid("5953bfa5-8396-c2c9-a6dd-cd7b63258743")
+                        },
+                        new
+                        {
+                            Id = new Guid("1a405d1c-ac38-1adc-e154-83468a0a3078"),
+                            HttpMethod = "GET",
+                            Order = 49,
+                            PathTemplate = "/api/order/orders",
+                            PermissionId = new Guid("30fea92a-e975-7a82-3922-6a4f99624868")
+                        },
+                        new
+                        {
+                            Id = new Guid("30b4969a-842c-775c-d3ab-d933d020e2ca"),
+                            HttpMethod = "GET",
+                            Order = 50,
+                            PathTemplate = "/api/order/orders/{id}",
+                            PermissionId = new Guid("30fea92a-e975-7a82-3922-6a4f99624868")
+                        },
+                        new
+                        {
+                            Id = new Guid("05cfaf71-28e3-f243-cd77-bd88e18583ea"),
+                            HttpMethod = "GET",
+                            Order = 51,
+                            PathTemplate = "/api/payment/admin/payments",
+                            PermissionId = new Guid("82ce7c5b-8dcf-6d26-baee-ddf208b15cc8")
+                        },
+                        new
+                        {
+                            Id = new Guid("8d6783f9-6e0e-d9b1-a1b5-295e121a3ce3"),
+                            HttpMethod = "GET",
+                            Order = 52,
+                            PathTemplate = "/api/notification/admin/messages",
+                            PermissionId = new Guid("ededa9aa-140d-3b5b-91b8-87828e6dd382")
+                        },
+                        new
+                        {
+                            Id = new Guid("34df7ad7-b07f-1ee9-df20-c2d9a3253c9e"),
+                            HttpMethod = "GET",
+                            Order = 53,
+                            PathTemplate = "/api/notification/admin/templates",
+                            PermissionId = new Guid("ededa9aa-140d-3b5b-91b8-87828e6dd382")
+                        },
+                        new
+                        {
+                            Id = new Guid("18f7b0ed-6c95-98a1-1215-cd1eac4c9581"),
+                            HttpMethod = "POST",
+                            Order = 54,
+                            PathTemplate = "/api/notification/admin/messages",
+                            PermissionId = new Guid("6e175bef-7a25-4750-aa3c-f094f1db3aaf")
+                        },
+                        new
+                        {
+                            Id = new Guid("035399e6-be54-af03-9f19-3306477dd32f"),
+                            HttpMethod = "POST",
+                            Order = 55,
+                            PathTemplate = "/api/notification/admin/messages/{notificationId}/retry",
+                            PermissionId = new Guid("73dee7ca-2b10-dc01-5232-055c12b27e65")
                         });
                 });
 

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using MSA.Infrastrucute.Extensions;
 using OpenTelemetry.Resources;
 using Quartz;
 
@@ -40,7 +41,15 @@ builder.Services.AddOpenIddictServer(builder.Configuration, builder.Environment)
 builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.AddHostedService<IdentitySeedHostedService>();
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("user.admin.read", policy => policy
+        .RequireAuthenticatedUser()
+        .RequireAssertion(context => context.User.HasMsaScope("user.admin.read")));
+    options.AddPolicy("user.admin.write", policy => policy
+        .RequireAuthenticatedUser()
+        .RequireAssertion(context => context.User.HasMsaScope("user.admin.write")));
+});
 builder.Services.AddOpenTelemetry().WithTracing(tracing => tracing
     .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(builder.Environment.ApplicationName))
     .AddAspNetCoreInstrumentation()

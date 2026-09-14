@@ -44,6 +44,20 @@ public sealed class Notification : AggregateRoot<Guid>
         LockedUntilUtc = null;
         Version++;
     }
+    public bool Retry(DateTimeOffset now)
+    {
+        if (Status != NotificationStatus.Failed)
+            return false;
+
+        Status = NotificationStatus.Pending;
+        RetryCount = 0;
+        NextAttemptOnUtc = now;
+        LastError = null;
+        LockId = null;
+        LockedUntilUtc = null;
+        Version++;
+        return true;
+    }
     private void EnsureLock(Guid lockId) { if (LockId != lockId) throw new InvalidOperationException("Notification lease is not owned by this worker."); }
 }
 public sealed class NotificationTemplate : AggregateRoot<Guid> { private NotificationTemplate() { } public NotificationTemplate(Guid id, string code, string subject, string body) { Id = id; Code = code; Subject = subject; Body = body; } public string Code { get; private set; } = ""; public string Subject { get; private set; } = ""; public string Body { get; private set; } = ""; public bool IsActive { get; private set; } = true; }

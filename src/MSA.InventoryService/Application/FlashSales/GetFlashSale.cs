@@ -76,15 +76,12 @@ internal sealed class GetFlashSaleQueryHandler(
             - snapshot.SoldQuantity
             - snapshot.ReleasedQuantity;
         var now = clock.GetUtcNow();
-        var state = snapshot.Status == FlashSaleCampaignStatus.Closed
-            ? "Closed"
-            : now < snapshot.StartsOnUtc
-                ? "Scheduled"
-                : now >= snapshot.EndsOnUtc
-                    ? "Expired"
-                    : availableQuantity == 0
-                        ? "SoldOut"
-                        : "Active";
+        var state = ResolveState(
+            snapshot.Status,
+            snapshot.StartsOnUtc,
+            snapshot.EndsOnUtc,
+            availableQuantity,
+            now);
         var result = new FlashSaleAvailabilityDto(
             snapshot.Id,
             snapshot.Sku,
@@ -117,6 +114,113 @@ internal sealed class GetFlashSaleQueryHandler(
 
         return result;
     }
+
+    internal static string ResolveState(
+        FlashSaleCampaignStatus status,
+        DateTimeOffset startsOnUtc,
+        DateTimeOffset endsOnUtc,
+        int availableQuantity,
+        DateTimeOffset now) => status == FlashSaleCampaignStatus.Closed
+        ? "Closed"
+        : now < startsOnUtc
+            ? "Scheduled"
+            : now >= endsOnUtc
+                ? "Expired"
+                : availableQuantity == 0
+                    ? "SoldOut"
+                    : "Active";
+}
+
+public sealed record ListFlashSalesQuery(
+    string? Sku,
+    FlashSaleCampaignStatus? Status,
+    int Skip,
+    int Take) : IQuery<FlashSalePage>;
+
+public sealed record FlashSalePage(
+    IReadOnlyList<FlashSaleAvailabilityDto> Items,
+    int Skip,
+    int Take,
+    int Total);
+
+internal sealed class ListFlashSalesQueryHandler(
+    InventoryDbContext db,
+    TimeProvider clock) : IRequestHandler<ListFlashSalesQuery, FlashSalePage>
+{
+    public async Task<FlashSalePage> Handle(
+        ListFlashSalesQuery request,
+        CancellationToken cancellationToken)
+    {
+        var skip = Math.Max(0, request.Skip);
+        var take = Math.Clamp(request.Take, 1, 200);
+        var query = db.FlashSaleCampaigns.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(request.Sku))
+        {
+            var sku = request.Sku.Trim().ToUpperInvariant();
+            query = query.Where(campaign => campaign.Sku.Contains(sku));
+        }
+        if (request.Status is { } status)
+            query = query.Where(campaign => campaign.Status == status);
+
+        var total = await query.CountAsync(cancellationToken);
+        var rows = await query
+            .OrderByDescending(campaign => campaign.CreatedOnUtc)
+            .Skip(skip)
+            .Take(take)
+            .Select(campaign => new FlashSaleListSnapshot(
+                campaign.Id,
+                campaign.Sku,
+                campaign.Strategy,
+                campaign.Status,
+                campaign.TotalQuantity,
+                campaign.StockBuckets.Sum(bucket => bucket.ReservedQuantity),
+                campaign.StockBuckets.Sum(bucket => bucket.SoldQuantity),
+                campaign.StockBuckets.Sum(bucket => bucket.ReleasedQuantity),
+                campaign.PurchaseLimit,
+                campaign.StartsOnUtc,
+                campaign.EndsOnUtc))
+            .ToArrayAsync(cancellationToken);
+        var now = clock.GetUtcNow();
+        var items = rows.Select(row =>
+        {
+            var available = row.TotalQuantity
+                - row.ReservedQuantity
+                - row.SoldQuantity
+                - row.ReleasedQuantity;
+            return new FlashSaleAvailabilityDto(
+                row.CampaignId,
+                row.Sku,
+                row.Strategy,
+                GetFlashSaleQueryHandler.ResolveState(
+                    row.Status,
+                    row.StartsOnUtc,
+                    row.EndsOnUtc,
+                    available,
+                    now),
+                row.TotalQuantity,
+                row.ReservedQuantity,
+                row.SoldQuantity,
+                row.ReleasedQuantity,
+                available,
+                row.PurchaseLimit,
+                row.StartsOnUtc,
+                row.EndsOnUtc);
+        }).ToArray();
+        return new FlashSalePage(items, skip, take, total);
+    }
+
+    private sealed record FlashSaleListSnapshot(
+        Guid CampaignId,
+        string Sku,
+        FlashSaleStockStrategy Strategy,
+        FlashSaleCampaignStatus Status,
+        int TotalQuantity,
+        int ReservedQuantity,
+        int SoldQuantity,
+        int ReleasedQuantity,
+        int PurchaseLimit,
+        DateTimeOffset StartsOnUtc,
+        DateTimeOffset EndsOnUtc);
 }
 
 public sealed record GetExpiredFlashSalesQuery(int BatchSize) : IQuery<IReadOnlyList<Guid>>;

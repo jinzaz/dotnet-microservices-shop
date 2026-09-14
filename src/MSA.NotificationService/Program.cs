@@ -1,13 +1,18 @@
+using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Mvc;
 using MSA.Contracts;
 using MSA.EventBus.DependencyInjection;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
+using MSA.NotificationService.Application;
+using MSA.NotificationService.Domain;
 using MSA.NotificationService.Infrastructure;
 using MSA.NotificationService.Integration;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using System.Security.Claims;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("Postgresql");
@@ -16,6 +21,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
 
 builder.Services.AddDbContext<NotificationDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddScoped<MSADbContext>(services => services.GetRequiredService<NotificationDbContext>());
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddMediatR(configuration => configuration.RegisterServicesFromAssemblyContaining<OrderConfirmedHandler>());
 builder.Services.AddMsaApplicationPipeline();
 builder.Services.AddRabbitMQEventBus(options =>
@@ -45,6 +51,8 @@ builder.Services.AddMsaApiAuthorization(
     "notification.admin.read",
     "notification.admin.write",
     "notification-api-or-admin-read");
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddHealthChecks();
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenTelemetry().WithTracing(tracing => tracing
@@ -85,4 +93,106 @@ app.MapGet("/notification/users/{userId}", async (
     return Results.Ok(rows);
 }).RequireAuthorization("notification-api-or-admin-read");
 
+app.MapGet("/notification/admin/messages", async (
+    ISender sender,
+    CancellationToken cancellationToken,
+    string? userId = null,
+    NotificationStatus? status = null,
+    string? templateCode = null,
+    int skip = 0,
+    int take = 50) => TypedResults.Ok(await sender.Send(
+        new ListNotificationsQuery(userId, status, templateCode, skip, take),
+        cancellationToken)))
+    .RequireAuthorization("notification.admin.read")
+    .WithName("ListAdminNotifications")
+    .WithSummary("List notification delivery records with admin filters")
+    .Produces<NotificationPage>(StatusCodes.Status200OK);
+
+app.MapGet("/notification/admin/templates", async (
+    bool? active,
+    ISender sender,
+    CancellationToken cancellationToken) => TypedResults.Ok(await sender.Send(
+        new ListNotificationTemplatesQuery(active),
+        cancellationToken)))
+    .RequireAuthorization("notification.admin.read")
+    .WithName("ListAdminNotificationTemplates")
+    .WithSummary("List notification templates")
+    .Produces<IReadOnlyList<NotificationTemplateDto>>(StatusCodes.Status200OK);
+
+app.MapPost("/notification/admin/messages", SendAdminNotificationsAsync)
+    .RequireAuthorization("notification.admin.write")
+    .WithName("SendAdminNotifications")
+    .WithSummary("Queue one notification for up to 100 users")
+    .Produces<SendAdminNotificationsResult>(StatusCodes.Status202Accepted)
+    .ProducesValidationProblem();
+
+app.MapPost("/notification/admin/messages/{notificationId:guid}/retry", RetryNotificationAsync)
+    .RequireAuthorization("notification.admin.write")
+    .WithName("RetryAdminNotification")
+    .WithSummary("Requeue a permanently failed notification")
+    .Produces(StatusCodes.Status204NoContent)
+    .ProducesProblem(StatusCodes.Status404NotFound)
+    .ProducesProblem(StatusCodes.Status409Conflict);
+
 app.Run();
+
+static async Task<IResult> SendAdminNotificationsAsync(
+    SendAdminNotificationsRequest request,
+    HttpContext context,
+    ISender sender,
+    CancellationToken cancellationToken)
+{
+    var errors = new Dictionary<string, string[]>();
+    var userIds = request.UserIds?
+        .Where(userId => !string.IsNullOrWhiteSpace(userId))
+        .Select(userId => userId.Trim())
+        .Distinct(StringComparer.Ordinal)
+        .ToArray() ?? [];
+    if (userIds.Length is 0 or > 100 || userIds.Any(userId => userId.Length > 200))
+        errors[nameof(request.UserIds)] = ["Provide 1-100 user IDs, each no longer than 200 characters."];
+    if (string.IsNullOrWhiteSpace(request.Subject) || request.Subject.Trim().Length > 500)
+        errors[nameof(request.Subject)] = ["Subject is required and cannot exceed 500 characters."];
+    if (string.IsNullOrWhiteSpace(request.Body) || request.Body.Trim().Length > 10_000)
+        errors[nameof(request.Body)] = ["Body is required and cannot exceed 10000 characters."];
+    if (!string.IsNullOrWhiteSpace(request.TemplateCode) && request.TemplateCode.Trim().Length > 100)
+        errors[nameof(request.TemplateCode)] = ["Template code cannot exceed 100 characters."];
+
+    var idempotencyKey = context.Request.Headers["Idempotency-Key"].ToString().Trim();
+    if (idempotencyKey.Length is 0 or > 100)
+        errors["Idempotency-Key"] = ["Idempotency-Key is required and cannot exceed 100 characters."];
+    if (errors.Count > 0)
+        return Results.ValidationProblem(errors);
+
+    var result = await sender.Send(
+        new SendAdminNotificationsCommand(
+            userIds,
+            string.IsNullOrWhiteSpace(request.TemplateCode) ? "admin-message" : request.TemplateCode.Trim(),
+            request.Subject.Trim(),
+            request.Body.Trim(),
+            idempotencyKey),
+        cancellationToken);
+    return Results.Accepted("/api/notification/admin/messages", result);
+}
+
+static async Task<IResult> RetryNotificationAsync(
+    Guid notificationId,
+    ISender sender,
+    CancellationToken cancellationToken)
+{
+    var result = await sender.Send(new RetryNotificationCommand(notificationId), cancellationToken);
+    if (!result.Found)
+        return Results.NotFound();
+    return result.Changed
+        ? Results.NoContent()
+        : Results.Conflict(new ProblemDetails
+        {
+            Title = "Notification cannot be retried",
+            Detail = "Only notifications in the Failed state can be retried."
+        });
+}
+
+public sealed record SendAdminNotificationsRequest(
+    IReadOnlyList<string>? UserIds,
+    string Subject,
+    string Body,
+    string? TemplateCode = null);

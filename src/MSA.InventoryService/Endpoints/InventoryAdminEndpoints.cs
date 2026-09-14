@@ -29,6 +29,12 @@ internal static class InventoryAdminEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
+        read.MapGet("/stock", ListStockAsync)
+            .WithName("ListInventoryStock")
+            .WithSummary("List durable stock balances with optional low-stock filtering")
+            .Produces<InventoryStockPage>(StatusCodes.Status200OK)
+            .ProducesValidationProblem();
+
         read.MapGet("/stock/{sku}/movements", GetStockMovementsAsync)
             .WithName("GetInventoryStockMovements")
             .WithSummary("Get recent audited stock movements for a SKU")
@@ -68,6 +74,27 @@ internal static class InventoryAdminEndpoints
                 operatorId),
             cancellationToken);
         return TypedResults.Ok(result);
+    }
+
+    private static async Task<Results<Ok<InventoryStockPage>, ValidationProblem>> ListStockAsync(
+        ISender sender,
+        CancellationToken cancellationToken,
+        string? search = null,
+        int? lowStockThreshold = null,
+        int skip = 0,
+        int take = 50)
+    {
+        if (lowStockThreshold is < 0)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                [nameof(lowStockThreshold)] = ["Low-stock threshold cannot be negative."]
+            });
+        }
+
+        return TypedResults.Ok(await sender.Send(
+            new ListInventoryStockQuery(search, lowStockThreshold, skip, take),
+            cancellationToken));
     }
 
     private static async Task<Ok<IReadOnlyList<StockMovementDto>>> GetStockMovementsAsync(

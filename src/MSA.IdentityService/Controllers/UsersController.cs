@@ -62,16 +62,28 @@ public sealed class UsersController(
         return result.Succeeded ? NoContent() : BadRequest(result.Errors);
     }
 
-    [Authorize(Roles = "admin")]
+    [Authorize(Policy = "user.admin.read")]
     [HttpGet("admin")]
     public async Task<IActionResult> List(
+        string? search = null,
         int skip = 0,
         int take = 50,
         CancellationToken cancellationToken = default)
     {
         take = Math.Clamp(take, 1, 100);
-        return Ok(await users.Users
-            .AsNoTracking()
+        var query = users.Users.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            var normalizedTerm = term.ToUpperInvariant();
+            query = query.Where(user =>
+                user.Id == term ||
+                user.NormalizedEmail != null && user.NormalizedEmail.Contains(normalizedTerm) ||
+                user.DisplayName.ToUpper().Contains(normalizedTerm) ||
+                user.PhoneNumber != null && user.PhoneNumber.Contains(term));
+        }
+
+        return Ok(await query
             .OrderBy(user => user.Id)
             .Skip(Math.Max(0, skip))
             .Take(take)
@@ -86,7 +98,39 @@ public sealed class UsersController(
             .ToListAsync(cancellationToken));
     }
 
-    [Authorize(Roles = "admin")]
+    [Authorize(Policy = "user.admin.read")]
+    [HttpGet("admin/roles")]
+    public Task<string[]> ListRoles(CancellationToken cancellationToken) => roles.Roles
+        .AsNoTracking()
+        .Where(role => role.Name != null)
+        .OrderBy(role => role.Name)
+        .Select(role => role.Name!)
+        .ToArrayAsync(cancellationToken);
+
+    [Authorize(Policy = "user.admin.read")]
+    [HttpGet("admin/{id}")]
+    public async Task<IActionResult> Get(string id)
+    {
+        var user = await users.FindByIdAsync(id);
+        if (user is null)
+            return NotFound();
+
+        return Ok(new
+        {
+            user.Id,
+            user.Email,
+            user.DisplayName,
+            user.PhoneNumber,
+            user.PhoneNumberConfirmed,
+            user.EmailConfirmed,
+            user.IsActive,
+            user.CreatedOnUtc,
+            user.LastLoginOnUtc,
+            Roles = await users.GetRolesAsync(user)
+        });
+    }
+
+    [Authorize(Policy = "user.admin.write")]
     [HttpPost("admin/{id}/roles/{role}")]
     public async Task<IActionResult> AddRole(string id, string role)
     {
@@ -100,7 +144,21 @@ public sealed class UsersController(
         return result.Succeeded ? NoContent() : BadRequest(result.Errors);
     }
 
-    [Authorize(Roles = "admin")]
+    [Authorize(Policy = "user.admin.write")]
+    [HttpDelete("admin/{id}/roles/{role}")]
+    public async Task<IActionResult> RemoveRole(string id, string role)
+    {
+        var user = await users.FindByIdAsync(id);
+        if (user is null)
+            return NotFound();
+        if (!await users.IsInRoleAsync(user, role))
+            return NoContent();
+
+        var result = await users.RemoveFromRoleAsync(user, role);
+        return result.Succeeded ? NoContent() : BadRequest(result.Errors);
+    }
+
+    [Authorize(Policy = "user.admin.write")]
     [HttpPost("admin/{id}/activation")]
     public async Task<IActionResult> SetActivation(string id, SetActivationRequest request)
     {

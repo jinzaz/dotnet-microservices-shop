@@ -130,7 +130,19 @@ internal static class PbacSeedData
             ("order.fulfillment.edit", HttpMethods.Post, "/api/order/admin/orders/{orderId}/fulfillment/in-transit"),
             ("order.fulfillment.edit", HttpMethods.Post, "/api/order/admin/orders/{orderId}/fulfillment/delivered"),
             ("payment.transactions.query", HttpMethods.Get, "/api/payment/orders/{orderId}"),
-            ("notification.messages.query", HttpMethods.Get, "/api/notification/users/{userId}")
+            ("notification.messages.query", HttpMethods.Get, "/api/notification/users/{userId}"),
+            ("identity.users.query", HttpMethods.Get, "/api/Auth/users/admin/roles"),
+            ("identity.users.query", HttpMethods.Get, "/api/Auth/users/admin/{id}"),
+            ("identity.users.edit", HttpMethods.Delete, "/api/Auth/users/admin/{id}/roles/{role}"),
+            ("inventory.stock.query", HttpMethods.Get, "/api/inventory/admin/stock"),
+            ("inventory.flash-sales.query", HttpMethods.Get, "/api/inventory/admin/flash-sales"),
+            ("order.fulfillment.query", HttpMethods.Get, "/api/order/orders"),
+            ("order.fulfillment.query", HttpMethods.Get, "/api/order/orders/{id}"),
+            ("payment.transactions.query", HttpMethods.Get, "/api/payment/admin/payments"),
+            ("notification.messages.query", HttpMethods.Get, "/api/notification/admin/messages"),
+            ("notification.messages.query", HttpMethods.Get, "/api/notification/admin/templates"),
+            ("notification.messages.create", HttpMethods.Post, "/api/notification/admin/messages"),
+            ("notification.messages.edit", HttpMethods.Post, "/api/notification/admin/messages/{notificationId}/retry")
         ];
 
         return definitions

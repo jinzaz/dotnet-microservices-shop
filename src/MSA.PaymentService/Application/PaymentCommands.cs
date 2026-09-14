@@ -173,3 +173,115 @@ internal sealed class GetPaymentByOrderHandler(PaymentDbContext db)
                 value.ExpiresOnUtc))
             .SingleOrDefaultAsync(cancellationToken);
 }
+
+public sealed record ListPaymentsQuery(
+    PaymentStatus? Status,
+    PaymentChannel? Channel,
+    Guid? OrderId,
+    string? UserId,
+    int Skip,
+    int Take) : IQuery<PaymentPage>;
+
+public sealed record PaymentListItemDto(
+    Guid Id,
+    Guid OrderId,
+    string UserId,
+    decimal Amount,
+    string Currency,
+    string Channel,
+    string Status,
+    string MerchantTradeNo,
+    string? ProviderTransactionId,
+    DateTimeOffset CreatedOnUtc,
+    DateTimeOffset ExpiresOnUtc,
+    DateTimeOffset? PaidOnUtc,
+    DateTimeOffset? ClosedOnUtc,
+    decimal RefundedAmount,
+    string? FailureReason);
+
+public sealed record PaymentPage(
+    IReadOnlyList<PaymentListItemDto> Items,
+    int Skip,
+    int Take,
+    int Total);
+
+internal sealed class ListPaymentsHandler(PaymentDbContext db)
+    : IRequestHandler<ListPaymentsQuery, PaymentPage>
+{
+    public async Task<PaymentPage> Handle(
+        ListPaymentsQuery request,
+        CancellationToken cancellationToken)
+    {
+        var skip = Math.Max(0, request.Skip);
+        var take = Math.Clamp(request.Take, 1, 200);
+        var query = db.Payments.AsNoTracking();
+        if (request.Status is { } status)
+            query = query.Where(payment => payment.Status == status);
+        if (request.Channel is { } channel)
+            query = query.Where(payment => payment.Channel == channel);
+        if (request.OrderId is { } orderId)
+            query = query.Where(payment => payment.OrderId == orderId);
+        if (!string.IsNullOrWhiteSpace(request.UserId))
+        {
+            var userId = request.UserId.Trim();
+            query = query.Where(payment => payment.UserId == userId);
+        }
+
+        var total = await query.CountAsync(cancellationToken);
+        var rows = await query
+            .OrderByDescending(payment => payment.CreatedOnUtc)
+            .Skip(skip)
+            .Take(take)
+            .Select(payment => new PaymentListItemSnapshot(
+                payment.Id,
+                payment.OrderId,
+                payment.UserId,
+                payment.Amount,
+                payment.Currency,
+                payment.Channel,
+                payment.Status,
+                payment.MerchantTradeNo,
+                payment.ProviderTransactionId,
+                payment.CreatedOnUtc,
+                payment.ExpiresOnUtc,
+                payment.PaidOnUtc,
+                payment.ClosedOnUtc,
+                payment.RefundedAmount,
+                payment.FailureReason))
+            .ToArrayAsync(cancellationToken);
+        var items = rows.Select(payment => new PaymentListItemDto(
+            payment.Id,
+            payment.OrderId,
+            payment.UserId,
+            payment.Amount,
+            payment.Currency,
+            payment.Channel.ToString(),
+            payment.Status.ToString(),
+            payment.MerchantTradeNo,
+            payment.ProviderTransactionId,
+            payment.CreatedOnUtc,
+            payment.ExpiresOnUtc,
+            payment.PaidOnUtc,
+            payment.ClosedOnUtc,
+            payment.RefundedAmount,
+            payment.FailureReason)).ToArray();
+        return new PaymentPage(items, skip, take, total);
+    }
+
+    private sealed record PaymentListItemSnapshot(
+        Guid Id,
+        Guid OrderId,
+        string UserId,
+        decimal Amount,
+        string Currency,
+        PaymentChannel Channel,
+        PaymentStatus Status,
+        string MerchantTradeNo,
+        string? ProviderTransactionId,
+        DateTimeOffset CreatedOnUtc,
+        DateTimeOffset ExpiresOnUtc,
+        DateTimeOffset? PaidOnUtc,
+        DateTimeOffset? ClosedOnUtc,
+        decimal RefundedAmount,
+        string? FailureReason);
+}
