@@ -22,6 +22,10 @@ internal static class SmsServiceCollectionExtensions
                 "Sms:MaxVerificationAttempts must be between 1 and 10.")
             .Validate(options => !string.IsNullOrWhiteSpace(options.LoginTemplate),
                 "Sms:LoginTemplate is required.")
+            .Validate(options => !string.IsNullOrWhiteSpace(options.PasswordResetTemplate),
+                "Sms:PasswordResetTemplate is required.")
+            .Validate(options => !string.IsNullOrWhiteSpace(options.PhoneConfirmationTemplate),
+                "Sms:PhoneConfirmationTemplate is required.")
             .Validate(options => !environment.IsDevelopment()
                 || options.DevelopmentCode.Length == 6 && options.DevelopmentCode.All(char.IsAsciiDigit),
                 "Sms:DevelopmentCode must contain exactly six digits in Development.")

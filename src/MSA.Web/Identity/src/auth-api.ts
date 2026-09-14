@@ -21,6 +21,12 @@ export type SmsLoginCodeRequested = {
   retryAfterSeconds: number;
 };
 
+export type SmsPasswordResetDetails = {
+  phoneNumber: string;
+  code: string;
+  newPassword: string;
+};
+
 type ApiProblem = {
   title?: string;
   detail?: string;
@@ -148,6 +154,24 @@ export function loginWithSms(credentials: SmsLoginCredentials): Promise<void> {
     credentials,
     '登录没有完成，请稍后重试。',
     '手机号或验证码不正确，或账户暂时不可用。',
+  );
+}
+
+export function requestPasswordResetCode(phoneNumber: string): Promise<SmsLoginCodeRequested> {
+  return post(
+    '/api/Auth/password/reset/code',
+    { phoneNumber },
+    '验证码发送请求没有完成，请稍后重试。',
+    '验证码发送请求没有完成，请稍后重试。',
+  );
+}
+
+export function resetPassword(details: SmsPasswordResetDetails): Promise<void> {
+  return post(
+    '/api/Auth/password/reset',
+    details,
+    '密码重置没有完成，请稍后重试。',
+    '验证码无效、已过期或账户暂时不可用。',
   );
 }
 

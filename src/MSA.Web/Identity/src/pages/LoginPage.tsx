@@ -113,7 +113,7 @@ export default function LoginPage() {
       } else {
         await loginWithSms({ phoneNumber: normalizedPhone, code, rememberMe });
       }
-      window.location.assign(returnUrl);
+      window.location.assign(returnUrl === '/' ? storeUrl : returnUrl);
     } catch (error) {
       setErrors({ form: loginErrorMessage(error, mode) });
       setSubmitting(false);
@@ -125,7 +125,7 @@ export default function LoginPage() {
       <form className="login-form" onSubmit={submit} noValidate>
         <div className="login-form__heading">
           <h1>欢迎回来</h1>
-          <p>登录后继续查看订单、管理地址与积分。</p>
+          <p>完成身份验证后，将安全返回发起请求的应用。</p>
         </div>
         <div className="login-mode-tabs" aria-label="选择登录方式">
           <button
@@ -237,7 +237,7 @@ export default function LoginPage() {
             <span><Icon name="check" /></span>
             保持登录
           </label>
-          {mode === 'password' ? <a href={`${storeUrl}/forgot-password`}>忘记密码？</a> : <span />}
+          {mode === 'password' ? <Link to={`/forgot-password?${new URLSearchParams({ returnUrl })}`}>忘记密码？</Link> : <span />}
         </div>
         {smsNotice ? <p className="form-message form-message--success" role="status">{smsNotice}</p> : null}
         {errors.form ? <p className="form-message form-message--error" role="alert">{errors.form}</p> : null}

@@ -36,7 +36,6 @@ export default function App() {
         <Route path="/coupons" element={<RequireAuth><CouponsPage /></RequireAuth>} />
         <Route path="/orders" element={<RequireAuth><OrdersPage /></RequireAuth>} />
         <Route path="/register" element={<RegisterPage />} />
-        <Route path="/forgot-password" element={<FutureFeaturePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>

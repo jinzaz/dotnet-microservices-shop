@@ -5,6 +5,7 @@ import { AuthLayout } from '../components/AuthLayout';
 import { Button } from '../components/Button';
 import { FormField } from '../components/FormField';
 import { Icon } from '../components/Icon';
+import { storeUrl } from '../config';
 import { authRoute, getSafeReturnUrl } from '../return-url';
 
 type RegisterErrors = Partial<Record<'displayName' | 'email' | 'password' | 'confirmPassword' | 'form', string>>;
@@ -68,7 +69,7 @@ export default function RegisterPage() {
     setErrors({});
     try {
       await registerAndLogin({ displayName: normalizedName, email: normalizedEmail, password });
-      window.location.assign(returnUrl);
+      window.location.assign(returnUrl === '/' ? storeUrl : returnUrl);
     } catch (error) {
       setErrors({ form: registrationErrorMessage(error) });
       setSubmitting(false);
@@ -91,7 +92,7 @@ export default function RegisterPage() {
       <form className="login-form register-form" onSubmit={submit} noValidate>
         <div className="login-form__heading">
           <h1>创建账户</h1>
-          <p>注册后即可管理订单、收货地址与积分。</p>
+          <p>使用一个统一账户安全访问 MSA 应用与服务。</p>
         </div>
         <FormField
           id="register-name"

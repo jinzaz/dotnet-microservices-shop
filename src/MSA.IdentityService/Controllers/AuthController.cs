@@ -93,11 +93,21 @@ public sealed class AuthController(
         if (user is null || !user.IsActive)
             return InvalidLogin();
 
-        var result = await signIn.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: true);
+        var result = await signIn.PasswordSignInAsync(
+            user,
+            request.Password,
+            request.RememberMe,
+            lockoutOnFailure: true);
+        if (result.RequiresTwoFactor)
+        {
+            await HttpContext.SignOutAsync(IdentityConstants.TwoFactorUserIdScheme);
+            return TwoFactorRequired();
+        }
         if (!result.Succeeded)
             return InvalidLogin();
 
-        return await CompleteLogin(user, request.RememberMe, "pwd");
+        await RecordSuccessfulLogin(user);
+        return NoContent();
     }
 
     [AllowAnonymous]
@@ -133,8 +143,57 @@ public sealed class AuthController(
         {
             return InvalidLogin();
         }
+        if (user.TwoFactorEnabled)
+            return TwoFactorRequired();
 
         return await CompleteLogin(user, request.RememberMe, "sms");
+    }
+
+    [AllowAnonymous]
+    [HttpPost("password/reset/code")]
+    [ValidateAntiForgeryToken]
+    [EnableRateLimiting(IdentityServiceConstants.RateLimits.SmsDispatch)]
+    public async Task<ActionResult<SmsLoginCodeRequestedResponse>> RequestPasswordResetCode(
+        RequestSmsLoginCodeRequest request,
+        CancellationToken cancellationToken)
+    {
+        await smsVerification.RequestPasswordResetCodeAsync(request.PhoneNumber, cancellationToken);
+        return Accepted(new SmsLoginCodeRequestedResponse(
+            smsOptions.Value.CodeLifetimeSeconds,
+            smsOptions.Value.ResendCooldownSeconds));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("password/reset")]
+    [ValidateAntiForgeryToken]
+    [EnableRateLimiting(IdentityServiceConstants.RateLimits.Authentication)]
+    public async Task<IActionResult> ResetPassword(
+        SmsPasswordResetRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = await smsVerification.ConsumePasswordResetCodeAsync(
+            request.PhoneNumber,
+            request.Code,
+            cancellationToken);
+        var user = userId is null ? null : await users.FindByIdAsync(userId);
+        if (user is null || !user.IsActive || !user.PhoneNumberConfirmed
+            || !string.Equals(user.PhoneNumber, request.PhoneNumber.Trim(), StringComparison.Ordinal))
+        {
+            return InvalidPasswordReset();
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var resetToken = await users.GeneratePasswordResetTokenAsync(user);
+        var result = await users.ResetPasswordAsync(user, resetToken, request.NewPassword);
+        if (!result.Succeeded)
+            return IdentityValidationProblem(result);
+
+        await tokens.RevokeBySubjectAsync(user.Id, cancellationToken);
+        await authorizations.RevokeBySubjectAsync(user.Id, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        await signIn.SignOutAsync();
+        logger.LogInformation("User {UserId} reset their password and revoked existing sessions.", user.Id);
+        return NoContent();
     }
 
     [AllowAnonymous]
@@ -240,11 +299,7 @@ public sealed class AuthController(
                 new Uri(new Uri(configuration["IdentityUi:BaseUrl"]!), "consent").AbsoluteUri,
                 new Dictionary<string, string?>
                 {
-                    ["returnUrl"] = returnUrl,
-                    ["clientId"] = request.ClientId,
-                    ["clientName"] = await applications.GetDisplayNameAsync(application, cancellationToken)
-                        ?? request.ClientId,
-                    ["scopes"] = string.Join(' ', request.GetScopes())
+                    ["returnUrl"] = returnUrl
                 });
             return Redirect(consentUrl);
         }
@@ -371,6 +426,13 @@ public sealed class AuthController(
         bool rememberMe,
         string authenticationMethod)
     {
+        await RecordSuccessfulLogin(user);
+        await signIn.SignInAsync(user, rememberMe, authenticationMethod);
+        return NoContent();
+    }
+
+    private async Task RecordSuccessfulLogin(ApplicationUser user)
+    {
         user.LastLoginOnUtc = timeProvider.GetUtcNow();
         var updateResult = await users.UpdateAsync(user);
         if (!updateResult.Succeeded)
@@ -380,9 +442,6 @@ public sealed class AuthController(
                 user.Id,
                 string.Join(',', updateResult.Errors.Select(error => error.Code)));
         }
-
-        await signIn.SignInAsync(user, rememberMe, authenticationMethod);
-        return NoContent();
     }
 
     private async Task<ClaimsPrincipal> CreatePrincipal(
@@ -467,6 +526,16 @@ public sealed class AuthController(
         statusCode: StatusCodes.Status401Unauthorized,
         title: "登录失败",
         detail: "登录凭据无效或账户暂时不可用。");
+
+    private ObjectResult InvalidPasswordReset() => Problem(
+        statusCode: StatusCodes.Status401Unauthorized,
+        title: "重置失败",
+        detail: "验证码无效、已过期或账户暂时不可用。");
+
+    private ObjectResult TwoFactorRequired() => Problem(
+        statusCode: StatusCodes.Status403Forbidden,
+        title: "需要双重验证",
+        detail: "该账户已启用双重验证，当前登录页暂不支持第二因素，请联系管理员。");
 
     private IActionResult IdentityValidationProblem(IdentityResult result) => ValidationProblem(
         new ValidationProblemDetails(result.Errors

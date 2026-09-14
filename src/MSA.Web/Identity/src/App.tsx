@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ConsentPage from './pages/ConsentPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 
 function LoginRedirect() {
   const { search } = useLocation();
@@ -14,6 +15,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/consent" element={<ConsentPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="*" element={<LoginRedirect />} />
     </Routes>
   );

@@ -111,7 +111,9 @@ export async function getSession(): Promise<BffSession | null> {
 }
 
 export function beginLogin() {
-  const returnUrl = `${window.location.pathname}${window.location.search}`;
+  const search = new URLSearchParams(window.location.search);
+  search.delete('authError');
+  const returnUrl = `${window.location.pathname}${search.size ? `?${search}` : ''}`;
   window.location.assign(absolute(`/bff/login?${new URLSearchParams({ returnUrl })}`));
 }
 

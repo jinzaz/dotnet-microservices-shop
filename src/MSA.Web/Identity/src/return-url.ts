@@ -18,9 +18,9 @@ export function authRoute(path: '/login' | '/register', returnUrl: string): stri
 }
 
 export type ConsentRequest = {
-  returnUrl: string;
+  action: string;
+  parameters: Array<[string, string]>;
   clientId: string;
-  clientName: string;
   scopes: string[];
 };
 
@@ -31,16 +31,23 @@ export function getConsentRequest(search: string): ConsentRequest | null {
 
   try {
     const target = new URL(returnUrl, window.location.origin);
-    if (target.origin !== window.location.origin || target.pathname !== '/connect/authorize') return null;
+    if (
+      target.origin !== window.location.origin
+      || target.pathname !== '/connect/authorize'
+      || target.hash
+    ) return null;
+
+    const clientId = target.searchParams.get('client_id')?.trim() ?? '';
+    if (!clientId) return null;
+
+    return {
+      action: target.pathname,
+      parameters: [...target.searchParams.entries()].filter(([name]) =>
+        name.toLowerCase() !== 'consent' && name.toLowerCase() !== '__requestverificationtoken'),
+      clientId,
+      scopes: [...new Set((target.searchParams.get('scope') ?? '').split(' ').filter(Boolean))],
+    };
   } catch {
     return null;
   }
-
-  const clientId = parameters.get('clientId')?.trim() ?? '';
-  return {
-    returnUrl,
-    clientId,
-    clientName: parameters.get('clientName')?.trim() || clientId || '未知应用',
-    scopes: [...new Set((parameters.get('scopes') ?? '').split(' ').filter(Boolean))],
-  };
 }

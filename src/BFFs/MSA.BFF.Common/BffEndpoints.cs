@@ -1,7 +1,9 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.WebUtilities;
 using OpenIddict.Abstractions;
 using OpenIddict.Client.AspNetCore;
 using static OpenIddict.Abstractions.OpenIddictConstants;
@@ -128,9 +130,12 @@ public static class BffEndpoints
                 Properties: not null
             })
         {
-            return TypedResults.Problem(
-                statusCode: StatusCodes.Status401Unauthorized,
-                title: "The external authentication response is invalid.");
+            var response = context.GetOpenIddictClientResponse();
+            var error = string.Equals(response?.Error, Errors.AccessDenied, StringComparison.Ordinal)
+                ? Errors.AccessDenied
+                : "authentication_failed";
+            var returnUrl = GetSafeCallbackReturnUrl(configuration, result?.Properties?.RedirectUri);
+            return TypedResults.Redirect(QueryHelpers.AddQueryString(returnUrl, "authError", error));
         }
 
         var identity = new ClaimsIdentity(

@@ -27,12 +27,27 @@ public sealed record SmsSendReceipt(string? ProviderMessageId);
 public static class SmsTemplateNames
 {
     public const string LoginCode = "login-code";
+    public const string PasswordResetCode = "password-reset-code";
+    public const string PhoneConfirmationCode = "phone-confirmation-code";
 }
 
 public interface ISmsVerificationService
 {
     Task RequestLoginCodeAsync(string phoneNumber, CancellationToken cancellationToken);
     Task<string?> ConsumeLoginCodeAsync(
+        string phoneNumber,
+        string code,
+        CancellationToken cancellationToken);
+    Task RequestPasswordResetCodeAsync(string phoneNumber, CancellationToken cancellationToken);
+    Task<string?> ConsumePasswordResetCodeAsync(
+        string phoneNumber,
+        string code,
+        CancellationToken cancellationToken);
+    Task RequestPhoneConfirmationCodeAsync(
+        string userId,
+        string phoneNumber,
+        CancellationToken cancellationToken);
+    Task<string?> ConsumePhoneConfirmationCodeAsync(
         string phoneNumber,
         string code,
         CancellationToken cancellationToken);
@@ -44,6 +59,8 @@ public sealed class SmsOptions
 
     public string Provider { get; init; } = string.Empty;
     public string LoginTemplate { get; init; } = SmsTemplateNames.LoginCode;
+    public string PasswordResetTemplate { get; init; } = SmsTemplateNames.PasswordResetCode;
+    public string PhoneConfirmationTemplate { get; init; } = SmsTemplateNames.PhoneConfirmationCode;
     public int CodeLifetimeSeconds { get; init; } = 300;
     public int ResendCooldownSeconds { get; init; } = 60;
     public int MaxSendsPerHour { get; init; } = 5;
@@ -81,3 +98,12 @@ public sealed record SmsLoginRequest(
     [Required, StringLength(6, MinimumLength = 6), RegularExpression(@"^[0-9]{6}$")]
     string Code,
     bool RememberMe = false);
+
+/// <summary>使用已验证手机号收到的验证码重置密码。</summary>
+public sealed record SmsPasswordResetRequest(
+    [Required, StringLength(16), RegularExpression(PhoneNumberFormat.E164Pattern, ErrorMessage = PhoneNumberFormat.E164Error)]
+    string PhoneNumber,
+    [Required, StringLength(6, MinimumLength = 6), RegularExpression(@"^[0-9]{6}$")]
+    string Code,
+    [Required, StringLength(128, MinimumLength = 10)]
+    string NewPassword);

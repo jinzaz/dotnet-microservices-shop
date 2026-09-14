@@ -13,6 +13,12 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }
   if (isAuthenticated) return children;
 
-  const redirect = encodeURIComponent(`${location.pathname}${location.search}${location.hash}`);
-  return <Navigate to={`/login?redirect=${redirect}`} replace state={{ from: location }} />;
+  const returnSearch = new URLSearchParams(location.search);
+  const authError = returnSearch.get('authError');
+  returnSearch.delete('authError');
+  const returnUrl = `${location.pathname}${returnSearch.size ? `?${returnSearch}` : ''}${location.hash}`;
+  const loginSearch = new URLSearchParams({ redirect: returnUrl });
+  if (authError) loginSearch.set('authError', authError);
+
+  return <Navigate to={`/login?${loginSearch}`} replace state={{ from: location }} />;
 }

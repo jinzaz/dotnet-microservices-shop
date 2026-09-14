@@ -22,6 +22,13 @@ function Splash({ message }: { message: string }) {
 }
 
 function LoginGate() {
+  const authError = new URLSearchParams(window.location.search).get('authError');
+  const loginMessage = authError === 'access_denied'
+    ? '您已取消本次授权，未建立后台会话。'
+    : authError
+      ? '安全登录未完成，请重新发起。'
+      : '通过 Authorization Code + PKCE 进入商城管理中枢。业务令牌仅保存在 BFF 服务端。';
+
   return (
     <main className="login-gate">
       <div className="login-gate__glow" />
@@ -29,8 +36,8 @@ function LoginGate() {
         <div className="brand-mark" aria-hidden="true"><span /><span /><span /></div>
         <p className="eyebrow">MSA BUSINESS MANAGER</p>
         <h1>让复杂运营，<br />保持清醒。</h1>
-        <p>通过 Authorization Code + PKCE 进入商城管理中枢。业务令牌仅保存在 BFF 服务端。</p>
-        <button className="button button--accent" type="button" onClick={beginLogin}>安全登录 <span>↗</span></button>
+        <p role={authError ? 'alert' : undefined}>{loginMessage}</p>
+        <button className="button button--accent" type="button" onClick={beginLogin}>{authError ? '重新登录' : '安全登录'} <span>↗</span></button>
       </section>
       <aside aria-label="安全说明">
         <span>PBAC · DENY BY DEFAULT</span>

@@ -2,7 +2,9 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using MSA.IdentityService.Application.Sms;
 
 namespace MSA.IdentityService.Controllers;
@@ -12,7 +14,9 @@ namespace MSA.IdentityService.Controllers;
 [Route("Auth/users")]
 public sealed class UsersController(
     UserManager<ApplicationUser> users,
-    RoleManager<IdentityRole> roles) : ControllerBase
+    RoleManager<IdentityRole> roles,
+    ISmsVerificationService smsVerification,
+    IOptions<SmsOptions> smsOptions) : ControllerBase
 {
     [HttpGet("me")]
     public async Task<IActionResult> Me()
@@ -58,6 +62,71 @@ public sealed class UsersController(
             user.PhoneNumberConfirmed = false;
         }
 
+        var result = await users.UpdateAsync(user);
+        return result.Succeeded ? NoContent() : BadRequest(result.Errors);
+    }
+
+    [HttpPost("me/phone/confirmation/code")]
+    [EnableRateLimiting(IdentityServiceConstants.RateLimits.SmsDispatch)]
+    public async Task<ActionResult<SmsLoginCodeRequestedResponse>> RequestPhoneConfirmationCode(
+        CancellationToken cancellationToken)
+    {
+        var user = await users.GetUserAsync(User);
+        if (user is null)
+            return Unauthorized();
+        if (string.IsNullOrWhiteSpace(user.PhoneNumber) || user.PhoneNumberConfirmed)
+        {
+            return ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                [nameof(user.PhoneNumber)] = ["请先保存一个尚未验证的手机号。"]
+            }));
+        }
+        if (await users.Users.AnyAsync(
+                candidate => candidate.Id != user.Id
+                    && candidate.PhoneNumber == user.PhoneNumber
+                    && candidate.PhoneNumberConfirmed,
+                cancellationToken))
+        {
+            return ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                [nameof(user.PhoneNumber)] = ["该手机号已绑定其他账户。"]
+            }));
+        }
+
+        await smsVerification.RequestPhoneConfirmationCodeAsync(
+            user.Id,
+            user.PhoneNumber,
+            cancellationToken);
+        return Accepted(new SmsLoginCodeRequestedResponse(
+            smsOptions.Value.CodeLifetimeSeconds,
+            smsOptions.Value.ResendCooldownSeconds));
+    }
+
+    [HttpPost("me/phone/confirmation")]
+    [EnableRateLimiting(IdentityServiceConstants.RateLimits.Authentication)]
+    public async Task<IActionResult> ConfirmPhoneNumber(
+        ConfirmPhoneNumberRequest request,
+        CancellationToken cancellationToken)
+    {
+        var user = await users.GetUserAsync(User);
+        if (user is null)
+            return Unauthorized();
+        if (string.IsNullOrWhiteSpace(user.PhoneNumber) || user.PhoneNumberConfirmed)
+            return BadRequest(new ProblemDetails { Title = "当前账户没有待验证的手机号。" });
+
+        var userId = await smsVerification.ConsumePhoneConfirmationCodeAsync(
+            user.PhoneNumber,
+            request.Code,
+            cancellationToken);
+        if (!string.Equals(userId, user.Id, StringComparison.Ordinal))
+        {
+            return Problem(
+                statusCode: StatusCodes.Status401Unauthorized,
+                title: "验证失败",
+                detail: "验证码无效或已过期。");
+        }
+
+        user.PhoneNumberConfirmed = true;
         var result = await users.UpdateAsync(user);
         return result.Succeeded ? NoContent() : BadRequest(result.Errors);
     }
@@ -182,3 +251,8 @@ public sealed record UpdateProfileRequest(
 
 /// <summary>启用或停用账户。</summary>
 public sealed record SetActivationRequest(bool IsActive);
+
+/// <summary>确认当前账户手机号。</summary>
+public sealed record ConfirmPhoneNumberRequest(
+    [Required, StringLength(6, MinimumLength = 6), RegularExpression(@"^[0-9]{6}$")]
+    string Code);

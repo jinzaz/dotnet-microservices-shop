@@ -6,8 +6,6 @@ internal sealed class IdentitySeedHostedService(
     IServiceScopeFactory scopeFactory,
     IConfiguration configuration) : IHostedService
 {
-    private const string ApiResource = "api";
-
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -19,18 +17,40 @@ internal sealed class IdentitySeedHostedService(
         }
 
         var scopes = scope.ServiceProvider.GetRequiredService<IOpenIddictScopeManager>();
-        foreach (var (name, displayName) in new[]
+        foreach (var (name, displayName, resource) in new[]
         {
-            (IdentityServiceConstants.Scopes.User, "User API"),
-            (IdentityServiceConstants.Scopes.Catalog, "Catalog API"),
-            (IdentityServiceConstants.Scopes.Inventory, "Inventory API"),
-            (IdentityServiceConstants.Scopes.Notification, "Notification API"),
-            (IdentityServiceConstants.Scopes.Basket, "Basket API"),
-            (IdentityServiceConstants.Scopes.Order, "Order API"),
-            (IdentityServiceConstants.Scopes.Payment, "Payment API")
+            (IdentityServiceConstants.Scopes.User, "User API", IdentityServiceConstants.Resources.User),
+            (IdentityServiceConstants.Scopes.UserAdminRead, "User Admin Read", IdentityServiceConstants.Resources.User),
+            (IdentityServiceConstants.Scopes.UserAdminWrite, "User Admin Write", IdentityServiceConstants.Resources.User),
+
+            (IdentityServiceConstants.Scopes.Catalog, "Catalog API", IdentityServiceConstants.Resources.Catalog),
+            (IdentityServiceConstants.Scopes.CatalogAdminRead, "Catalog Admin Read", IdentityServiceConstants.Resources.Catalog),
+            (IdentityServiceConstants.Scopes.CatalogAdminWrite, "Catalog Admin Write", IdentityServiceConstants.Resources.Catalog),
+
+
+            (IdentityServiceConstants.Scopes.Inventory, "Inventory API", IdentityServiceConstants.Resources.Inventory),
+            (IdentityServiceConstants.Scopes.InventoryAdminRead, "Inventory Admin Read", IdentityServiceConstants.Resources.Inventory),
+            (IdentityServiceConstants.Scopes.InventoryAdminWrite, "Inventory Admin Write", IdentityServiceConstants.Resources.Inventory),
+
+
+            (IdentityServiceConstants.Scopes.Notification, "Notification API", IdentityServiceConstants.Resources.Notification),
+            (IdentityServiceConstants.Scopes.NotificationAdminRead, "Notification Admin Read", IdentityServiceConstants.Resources.Notification),
+            (IdentityServiceConstants.Scopes.NotificationAdminWrite, "Notification Admin Write", IdentityServiceConstants.Resources.Notification),
+
+            (IdentityServiceConstants.Scopes.Basket, "Basket API", IdentityServiceConstants.Resources.Basket),
+            (IdentityServiceConstants.Scopes.BasketAdminRead, "Basket Admin Read", IdentityServiceConstants.Resources.Basket),
+            (IdentityServiceConstants.Scopes.BasketAdminWrite, "Basket Admin Write", IdentityServiceConstants.Resources.Basket),
+
+            (IdentityServiceConstants.Scopes.Order, "Order API", IdentityServiceConstants.Resources.Order),
+            (IdentityServiceConstants.Scopes.OrderAdminRead, "Order Admin Read", IdentityServiceConstants.Resources.Order),
+            (IdentityServiceConstants.Scopes.OrderAdminWrite, "Order Admin Write", IdentityServiceConstants.Resources.Order),
+
+            (IdentityServiceConstants.Scopes.Payment, "Payment API", IdentityServiceConstants.Resources.Payment),
+            (IdentityServiceConstants.Scopes.PaymentAdminRead, "Payment Admin Read", IdentityServiceConstants.Resources.Payment),
+            (IdentityServiceConstants.Scopes.PaymentAdminWrite, "Payment Admin Write", IdentityServiceConstants.Resources.Payment)
         })
         {
-            await UpsertScope(scopes, name, displayName, cancellationToken);
+            await UpsertScope(scopes, name, displayName, resource, cancellationToken);
         }
 
         var configuredApplications = configuration
@@ -54,13 +74,14 @@ internal sealed class IdentitySeedHostedService(
         IOpenIddictScopeManager scopes,
         string name,
         string displayName,
+        string resource,
         CancellationToken cancellationToken)
     {
         var descriptor = new OpenIddictScopeDescriptor
         {
             Name = name,
             DisplayName = displayName,
-            Resources = { $"{name}-{ApiResource}" }
+            Resources = { resource }
         };
         var existing = await scopes.FindByNameAsync(name, cancellationToken);
         if (existing is null)

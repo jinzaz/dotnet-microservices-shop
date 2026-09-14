@@ -39,7 +39,57 @@ internal sealed class SmsVerificationService : ISmsVerificationService
         _logger = logger;
     }
 
-    public async Task RequestLoginCodeAsync(string phoneNumber, CancellationToken cancellationToken)
+    public Task RequestLoginCodeAsync(string phoneNumber, CancellationToken cancellationToken) =>
+        RequestCodeAsync(
+            phoneNumber,
+            SmsVerificationPurpose.Login,
+            _options.LoginTemplate,
+            requiredUserId: null,
+            cancellationToken);
+
+    public Task<string?> ConsumeLoginCodeAsync(
+        string phoneNumber,
+        string code,
+        CancellationToken cancellationToken) =>
+        ConsumeCodeAsync(phoneNumber, code, SmsVerificationPurpose.Login, cancellationToken);
+
+    public Task RequestPasswordResetCodeAsync(string phoneNumber, CancellationToken cancellationToken) =>
+        RequestCodeAsync(
+            phoneNumber,
+            SmsVerificationPurpose.PasswordReset,
+            _options.PasswordResetTemplate,
+            requiredUserId: null,
+            cancellationToken);
+
+    public Task<string?> ConsumePasswordResetCodeAsync(
+        string phoneNumber,
+        string code,
+        CancellationToken cancellationToken) =>
+        ConsumeCodeAsync(phoneNumber, code, SmsVerificationPurpose.PasswordReset, cancellationToken);
+
+    public Task RequestPhoneConfirmationCodeAsync(
+        string userId,
+        string phoneNumber,
+        CancellationToken cancellationToken) =>
+        RequestCodeAsync(
+            phoneNumber,
+            SmsVerificationPurpose.PhoneConfirmation,
+            _options.PhoneConfirmationTemplate,
+            userId,
+            cancellationToken);
+
+    public Task<string?> ConsumePhoneConfirmationCodeAsync(
+        string phoneNumber,
+        string code,
+        CancellationToken cancellationToken) =>
+        ConsumeCodeAsync(phoneNumber, code, SmsVerificationPurpose.PhoneConfirmation, cancellationToken);
+
+    private async Task RequestCodeAsync(
+        string phoneNumber,
+        SmsVerificationPurpose purpose,
+        string template,
+        string? requiredUserId,
+        CancellationToken cancellationToken)
     {
         var phone = PhoneNumberFormat.Normalize(phoneNumber);
         var now = _timeProvider.GetUtcNow();
@@ -49,7 +99,10 @@ internal sealed class SmsVerificationService : ISmsVerificationService
 
         var userId = await _db.Users
             .AsNoTracking()
-            .Where(user => user.PhoneNumber == phone && user.PhoneNumberConfirmed && user.IsActive)
+            .Where(user => user.PhoneNumber == phone && user.IsActive &&
+                (requiredUserId == null
+                    ? user.PhoneNumberConfirmed
+                    : user.Id == requiredUserId && !user.PhoneNumberConfirmed))
             .Select(user => user.Id)
             .FirstOrDefaultAsync(cancellationToken);
         if (userId is null)
@@ -58,7 +111,7 @@ internal sealed class SmsVerificationService : ISmsVerificationService
         var sentSince = now.AddHours(-1);
         var recentSendCount = await _db.SmsMessages.CountAsync(
             message => message.PhoneNumber == phone
-                && message.Purpose == SmsVerificationPurpose.Login
+                && message.Purpose == purpose
                 && message.CreatedOnUtc >= sentSince,
             cancellationToken);
         if (recentSendCount >= _options.MaxSendsPerHour)
@@ -66,7 +119,7 @@ internal sealed class SmsVerificationService : ISmsVerificationService
 
         var activeMessages = await _db.SmsMessages
             .Where(message => message.PhoneNumber == phone
-                && message.Purpose == SmsVerificationPurpose.Login
+                && message.Purpose == purpose
                 && (message.Status == SmsMessageStatus.Pending || message.Status == SmsMessageStatus.Sent)
                 && message.ExpiresOnUtc > now)
             .OrderByDescending(message => message.CreatedOnUtc)
@@ -91,8 +144,8 @@ internal sealed class SmsVerificationService : ISmsVerificationService
             messageId,
             userId,
             phone,
-            SmsVerificationPurpose.Login,
-            _options.LoginTemplate,
+            purpose,
+            template,
             _protector.Protect(BuildProtectedPayload(messageId, phone, code)),
             provider,
             now,
@@ -105,9 +158,10 @@ internal sealed class SmsVerificationService : ISmsVerificationService
         await DispatchAsync(message, code, cancellationToken);
     }
 
-    public async Task<string?> ConsumeLoginCodeAsync(
+    private async Task<string?> ConsumeCodeAsync(
         string phoneNumber,
         string code,
+        SmsVerificationPurpose purpose,
         CancellationToken cancellationToken)
     {
         var phone = PhoneNumberFormat.Normalize(phoneNumber);
@@ -119,7 +173,7 @@ internal sealed class SmsVerificationService : ISmsVerificationService
 
         var message = await _db.SmsMessages
             .Where(candidate => candidate.PhoneNumber == phone
-                && candidate.Purpose == SmsVerificationPurpose.Login
+                && candidate.Purpose == purpose
                 && candidate.Status == SmsMessageStatus.Sent)
             .OrderByDescending(candidate => candidate.CreatedOnUtc)
             .FirstOrDefaultAsync(cancellationToken);
@@ -224,7 +278,7 @@ internal sealed class SmsVerificationService : ISmsVerificationService
 
     private Task AcquirePhoneLockAsync(string phoneNumber, CancellationToken cancellationToken)
     {
-        var lockKey = $"identity:sms-login:{phoneNumber}";
+        var lockKey = $"identity:sms:{phoneNumber}";
         return _db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock(hashtextextended({lockKey}, 0))",
             cancellationToken);

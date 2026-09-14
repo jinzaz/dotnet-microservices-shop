@@ -12,6 +12,11 @@ import type {
 const identityUserBase = `${serviceRoutes.identity}/users/me`;
 const userBase = `${serviceRoutes.user}/me`;
 
+export type SmsCodeRequested = {
+  expiresInSeconds: number;
+  retryAfterSeconds: number;
+};
+
 export function getProfile(): Promise<UserProfile> {
   return apiRequest<UserProfile>(identityUserBase);
 }
@@ -39,6 +44,19 @@ export function updateProfile(displayName: string, phoneNumber: string | null): 
   return apiRequest<void>(identityUserBase, {
     method: 'PUT',
     body: { displayName, phoneNumber },
+  });
+}
+
+export function requestPhoneConfirmationCode(): Promise<SmsCodeRequested> {
+  return apiRequest<SmsCodeRequested>(`${identityUserBase}/phone/confirmation/code`, {
+    method: 'POST',
+  });
+}
+
+export function confirmPhoneNumber(code: string): Promise<void> {
+  return apiRequest<void>(`${identityUserBase}/phone/confirmation`, {
+    method: 'POST',
+    body: { code },
   });
 }
 

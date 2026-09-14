@@ -13,10 +13,12 @@ import { ProfileEditorDialog } from '../features/profile/ProfileEditorDialog';
 import { ProfileSection } from '../features/profile/ProfileSection';
 import {
   changePassword,
+  confirmPhoneNumber,
   createAddress,
   deleteAddress,
   getAccountSnapshot,
   setDefaultAddress,
+  requestPhoneConfirmationCode,
   updateAddress,
   updateProfile,
 } from '../features/profile/profile-api';
@@ -215,7 +217,25 @@ export default function AccountPage() {
           <PointsOverview points={snapshot.points} />
           {actionError ? <p className="form-message form-message--error" role="alert">{actionError}</p> : null}
           {actionNotice ? <p className="form-message form-message--success" role="status">{actionNotice}</p> : null}
-          <ProfileSection profile={snapshot.profile} onEdit={() => setProfileEditorOpen(true)} />
+          <ProfileSection
+            profile={snapshot.profile}
+            onEdit={() => setProfileEditorOpen(true)}
+            onRequestPhoneCode={async () => demoMode
+              ? { expiresInSeconds: 300, retryAfterSeconds: 60 }
+              : requestPhoneConfirmationCode()}
+            onConfirmPhone={async (code) => {
+              if (demoMode) {
+                if (code !== '123456') throw new Error('开发预览验证码为 123456。');
+                setDemoSnapshot((current) => ({
+                  ...current,
+                  profile: { ...current.profile, phoneNumberConfirmed: true },
+                }));
+                return;
+              }
+              await confirmPhoneNumber(code);
+              await refreshAccount();
+            }}
+          />
           <section className="account-section" id="security">
             <div className="account-section__heading">
               <h2>账户安全</h2>

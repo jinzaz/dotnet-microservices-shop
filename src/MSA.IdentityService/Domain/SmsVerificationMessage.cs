@@ -109,7 +109,9 @@ internal sealed class SmsVerificationMessage
 
 internal enum SmsVerificationPurpose
 {
-    Login = 0
+    Login = 0,
+    PasswordReset = 1,
+    PhoneConfirmation = 2
 }
 
 internal enum SmsMessageStatus

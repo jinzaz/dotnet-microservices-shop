@@ -768,6 +768,31 @@
   color: var(--color-ink-soft);
 }
 
+.phone-confirmation-row dd,
+.phone-confirmation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.phone-confirmation input {
+  width: 128px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 4px;
+}
+
+.phone-confirmation__message,
+.phone-confirmation__error {
+  display: block;
+  flex-basis: 100%;
+}
+
+.phone-confirmation__message { color: #17683b; }
+.phone-confirmation__error { color: var(--color-danger); }
+
 .address-list {
   border: 1px solid var(--color-border-strong);
   border-radius: 5px;
