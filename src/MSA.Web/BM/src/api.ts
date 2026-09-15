@@ -11,6 +11,15 @@ export type EffectivePermissions = {
   permissions: string[];
 };
 
+export type ObjectUpload = {
+  objectKey: string;
+  storageUri: string;
+  publicUrl: string | null;
+  uploadUrl: string;
+  expiresOnUtc: string;
+  headers: Record<string, string>;
+};
+
 type Problem = {
   title?: string;
   detail?: string;
@@ -134,4 +143,29 @@ export async function signOut() {
 
 export function idempotencyKey() {
   return crypto.randomUUID();
+}
+
+export async function uploadCatalogMedia(file: File): Promise<ObjectUpload> {
+  const ticket = await api<ObjectUpload>('/bff/object-storage/catalog-media/upload-url', {
+    method: 'POST',
+    body: {
+      fileName: file.name,
+      contentType: file.type,
+      contentLength: file.size,
+    },
+  });
+  if (!ticket.publicUrl) throw new Error('对象存储未返回商品媒体访问地址。');
+
+  let response: Response;
+  try {
+    response = await fetch(ticket.uploadUrl, {
+      method: 'PUT',
+      body: file,
+      headers: ticket.headers,
+    });
+  } catch {
+    throw new Error('无法上传到对象存储，请检查 RustFS 网络与跨域配置。');
+  }
+  if (!response.ok) throw new Error(`对象上传失败（${response.status}）`);
+  return ticket;
 }

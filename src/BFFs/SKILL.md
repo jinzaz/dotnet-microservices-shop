@@ -17,3 +17,4 @@ description: Implement or change the repository's browser-facing MSA.BFF.Web and
 - Do not reinterpret or redesign Identity scopes in PBAC. After BM authorization succeeds, forward the session access token unchanged to the API gateway.
 - Allow only configured bootstrap user IDs to initialize `/bff/pbac/**`; ordinary proxied requests always pass through the persisted PBAC policy check.
 - Keep BFF-owned tables in the BFF's PostgreSQL schema. Do not move PBAC data into Identity or a business service.
+- For RustFS/S3-compatible media, let the BM BFF issue short-lived, purpose-scoped pre-signed URLs and let browsers upload directly. Store permanent public URLs for catalog media; store stable keys for private objects and sign reads on demand. Keep the adapter local to the BM BFF until a second server-side consumer justifies extracting a dedicated infrastructure package.

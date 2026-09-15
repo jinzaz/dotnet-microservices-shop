@@ -425,35 +425,35 @@ namespace MSA.BFF.BM.Migrations
                         },
                         new
                         {
-                            Id = new Guid("5953bfa5-8396-c2c9-a6dd-cd7b63258743"),
+                            Id = new Guid("18fdbe7c-a146-5417-5489-478efaaca309"),
                             Action = "Query",
-                            Code = "inventory.flash-sales.query",
-                            DisplayName = "秒杀库存-查询",
-                            Module = "inventory.flash-sales"
+                            Code = "inventory.allocations.query",
+                            DisplayName = "活动库存配额-查询",
+                            Module = "inventory.allocations"
                         },
                         new
                         {
-                            Id = new Guid("c1fe844f-3cc4-522b-6e10-4ca26d5bce09"),
+                            Id = new Guid("ceb05d78-088f-6e8c-2085-c5fa15b15992"),
                             Action = "Create",
-                            Code = "inventory.flash-sales.create",
-                            DisplayName = "秒杀库存-创建",
-                            Module = "inventory.flash-sales"
+                            Code = "inventory.allocations.create",
+                            DisplayName = "活动库存配额-创建",
+                            Module = "inventory.allocations"
                         },
                         new
                         {
-                            Id = new Guid("0d6a0333-6259-4753-f4e2-b7246a25f119"),
+                            Id = new Guid("2a230a72-9622-bcb2-91df-b9234ca76ca2"),
                             Action = "Edit",
-                            Code = "inventory.flash-sales.edit",
-                            DisplayName = "秒杀库存-编辑",
-                            Module = "inventory.flash-sales"
+                            Code = "inventory.allocations.edit",
+                            DisplayName = "活动库存配额-编辑",
+                            Module = "inventory.allocations"
                         },
                         new
                         {
-                            Id = new Guid("88cc40a2-ad84-5763-0e63-4fd6703f72d2"),
+                            Id = new Guid("af4a462b-7e9d-9c14-34d0-16fcfc33a8a2"),
                             Action = "Delete",
-                            Code = "inventory.flash-sales.delete",
-                            DisplayName = "秒杀库存-删除",
-                            Module = "inventory.flash-sales"
+                            Code = "inventory.allocations.delete",
+                            DisplayName = "活动库存配额-删除",
+                            Module = "inventory.allocations"
                         },
                         new
                         {
@@ -785,22 +785,22 @@ namespace MSA.BFF.BM.Migrations
                         new
                         {
                             PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
-                            PermissionId = new Guid("5953bfa5-8396-c2c9-a6dd-cd7b63258743")
+                            PermissionId = new Guid("18fdbe7c-a146-5417-5489-478efaaca309")
                         },
                         new
                         {
                             PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
-                            PermissionId = new Guid("c1fe844f-3cc4-522b-6e10-4ca26d5bce09")
+                            PermissionId = new Guid("ceb05d78-088f-6e8c-2085-c5fa15b15992")
                         },
                         new
                         {
                             PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
-                            PermissionId = new Guid("0d6a0333-6259-4753-f4e2-b7246a25f119")
+                            PermissionId = new Guid("2a230a72-9622-bcb2-91df-b9234ca76ca2")
                         },
                         new
                         {
                             PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
-                            PermissionId = new Guid("88cc40a2-ad84-5763-0e63-4fd6703f72d2")
+                            PermissionId = new Guid("af4a462b-7e9d-9c14-34d0-16fcfc33a8a2")
                         },
                         new
                         {
@@ -1218,27 +1218,27 @@ namespace MSA.BFF.BM.Migrations
                         },
                         new
                         {
-                            Id = new Guid("550562c4-5299-b8c8-5b1f-5046e97e0240"),
+                            Id = new Guid("00055747-1428-57ce-a0ea-0bc666bbb294"),
                             HttpMethod = "GET",
                             Order = 36,
-                            PathTemplate = "/api/inventory/flash-sales/{campaignId}",
-                            PermissionId = new Guid("5953bfa5-8396-c2c9-a6dd-cd7b63258743")
+                            PathTemplate = "/api/inventory/allocations/{allocationId}",
+                            PermissionId = new Guid("18fdbe7c-a146-5417-5489-478efaaca309")
                         },
                         new
                         {
-                            Id = new Guid("de1325b4-e961-c46e-b2b3-db495b05e9f2"),
+                            Id = new Guid("1aa696ea-d0a4-566d-aa75-96d6513736c6"),
                             HttpMethod = "POST",
                             Order = 37,
-                            PathTemplate = "/api/inventory/admin/flash-sales",
-                            PermissionId = new Guid("c1fe844f-3cc4-522b-6e10-4ca26d5bce09")
+                            PathTemplate = "/api/inventory/admin/allocations",
+                            PermissionId = new Guid("ceb05d78-088f-6e8c-2085-c5fa15b15992")
                         },
                         new
                         {
-                            Id = new Guid("8f4c071c-fa09-32f0-20e5-22a1469e3e18"),
+                            Id = new Guid("e8152210-3224-2789-af5b-4da42db3135c"),
                             HttpMethod = "POST",
                             Order = 38,
-                            PathTemplate = "/api/inventory/admin/flash-sales/{campaignId}/close",
-                            PermissionId = new Guid("0d6a0333-6259-4753-f4e2-b7246a25f119")
+                            PathTemplate = "/api/inventory/admin/allocations/{allocationId}/close",
+                            PermissionId = new Guid("2a230a72-9622-bcb2-91df-b9234ca76ca2")
                         },
                         new
                         {
@@ -1314,17 +1314,9 @@ namespace MSA.BFF.BM.Migrations
                         },
                         new
                         {
-                            Id = new Guid("2c9b5cf4-af69-2e41-6be0-6e6207cf9500"),
-                            HttpMethod = "GET",
-                            Order = 48,
-                            PathTemplate = "/api/inventory/admin/flash-sales",
-                            PermissionId = new Guid("5953bfa5-8396-c2c9-a6dd-cd7b63258743")
-                        },
-                        new
-                        {
                             Id = new Guid("1a405d1c-ac38-1adc-e154-83468a0a3078"),
                             HttpMethod = "GET",
-                            Order = 49,
+                            Order = 48,
                             PathTemplate = "/api/order/orders",
                             PermissionId = new Guid("30fea92a-e975-7a82-3922-6a4f99624868")
                         },
@@ -1332,7 +1324,7 @@ namespace MSA.BFF.BM.Migrations
                         {
                             Id = new Guid("30b4969a-842c-775c-d3ab-d933d020e2ca"),
                             HttpMethod = "GET",
-                            Order = 50,
+                            Order = 49,
                             PathTemplate = "/api/order/orders/{id}",
                             PermissionId = new Guid("30fea92a-e975-7a82-3922-6a4f99624868")
                         },
@@ -1340,7 +1332,7 @@ namespace MSA.BFF.BM.Migrations
                         {
                             Id = new Guid("05cfaf71-28e3-f243-cd77-bd88e18583ea"),
                             HttpMethod = "GET",
-                            Order = 51,
+                            Order = 50,
                             PathTemplate = "/api/payment/admin/payments",
                             PermissionId = new Guid("82ce7c5b-8dcf-6d26-baee-ddf208b15cc8")
                         },
@@ -1348,7 +1340,7 @@ namespace MSA.BFF.BM.Migrations
                         {
                             Id = new Guid("8d6783f9-6e0e-d9b1-a1b5-295e121a3ce3"),
                             HttpMethod = "GET",
-                            Order = 52,
+                            Order = 51,
                             PathTemplate = "/api/notification/admin/messages",
                             PermissionId = new Guid("ededa9aa-140d-3b5b-91b8-87828e6dd382")
                         },
@@ -1356,7 +1348,7 @@ namespace MSA.BFF.BM.Migrations
                         {
                             Id = new Guid("34df7ad7-b07f-1ee9-df20-c2d9a3253c9e"),
                             HttpMethod = "GET",
-                            Order = 53,
+                            Order = 52,
                             PathTemplate = "/api/notification/admin/templates",
                             PermissionId = new Guid("ededa9aa-140d-3b5b-91b8-87828e6dd382")
                         },
@@ -1364,7 +1356,7 @@ namespace MSA.BFF.BM.Migrations
                         {
                             Id = new Guid("18f7b0ed-6c95-98a1-1215-cd1eac4c9581"),
                             HttpMethod = "POST",
-                            Order = 54,
+                            Order = 53,
                             PathTemplate = "/api/notification/admin/messages",
                             PermissionId = new Guid("6e175bef-7a25-4750-aa3c-f094f1db3aaf")
                         },
@@ -1372,9 +1364,65 @@ namespace MSA.BFF.BM.Migrations
                         {
                             Id = new Guid("035399e6-be54-af03-9f19-3306477dd32f"),
                             HttpMethod = "POST",
-                            Order = 55,
+                            Order = 54,
                             PathTemplate = "/api/notification/admin/messages/{notificationId}/retry",
                             PermissionId = new Guid("73dee7ca-2b10-dc01-5232-055c12b27e65")
+                        },
+                        new
+                        {
+                            Id = new Guid("2d4a5075-0482-f160-eebb-8dbbbf6d516c"),
+                            HttpMethod = "POST",
+                            Order = 55,
+                            PathTemplate = "/api/catalog/admin/products/{id}/variants",
+                            PermissionId = new Guid("0e1aee9a-52a8-3a64-6a42-d6df748d65ad")
+                        },
+                        new
+                        {
+                            Id = new Guid("e387996e-c8f2-e7f5-fdee-b0ce4c73b6b6"),
+                            HttpMethod = "PUT",
+                            Order = 56,
+                            PathTemplate = "/api/catalog/admin/products/{id}/variants/{variantId}",
+                            PermissionId = new Guid("0e1aee9a-52a8-3a64-6a42-d6df748d65ad")
+                        },
+                        new
+                        {
+                            Id = new Guid("317f0cbe-9965-f999-1809-07d035c51078"),
+                            HttpMethod = "DELETE",
+                            Order = 57,
+                            PathTemplate = "/api/catalog/admin/products/{id}/variants/{variantId}",
+                            PermissionId = new Guid("0e1aee9a-52a8-3a64-6a42-d6df748d65ad")
+                        },
+                        new
+                        {
+                            Id = new Guid("94bf300a-e630-dc9d-d023-98d38c36fa89"),
+                            HttpMethod = "POST",
+                            Order = 58,
+                            PathTemplate = "/api/catalog/admin/products/{id}/media",
+                            PermissionId = new Guid("0e1aee9a-52a8-3a64-6a42-d6df748d65ad")
+                        },
+                        new
+                        {
+                            Id = new Guid("49f44c42-f825-772b-a400-844430a30758"),
+                            HttpMethod = "PUT",
+                            Order = 59,
+                            PathTemplate = "/api/catalog/admin/products/{id}/media/{mediaId}",
+                            PermissionId = new Guid("0e1aee9a-52a8-3a64-6a42-d6df748d65ad")
+                        },
+                        new
+                        {
+                            Id = new Guid("f05f53cf-8444-0f5b-e102-3b148fbbc2b4"),
+                            HttpMethod = "DELETE",
+                            Order = 60,
+                            PathTemplate = "/api/catalog/admin/products/{id}/media/{mediaId}",
+                            PermissionId = new Guid("0e1aee9a-52a8-3a64-6a42-d6df748d65ad")
+                        },
+                        new
+                        {
+                            Id = new Guid("e1cdc7a7-5691-f690-07ac-b005ae5bb61b"),
+                            HttpMethod = "GET",
+                            Order = 61,
+                            PathTemplate = "/api/inventory/admin/allocations",
+                            PermissionId = new Guid("18fdbe7c-a146-5417-5489-478efaaca309")
                         });
                 });
 

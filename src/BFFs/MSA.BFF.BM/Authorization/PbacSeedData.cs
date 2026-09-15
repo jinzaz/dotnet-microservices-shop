@@ -18,7 +18,7 @@ internal static class PbacSeedData
         ("catalog.promotions", "促销活动"),
         ("catalog.coupons", "优惠券"),
         ("inventory.stock", "库存"),
-        ("inventory.flash-sales", "秒杀库存"),
+        ("inventory.allocations", "活动库存配额"),
         ("order.fulfillment", "订单履约"),
         ("payment.transactions", "支付交易"),
         ("notification.messages", "用户通知")
@@ -123,9 +123,9 @@ internal static class PbacSeedData
             ("inventory.stock.query", HttpMethods.Get, "/api/inventory/admin/stock/{sku}/movements"),
             ("inventory.stock.create", HttpMethods.Post, "/api/inventory/admin/stock"),
             ("inventory.stock.edit", HttpMethods.Post, "/api/inventory/admin/stock/adjustments"),
-            ("inventory.flash-sales.query", HttpMethods.Get, "/api/inventory/flash-sales/{campaignId}"),
-            ("inventory.flash-sales.create", HttpMethods.Post, "/api/inventory/admin/flash-sales"),
-            ("inventory.flash-sales.edit", HttpMethods.Post, "/api/inventory/admin/flash-sales/{campaignId}/close"),
+            ("inventory.allocations.query", HttpMethods.Get, "/api/inventory/allocations/{allocationId}"),
+            ("inventory.allocations.create", HttpMethods.Post, "/api/inventory/admin/allocations"),
+            ("inventory.allocations.edit", HttpMethods.Post, "/api/inventory/admin/allocations/{allocationId}/close"),
             ("order.fulfillment.edit", HttpMethods.Post, "/api/order/admin/orders/{orderId}/fulfillment/ship"),
             ("order.fulfillment.edit", HttpMethods.Post, "/api/order/admin/orders/{orderId}/fulfillment/in-transit"),
             ("order.fulfillment.edit", HttpMethods.Post, "/api/order/admin/orders/{orderId}/fulfillment/delivered"),
@@ -135,14 +135,20 @@ internal static class PbacSeedData
             ("identity.users.query", HttpMethods.Get, "/api/Auth/users/admin/{id}"),
             ("identity.users.edit", HttpMethods.Delete, "/api/Auth/users/admin/{id}/roles/{role}"),
             ("inventory.stock.query", HttpMethods.Get, "/api/inventory/admin/stock"),
-            ("inventory.flash-sales.query", HttpMethods.Get, "/api/inventory/admin/flash-sales"),
             ("order.fulfillment.query", HttpMethods.Get, "/api/order/orders"),
             ("order.fulfillment.query", HttpMethods.Get, "/api/order/orders/{id}"),
             ("payment.transactions.query", HttpMethods.Get, "/api/payment/admin/payments"),
             ("notification.messages.query", HttpMethods.Get, "/api/notification/admin/messages"),
             ("notification.messages.query", HttpMethods.Get, "/api/notification/admin/templates"),
             ("notification.messages.create", HttpMethods.Post, "/api/notification/admin/messages"),
-            ("notification.messages.edit", HttpMethods.Post, "/api/notification/admin/messages/{notificationId}/retry")
+            ("notification.messages.edit", HttpMethods.Post, "/api/notification/admin/messages/{notificationId}/retry"),
+            ("catalog.products.edit", HttpMethods.Post, "/api/catalog/admin/products/{id}/variants"),
+            ("catalog.products.edit", HttpMethods.Put, "/api/catalog/admin/products/{id}/variants/{variantId}"),
+            ("catalog.products.edit", HttpMethods.Delete, "/api/catalog/admin/products/{id}/variants/{variantId}"),
+            ("catalog.products.edit", HttpMethods.Post, "/api/catalog/admin/products/{id}/media"),
+            ("catalog.products.edit", HttpMethods.Put, "/api/catalog/admin/products/{id}/media/{mediaId}"),
+            ("catalog.products.edit", HttpMethods.Delete, "/api/catalog/admin/products/{id}/media/{mediaId}"),
+            ("inventory.allocations.query", HttpMethods.Get, "/api/inventory/admin/allocations")
         ];
 
         return definitions

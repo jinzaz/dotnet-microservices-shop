@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using MSA.BFF.BM;
 using MSA.BFF.BM.Authorization;
 using MSA.BFF.BM.Endpoints;
+using MSA.BFF.BM.ObjectStorage;
 using MSA.BFF.Common;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -43,6 +44,12 @@ builder.Services.AddOptions<PbacOptions>()
 builder.Services.AddScoped<PbacAuthorizer>();
 builder.Services.AddScoped<BmDirectoryStore>();
 builder.Services.AddScoped<PbacPolicyStore>();
+builder.Services.AddOptions<ObjectStorageOptions>()
+    .Bind(builder.Configuration.GetSection(ObjectStorageOptions.SectionName))
+    .Validate(ObjectStorageOptions.IsValid,
+        "ObjectStorage must define a valid endpoint, distinct public/private buckets, and credentials.")
+    .ValidateOnStart();
+builder.Services.AddSingleton<S3ObjectStorage>();
 builder.Services.AddScoped<IAuthorizationHandler, PbacProxyAuthorizationHandler>();
 builder.Services.AddScoped<IAuthorizationHandler, PbacPermissionAuthorizationHandler>();
 builder.Services.AddAuthorization(options =>
@@ -53,7 +60,15 @@ builder.Services.AddAuthorization(options =>
     {
         options.AddPolicy(PbacDefaults.ManagementPolicy(action), policy =>
             policy.RequireAuthenticatedUser().AddRequirements(
-                new PbacPermissionRequirement(PbacDefaults.ManagementPermission(action))));
+                new PbacPermissionRequirement(
+                    PbacDefaults.ManagementPermission(action),
+                    AllowBootstrapAdministrator: true)));
+    }
+    foreach (var permission in PbacSeedData.Permissions)
+    {
+        options.AddPolicy(PbacDefaults.PermissionPolicy(permission.Code), policy =>
+            policy.RequireAuthenticatedUser().AddRequirements(
+                new PbacPermissionRequirement(permission.Code)));
     }
 });
 
@@ -77,6 +92,7 @@ app.UseBffAntiforgery();
 
 app.MapBffEndpoints();
 app.MapPbacEndpoints();
+app.MapObjectStorageEndpoints();
 app.MapReverseProxy().RequireAuthorization(PbacDefaults.ProxyPolicy);
 
 app.Run();

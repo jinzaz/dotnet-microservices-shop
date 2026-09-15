@@ -52,5 +52,6 @@
     <PackageVersion Include="Essensoft.Paylinks.WeChatPay.Client" Version="5.0.4" />
     <PackageVersion Include="Essensoft.Paylinks.WeChatPay.Payments" Version="5.0.4" />
     <PackageVersion Include="Quartz.Extensions.Hosting" Version="3.9.0" />
+    <PackageVersion Include="AWSSDK.S3" Version="4.0.101.4" />
   </ItemGroup>
 </Project>

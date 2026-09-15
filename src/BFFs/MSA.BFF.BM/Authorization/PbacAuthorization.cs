@@ -22,11 +22,16 @@ internal static class PbacDefaults
 
     internal static string ManagementPermission(PbacAction action) =>
         $"system.authorization.{action.ToString().ToLowerInvariant()}";
+
+    internal static string PermissionPolicy(string permissionCode) =>
+        $"bm-pbac-permission:{permissionCode}";
 }
 
 internal sealed class PbacProxyRequirement : IAuthorizationRequirement;
 
-internal sealed record PbacPermissionRequirement(string PermissionCode)
+internal sealed record PbacPermissionRequirement(
+    string PermissionCode,
+    bool AllowBootstrapAdministrator = false)
     : IAuthorizationRequirement;
 
 internal sealed class PbacProxyAuthorizationHandler(PbacAuthorizer authorizer)
@@ -61,7 +66,8 @@ internal sealed class PbacPermissionAuthorizationHandler(
         var cancellationToken = (context.Resource as HttpContext)?.RequestAborted
             ?? CancellationToken.None;
         if (subject is not null &&
-            (options.Value.BootstrapAdminUserIds.Contains(subject, StringComparer.Ordinal) ||
+            ((requirement.AllowBootstrapAdministrator &&
+              options.Value.BootstrapAdminUserIds.Contains(subject, StringComparer.Ordinal)) ||
              await authorizer.IsAllowedAsync(context.User, requirement.PermissionCode, cancellationToken)))
         {
             context.Succeed(requirement);

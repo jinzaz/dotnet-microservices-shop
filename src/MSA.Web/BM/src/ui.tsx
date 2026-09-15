@@ -58,7 +58,7 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
   return <label className="field"><span>{label}</span>{children}{hint ? <small>{hint}</small> : null}</label>;
 }
 
-export function Modal({ open, title, description, onClose, children }: { open: boolean; title: string; description?: string; onClose: () => void; children: ReactNode }) {
+export function Modal({ open, title, description, wide = false, onClose, children }: { open: boolean; title: string; description?: string; wide?: boolean; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = ref.current;
@@ -66,7 +66,7 @@ export function Modal({ open, title, description, onClose, children }: { open: b
     if (open && !dialog.open) dialog.showModal();
     if (!open && dialog.open) dialog.close();
   }, [open]);
-  return <dialog ref={ref} className="modal" onCancel={onClose} onClose={onClose}>
+  return <dialog ref={ref} className={`modal${wide ? ' modal--wide' : ''}`} onCancel={onClose} onClose={onClose}>
     <div className="modal__head"><div><p className="eyebrow">OPERATION</p><h2>{title}</h2>{description ? <p>{description}</p> : null}</div><button className="icon-button" type="button" onClick={onClose} aria-label="关闭"><Icon name="close" /></button></div>
     {children}
   </dialog>;

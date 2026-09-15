@@ -16,7 +16,7 @@ const nav: Array<{ path: string; label: string; icon: IconName; modules?: string
   { path: '/', label: '运营概览', icon: 'overview' },
   { path: '/orders', label: '订单履约', icon: 'order', modules: ['order.fulfillment'] },
   { path: '/catalog', label: '商品目录', icon: 'catalog', modules: ['catalog.categories', 'catalog.products', 'catalog.promotions', 'catalog.coupons'] },
-  { path: '/inventory', label: '库存', icon: 'inventory', modules: ['inventory.stock', 'inventory.flash-sales'] },
+  { path: '/inventory', label: '库存', icon: 'inventory', modules: ['inventory.stock', 'inventory.allocations'] },
   { path: '/customers', label: '用户', icon: 'user', modules: ['identity.users', 'user.loyalty-points'] },
   { path: '/payments', label: '支付', icon: 'payment', modules: ['payment.transactions'] },
   { path: '/notifications', label: '通知', icon: 'notification', modules: ['notification.messages'] },
