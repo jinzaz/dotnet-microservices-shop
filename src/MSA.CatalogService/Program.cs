@@ -41,6 +41,10 @@ builder.Services.AddScoped<IValidator<CreateProductCommand>, CreateProductValida
 builder.Services.AddScoped<IValidator<CreateDraftProductCommand>, CreateDraftProductValidator>();
 builder.Services.AddScoped<IValidator<UpdateProductCommand>, UpdateProductValidator>();
 builder.Services.AddScoped<IValidator<ChangeProductPriceCommand>, ChangeProductPriceValidator>();
+builder.Services.AddScoped<IValidator<CreateProductVariantCommand>, CreateProductVariantValidator>();
+builder.Services.AddScoped<IValidator<UpdateProductVariantCommand>, UpdateProductVariantValidator>();
+builder.Services.AddScoped<IValidator<AddProductMediaCommand>, ProductMediaCommandValidator>();
+builder.Services.AddScoped<IValidator<UpdateProductMediaCommand>, UpdateProductMediaValidator>();
 builder.Services.AddScoped<IValidator<CreatePromotionCommand>, CreatePromotionValidator>();
 builder.Services.AddScoped<IValidator<ReplacePromotionDefinitionCommand>, ReplacePromotionDefinitionValidator>();
 builder.Services.AddScoped<IValidator<CreateCouponCommand>, CreateCouponValidator>();

@@ -6,6 +6,7 @@ public sealed class OrderProductProjection
     {
     }
 
+    // Compatibility constructor for snapshots emitted before products gained variants.
     public OrderProductProjection(
         Guid productId,
         string sku,
@@ -16,10 +17,44 @@ public sealed class OrderProductProjection
         Guid? categoryId = null,
         long sourceRevision = 0,
         DateTimeOffset? effectiveOnUtc = null)
+        : this(
+            productId,
+            productId,
+            sku,
+            name,
+            name,
+            "{}",
+            price,
+            currency,
+            active,
+            categoryId,
+            sourceRevision,
+            effectiveOnUtc)
     {
+    }
+
+    public OrderProductProjection(
+        Guid variantId,
+        Guid productId,
+        string sku,
+        string productName,
+        string variantName,
+        string attributesJson,
+        decimal price,
+        string currency,
+        bool active,
+        Guid? categoryId = null,
+        long sourceRevision = 0,
+        DateTimeOffset? effectiveOnUtc = null)
+    {
+        if (variantId == Guid.Empty || productId == Guid.Empty)
+            throw new ArgumentException("Product and variant ids are required.");
+        VariantId = variantId;
         ProductId = productId;
         Sku = sku.Trim();
-        Name = name.Trim();
+        ProductName = productName.Trim();
+        VariantName = variantName.Trim();
+        AttributesJson = string.IsNullOrWhiteSpace(attributesJson) ? "{}" : attributesJson.Trim();
         Price = Money.Round(price);
         Currency = currency.Trim().ToUpperInvariant();
         IsActive = active;
@@ -28,21 +63,37 @@ public sealed class OrderProductProjection
         UpdatedOnUtc = effectiveOnUtc ?? DateTimeOffset.UtcNow;
     }
 
+    public Guid VariantId { get; private set; }
     public Guid ProductId { get; private set; }
     public Guid? CategoryId { get; private set; }
     public string Sku { get; private set; } = string.Empty;
-    public string Name { get; private set; } = string.Empty;
+    public string ProductName { get; private set; } = string.Empty;
+    public string VariantName { get; private set; } = string.Empty;
+    public string AttributesJson { get; private set; } = "{}";
     public decimal Price { get; private set; }
     public string Currency { get; private set; } = string.Empty;
     public bool IsActive { get; private set; }
     public long SourceRevision { get; private set; }
     public DateTimeOffset UpdatedOnUtc { get; private set; }
+    public string Name => ProductName;
 
     public void Update(string name, decimal price, string currency, bool active) =>
-        Apply(name, price, currency, active, CategoryId, SourceRevision + 1, DateTimeOffset.UtcNow);
+        Apply(name, name, "{}", price, currency, active, CategoryId, SourceRevision + 1, DateTimeOffset.UtcNow);
 
     public bool Apply(
         string name,
+        decimal price,
+        string currency,
+        bool active,
+        Guid? categoryId,
+        long sourceRevision,
+        DateTimeOffset effectiveOnUtc) =>
+        Apply(name, name, "{}", price, currency, active, categoryId, sourceRevision, effectiveOnUtc);
+
+    public bool Apply(
+        string productName,
+        string variantName,
+        string attributesJson,
         decimal price,
         string currency,
         bool active,
@@ -56,7 +107,9 @@ public sealed class OrderProductProjection
             return false;
         }
 
-        Name = name.Trim();
+        ProductName = productName.Trim();
+        VariantName = variantName.Trim();
+        AttributesJson = string.IsNullOrWhiteSpace(attributesJson) ? "{}" : attributesJson.Trim();
         Price = Money.Round(price);
         Currency = currency.Trim().ToUpperInvariant();
         IsActive = active;
@@ -67,44 +120,51 @@ public sealed class OrderProductProjection
     }
 }
 
-public sealed class FlashSaleCampaignProjection
+public sealed class InventoryAllocationProjection
 {
-    private FlashSaleCampaignProjection()
+    private InventoryAllocationProjection()
     {
     }
 
-    public FlashSaleCampaignProjection(
-        Guid campaignId,
+    public InventoryAllocationProjection(
+        Guid allocationId,
+        Guid offerId,
         string sku,
         DateTimeOffset startsOnUtc,
         DateTimeOffset endsOnUtc,
-        int purchaseLimit,
-        string strategy,
+        int perUserLimit,
         DateTimeOffset updatedOnUtc)
     {
-        CampaignId = campaignId;
-        ApplyOpen(sku, startsOnUtc, endsOnUtc, purchaseLimit, strategy, updatedOnUtc);
+        if (allocationId == Guid.Empty || offerId == Guid.Empty)
+            throw new ArgumentException("Allocation and offer ids are required.");
+        AllocationId = allocationId;
+        OfferId = offerId;
+        ApplyOpen(sku, startsOnUtc, endsOnUtc, perUserLimit, updatedOnUtc);
     }
 
-    private FlashSaleCampaignProjection(Guid campaignId, DateTimeOffset closedOnUtc)
+    private InventoryAllocationProjection(
+        Guid allocationId,
+        Guid offerId,
+        string sku,
+        DateTimeOffset closedOnUtc)
     {
-        CampaignId = campaignId;
-        Sku = $"closed:{campaignId:N}";
+        AllocationId = allocationId;
+        OfferId = offerId;
+        Sku = sku;
         StartsOnUtc = DateTimeOffset.UnixEpoch;
         EndsOnUtc = DateTimeOffset.UnixEpoch.AddTicks(1);
-        PurchaseLimit = 1;
-        Strategy = "Unknown";
+        PerUserLimit = 1;
         IsOpen = false;
         ClosedOnUtc = closedOnUtc;
         UpdatedOnUtc = closedOnUtc;
     }
 
-    public Guid CampaignId { get; private set; }
+    public Guid AllocationId { get; private set; }
+    public Guid OfferId { get; private set; }
     public string Sku { get; private set; } = string.Empty;
     public DateTimeOffset StartsOnUtc { get; private set; }
     public DateTimeOffset EndsOnUtc { get; private set; }
-    public int PurchaseLimit { get; private set; }
-    public string Strategy { get; private set; } = string.Empty;
+    public int PerUserLimit { get; private set; }
     public bool IsOpen { get; private set; }
     public DateTimeOffset UpdatedOnUtc { get; private set; }
     public DateTimeOffset? ClosedOnUtc { get; private set; }
@@ -113,27 +173,26 @@ public sealed class FlashSaleCampaignProjection
     public bool AcceptsOrders(DateTimeOffset now) =>
         IsOpen && StartsOnUtc <= now && now < EndsOnUtc;
 
-    public static FlashSaleCampaignProjection CreateClosed(
-        Guid campaignId,
+    public static InventoryAllocationProjection CreateClosed(
+        Guid allocationId,
+        Guid offerId,
+        string sku,
         DateTimeOffset closedOnUtc) =>
-        new(campaignId, closedOnUtc);
+        new(allocationId, offerId, sku, closedOnUtc);
 
     public void ApplyOpen(
         string sku,
         DateTimeOffset startsOnUtc,
         DateTimeOffset endsOnUtc,
-        int purchaseLimit,
-        string strategy,
+        int perUserLimit,
         DateTimeOffset updatedOnUtc)
     {
         if (UpdatedOnUtc > updatedOnUtc)
             return;
-
-        Sku = sku;
+        Sku = sku.Trim().ToUpperInvariant();
         StartsOnUtc = startsOnUtc;
         EndsOnUtc = endsOnUtc;
-        PurchaseLimit = purchaseLimit;
-        Strategy = strategy;
+        PerUserLimit = perUserLimit;
         IsOpen = !ClosedOnUtc.HasValue || ClosedOnUtc < updatedOnUtc;
         if (IsOpen)
             ClosedOnUtc = null;
@@ -145,7 +204,6 @@ public sealed class FlashSaleCampaignProjection
     {
         if (ClosedOnUtc.HasValue && ClosedOnUtc.Value >= closedOnUtc)
             return;
-
         IsOpen = false;
         ClosedOnUtc = closedOnUtc;
         UpdatedOnUtc = closedOnUtc;

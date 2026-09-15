@@ -11,8 +11,11 @@ public static class BasketLimits
 
 public sealed record ProductSelection(
     Guid ProductId,
+    Guid VariantId,
     string Sku,
-    string Name,
+    string ProductName,
+    string VariantName,
+    string AttributesJson,
     decimal UnitPrice,
     string Currency,
     bool IsAvailable,
@@ -235,8 +238,11 @@ public sealed class BasketItem : Entity<Guid>
 
     public Guid BasketId { get; private set; }
     public Guid ProductId { get; private set; }
+    public Guid VariantId { get; private set; }
     public string Sku { get; private set; } = string.Empty;
     public string ProductNameAtSelection { get; private set; } = string.Empty;
+    public string VariantNameAtSelection { get; private set; } = string.Empty;
+    public string VariantAttributesJsonAtSelection { get; private set; } = "{}";
     public decimal UnitPriceAtSelection { get; private set; }
     public string CurrencyAtSelection { get; private set; } = string.Empty;
     public long ProductRevisionAtSelection { get; private set; }
@@ -265,8 +271,11 @@ public sealed class BasketItem : Entity<Guid>
     private void ApplyProduct(ProductSelection product)
     {
         ProductId = product.ProductId;
+        VariantId = product.VariantId;
         Sku = Basket.NormalizeSku(product.Sku);
-        ProductNameAtSelection = product.Name.Trim();
+        ProductNameAtSelection = product.ProductName.Trim();
+        VariantNameAtSelection = product.VariantName.Trim();
+        VariantAttributesJsonAtSelection = product.AttributesJson;
         UnitPriceAtSelection = decimal.Round(product.UnitPrice, 2, MidpointRounding.AwayFromZero);
         CurrencyAtSelection = product.Currency.Trim().ToUpperInvariant();
         ProductRevisionAtSelection = product.SourceRevision;

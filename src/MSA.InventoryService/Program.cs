@@ -7,7 +7,7 @@ using MSA.EventBusOutbox.Extensions;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
 using MSA.InventoryService.Application;
-using MSA.InventoryService.Application.FlashSales;
+using MSA.InventoryService.Application.Allocations;
 using MSA.InventoryService.Endpoints;
 using MSA.InventoryService.Infrastructure;
 using MSA.InventoryService.Integration;
@@ -24,7 +24,6 @@ if (string.IsNullOrWhiteSpace(postgresql))
 builder.Services.AddDbContext<InventoryDbContext>(options => options.UseNpgsql(postgresql));
 builder.Services.AddScoped<MSADbContext>(services => services.GetRequiredService<InventoryDbContext>());
 builder.Services.AddScoped<IInventoryTransactionLock, PostgresInventoryTransactionLock>();
-builder.Services.AddScoped<IFlashSaleStockStore, PostgresFlashSaleStockStore>();
 builder.Services.AddScoped<InventoryCacheInvalidator>();
 builder.Services.AddSingleton(TimeProvider.System);
 
@@ -32,27 +31,22 @@ builder.Services.AddMediatR(configuration =>
     configuration.RegisterServicesFromAssemblyContaining<AddStockCommand>());
 builder.Services.AddScoped<IValidator<AddStockCommand>, AddStockValidator>();
 builder.Services.AddScoped<IValidator<AdjustStockCommand>, AdjustStockCommandValidator>();
-builder.Services.AddScoped<IValidator<CreateFlashSaleCommand>, CreateFlashSaleCommandValidator>();
+builder.Services.AddScoped<IValidator<CreateInventoryAllocationCommand>, CreateInventoryAllocationValidator>();
 builder.Services.AddMsaApplicationPipeline();
 
 builder.Services.AddOptions<InventoryReservationOptions>()
     .Bind(builder.Configuration.GetSection(InventoryReservationOptions.SectionName))
     .Validate(options => options.RegularLifetime > TimeSpan.Zero, "RegularLifetime must be positive.")
-    .Validate(options => options.FlashSaleLifetime > TimeSpan.Zero, "FlashSaleLifetime must be positive.")
+    .Validate(options => options.OfferLifetime > TimeSpan.Zero, "OfferLifetime must be positive.")
     .ValidateOnStart();
 
-builder.Services.AddOptions<FlashSaleOptions>()
-    .Bind(builder.Configuration.GetSection(FlashSaleOptions.SectionName))
-    .Validate(options => options.LargeStockThreshold > 0, "LargeStockThreshold must be positive.")
-    .Validate(options => options.DefaultBucketCount is >= 2 and <= 128, "DefaultBucketCount must be 2-128.")
-    .Validate(options => options.MaximumBucketCount is >= 2 and <= 128, "MaximumBucketCount must be 2-128.")
-    .Validate(options => options.DefaultBucketCount <= options.MaximumBucketCount, "DefaultBucketCount cannot exceed MaximumBucketCount.")
-    .Validate(options => options.ReservationSkipLockedRetries is >= 0 and <= 10, "ReservationSkipLockedRetries must be 0-10.")
+builder.Services.AddOptions<InventoryAllocationOptions>()
+    .Bind(builder.Configuration.GetSection(InventoryAllocationOptions.SectionName))
     .Validate(options => options.AvailabilityCacheDuration > TimeSpan.Zero, "AvailabilityCacheDuration must be positive.")
     .Validate(options => options.ExpiryScanInterval > TimeSpan.Zero, "ExpiryScanInterval must be positive.")
     .Validate(options => options.ExpiryBatchSize > 0, "ExpiryBatchSize must be positive.")
     .ValidateOnStart();
-builder.Services.AddHostedService<FlashSaleExpiryService>();
+builder.Services.AddHostedService<InventoryAllocationExpiryService>();
 
 builder.Services.AddStackExchangeRedisCache(options =>
     options.Configuration = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379");
@@ -123,6 +117,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 });
 app.MapInventoryEndpoints();
 app.MapInventoryAdminEndpoints();
+app.MapInventoryAllocationEndpoints();
 app.MapFlashSaleEndpoints();
 app.MapFlashSaleAdminEndpoints();
 

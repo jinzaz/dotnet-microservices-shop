@@ -46,16 +46,16 @@ public sealed class BasketStore(BasketDbContext db, TimeProvider clock) :
         if (basket is null)
             return BasketDto.Empty();
 
-        var productIds = basket.Items.Select(value => value.ProductId).Distinct().ToArray();
+        var variantIds = basket.Items.Select(value => value.VariantId).Distinct().ToArray();
         var snapshots = await db.ProductSnapshots
             .AsNoTracking()
-            .Where(value => productIds.Contains(value.ProductId))
-            .ToDictionaryAsync(value => value.ProductId, cancellationToken);
+            .Where(value => variantIds.Contains(value.VariantId))
+            .ToDictionaryAsync(value => value.VariantId, cancellationToken);
         var now = clock.GetUtcNow();
         var items = basket.Items
             .OrderBy(value => value.AddedOnUtc)
             .ThenBy(value => value.Sku, StringComparer.Ordinal)
-            .Select(item => MapItem(item, snapshots.GetValueOrDefault(item.ProductId), now))
+            .Select(item => MapItem(item, snapshots.GetValueOrDefault(item.VariantId), now))
             .ToArray();
         var totals = items
             .Where(item => item.IsAvailable)
@@ -89,7 +89,9 @@ public sealed class BasketStore(BasketDbContext db, TimeProvider clock) :
         var isAvailable = current is not null
             && current.IsAvailable
             && current.EffectiveOnUtc <= now;
-        var productName = current?.Name ?? item.ProductNameAtSelection;
+        var productName = current?.ProductName ?? item.ProductNameAtSelection;
+        var variantName = current?.VariantName ?? item.VariantNameAtSelection;
+        var attributesJson = current?.AttributesJson ?? item.VariantAttributesJsonAtSelection;
         var unitPrice = current?.Price ?? item.UnitPriceAtSelection;
         var currency = current?.Currency ?? item.CurrencyAtSelection;
         var revision = current?.SourceRevision ?? item.ProductRevisionAtSelection;
@@ -99,8 +101,11 @@ public sealed class BasketStore(BasketDbContext db, TimeProvider clock) :
 
         return new BasketItemDto(
             item.ProductId,
+            item.VariantId,
             current?.Sku ?? item.Sku,
             productName,
+            variantName,
+            attributesJson,
             item.Quantity,
             unitPrice,
             currency,

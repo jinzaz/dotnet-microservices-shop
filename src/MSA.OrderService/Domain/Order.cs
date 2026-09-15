@@ -13,35 +13,6 @@ public sealed class Order : AggregateRoot<Guid>
     {
     }
 
-    // 兼容现有调用方和历史订单的构造入口。
-    public Order(
-        Guid id,
-        string userId,
-        string idempotencyKey,
-        IEnumerable<OrderLine> lines,
-        string currency,
-        Guid? flashSaleCampaignId = null,
-        DateTimeOffset? createdOnUtc = null)
-        : this(
-            id,
-            userId,
-            idempotencyKey,
-            $"legacy:{id:N}",
-            "Unknown",
-            ShippingAddressSnapshot.Legacy(),
-            lines,
-            [],
-            currency,
-            flashSaleCampaignId,
-            null,
-            null,
-            Guid.NewGuid(),
-            $"legacy:{id:N}",
-            (createdOnUtc ?? DateTimeOffset.UtcNow).AddMinutes(15),
-            createdOnUtc ?? DateTimeOffset.UtcNow)
-    {
-    }
-
     public Order(
         Guid id,
         string userId,
@@ -52,7 +23,6 @@ public sealed class Order : AggregateRoot<Guid>
         IEnumerable<OrderLine> lines,
         IEnumerable<OrderDiscount> discounts,
         string currency,
-        Guid? flashSaleCampaignId,
         Guid? sourceBasketId,
         long? sourceBasketVersion,
         Guid pricingSnapshotId,
@@ -77,16 +47,12 @@ public sealed class Order : AggregateRoot<Guid>
         var orderLines = lines.ToArray();
         if (orderLines.Length == 0)
             throw new ArgumentException("Order requires items.", nameof(lines));
-        if (flashSaleCampaignId.HasValue && orderLines.Length != 1)
-            throw new ArgumentException("A flash-sale order requires exactly one item.", nameof(lines));
         if (sourceBasketId.HasValue != sourceBasketVersion.HasValue)
             throw new ArgumentException("Basket id and basket version must be provided together.");
         if (sourceBasketId == Guid.Empty)
             throw new ArgumentException("Source basket id cannot be empty.", nameof(sourceBasketId));
         if (sourceBasketVersion is < 0)
             throw new ArgumentOutOfRangeException(nameof(sourceBasketVersion));
-        if (flashSaleCampaignId.HasValue && sourceBasketId.HasValue)
-            throw new InvalidOperationException("Flash-sale orders cannot be created from a basket checkout.");
 
         var orderDiscounts = discounts.ToArray();
         var subtotal = Money.Round(orderLines.Sum(line => line.LineSubtotal));
@@ -104,7 +70,6 @@ public sealed class Order : AggregateRoot<Guid>
         PaymentMethod = paymentMethod.Trim();
         ShippingAddress = shippingAddress;
         Currency = currency.Trim().ToUpperInvariant();
-        FlashSaleCampaignId = flashSaleCampaignId;
         SourceBasketId = sourceBasketId;
         SourceBasketVersion = sourceBasketVersion;
         PricingSnapshotId = pricingSnapshotId;
@@ -138,7 +103,8 @@ public sealed class Order : AggregateRoot<Guid>
     public string RequestFingerprint { get; private set; } = string.Empty;
     public string PaymentMethod { get; private set; } = string.Empty;
     public ShippingAddressSnapshot ShippingAddress { get; private set; } = null!;
-    public Guid? FlashSaleCampaignId { get; private set; }
+    public Guid? FlashSaleCampaignId =>
+        _lines.Count == 1 ? _lines[0].OfferId : null;
     public Guid? SourceBasketId { get; private set; }
     public long? SourceBasketVersion { get; private set; }
     public decimal SubtotalAmount { get; private set; }
@@ -504,14 +470,14 @@ public sealed class OrderLine
     {
     }
 
-    public OrderLine(string sku, string productName, int quantity, decimal unitPrice)
-        : this(sku, productName, quantity, unitPrice, unitPrice)
-    {
-    }
-
     public OrderLine(
+        Guid? productId,
+        Guid? variantId,
+        Guid? offerId,
         string sku,
         string productName,
+        string variantName,
+        string variantAttributesJson,
         int quantity,
         decimal listUnitPrice,
         decimal unitPrice)
@@ -522,9 +488,18 @@ public sealed class OrderLine
             throw new ArgumentOutOfRangeException(nameof(quantity));
         if (listUnitPrice < 0 || unitPrice < 0 || unitPrice > listUnitPrice)
             throw new ArgumentOutOfRangeException(nameof(unitPrice));
+        if (productId == Guid.Empty || variantId == Guid.Empty || offerId == Guid.Empty)
+            throw new ArgumentException("Snapshot identifiers cannot be empty GUID values.");
 
+        ProductId = productId;
+        VariantId = variantId;
+        OfferId = offerId;
         Sku = sku.Trim();
         ProductName = productName.Trim();
+        VariantName = variantName.Trim();
+        VariantAttributesJson = string.IsNullOrWhiteSpace(variantAttributesJson)
+            ? "{}"
+            : variantAttributesJson.Trim();
         Quantity = quantity;
         ListUnitPrice = Money.Round(listUnitPrice);
         UnitPrice = Money.Round(unitPrice);
@@ -534,14 +509,20 @@ public sealed class OrderLine
     }
 
     public long Id { get; private set; }
+    public Guid? ProductId { get; private set; }
+    public Guid? VariantId { get; private set; }
+    public Guid? OfferId { get; private set; }
     public string Sku { get; private set; } = string.Empty;
     public string ProductName { get; private set; } = string.Empty;
+    public string VariantName { get; private set; } = string.Empty;
+    public string VariantAttributesJson { get; private set; } = "{}";
     public int Quantity { get; private set; }
     public decimal ListUnitPrice { get; private set; }
     public decimal UnitPrice { get; private set; }
     public decimal LineSubtotal { get; private set; }
     public decimal DiscountAmount { get; private set; }
     public decimal LineAmount { get; private set; }
+
 }
 
 public sealed class OrderDiscount

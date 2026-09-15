@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Caching.Distributed;
-using MSA.InventoryService.Application.FlashSales;
+using MSA.InventoryService.Application.Allocations;
 
 namespace MSA.InventoryService.Infrastructure;
 
@@ -10,8 +10,8 @@ internal sealed class InventoryCacheInvalidator(
     public async Task RemoveStockAsync(string sku, CancellationToken cancellationToken) =>
         await RemoveAsync($"inventory:availability:{sku}", cancellationToken);
 
-    public async Task RemoveFlashSaleAsync(Guid campaignId, CancellationToken cancellationToken) =>
-        await RemoveAsync(FlashSaleCacheKeys.Availability(campaignId), cancellationToken);
+    public async Task RemoveAllocationAsync(Guid allocationId, CancellationToken cancellationToken) =>
+        await RemoveAsync(InventoryAllocationCacheKeys.Availability(allocationId), cancellationToken);
 
     private async Task RemoveAsync(string key, CancellationToken cancellationToken)
     {

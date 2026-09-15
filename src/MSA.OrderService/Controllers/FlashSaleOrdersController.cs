@@ -2,7 +2,6 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using MSA.OrderService.Application.CreateFlashSaleOrder;
 using MSA.OrderService.Application.CreateOrder;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
@@ -10,7 +9,7 @@ using System.Security.Claims;
 namespace MSA.OrderService.Controllers;
 
 [Authorize(Policy = "order-api")]
-[EnableRateLimiting("FlashSaleSubmission")]
+[EnableRateLimiting("OrderSubmission")]
 [ApiController]
 [Route("order/flash-sales/{campaignId:guid}/orders")]
 public sealed class FlashSaleOrdersController(ISender sender) : ControllerBase
@@ -28,12 +27,14 @@ public sealed class FlashSaleOrdersController(ISender sender) : ControllerBase
         CancellationToken cancellationToken)
     {
         var userId = User.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
+        var allocation = await sender.Send(new GetInventoryAllocationQuery(campaignId), cancellationToken);
+        if (allocation is null)
+            return NotFound();
         var orderId = await sender.Send(
-            new CreateFlashSaleOrderCommand(
+            new CreateOrderCommand(
                 userId,
                 idempotencyKey,
-                campaignId,
-                request.Quantity,
+                [new CreateOrderItem(allocation.Sku, request.Quantity, allocation.OfferId)],
                 request.PaymentMethod,
                 request.ShippingAddress,
                 request.CouponCodes),

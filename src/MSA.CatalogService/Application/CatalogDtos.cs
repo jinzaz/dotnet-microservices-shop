@@ -14,7 +14,36 @@ public sealed record ProductDto(
     string NormalizedSku = "",
     DateTimeOffset? EffectiveOnUtc = null,
     long Revision = 0,
-    long Version = 0);
+    long Version = 0,
+    IReadOnlyList<ProductVariantDto>? Variants = null,
+    IReadOnlyList<ProductMediaDto>? Media = null,
+    decimal? MinPrice = null,
+    decimal? MaxPrice = null);
+
+public sealed record ProductVariantDto(
+    Guid Id,
+    Guid ProductId,
+    string Sku,
+    string NormalizedSku,
+    string DisplayName,
+    string AttributesJson,
+    string? Barcode,
+    decimal Price,
+    string Currency,
+    bool IsActive,
+    bool IsDefault,
+    DateTimeOffset CreatedOnUtc,
+    DateTimeOffset UpdatedOnUtc);
+
+public sealed record ProductMediaDto(
+    Guid Id,
+    Guid ProductId,
+    Guid? VariantId,
+    string MediaType,
+    string Url,
+    string? ThumbnailUrl,
+    string? AltText,
+    int SortOrder);
 
 public sealed record CategoryDto(
     Guid Id,

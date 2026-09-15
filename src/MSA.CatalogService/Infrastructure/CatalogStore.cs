@@ -38,15 +38,19 @@ internal sealed class CatalogStore(CatalogDbContext db) :
     void ICategoryRepository.Add(Category category) => db.Categories.Add(category);
 
     Task<Product?> IProductRepository.FindAsync(Guid id, CancellationToken cancellationToken) =>
-        db.Products.SingleOrDefaultAsync(product => product.Id == id, cancellationToken);
+        db.Products
+            .Include(product => product.Variants)
+            .Include(product => product.Media)
+            .AsSplitQuery()
+            .SingleOrDefaultAsync(product => product.Id == id, cancellationToken);
 
     Task<bool> IProductRepository.SkuExistsAsync(
         string normalizedSku,
         Guid? exceptId,
         CancellationToken cancellationToken) =>
-        db.Products.AnyAsync(
-            product => product.NormalizedSku == normalizedSku
-                && (!exceptId.HasValue || product.Id != exceptId.Value),
+        db.ProductVariants.AnyAsync(
+            variant => variant.NormalizedSku == normalizedSku
+                && (!exceptId.HasValue || variant.Id != exceptId.Value),
             cancellationToken);
 
     void IProductRepository.Add(Product product) => db.Products.Add(product);
@@ -97,11 +101,16 @@ internal sealed class CatalogStore(CatalogDbContext db) :
             query = query.Where(product =>
                 product.LifecycleStatus == ProductLifecycleStatus.Published
                 && product.IsActive
-                && product.EffectiveOnUtc <= now);
+                && product.EffectiveOnUtc <= now
+                && product.Variants.Any(variant => variant.IsActive));
         }
 
-        var product = await query.SingleOrDefaultAsync(cancellationToken);
-        return product is null ? null : ToDto(product);
+        var product = await query
+            .Include(value => value.Variants)
+            .Include(value => value.Media)
+            .AsSplitQuery()
+            .SingleOrDefaultAsync(cancellationToken);
+        return product is null ? null : ToDto(product, publicOnly);
     }
 
     async Task<PagedResult<ProductDto>> ICatalogReadService.ListProductsAsync(
@@ -122,7 +131,8 @@ internal sealed class CatalogStore(CatalogDbContext db) :
             query = query.Where(product =>
                 product.LifecycleStatus == ProductLifecycleStatus.Published
                 && product.IsActive
-                && product.EffectiveOnUtc <= now);
+                && product.EffectiveOnUtc <= now
+                && product.Variants.Any(variant => variant.IsActive));
         }
         else if (!string.IsNullOrWhiteSpace(lifecycleStatus))
         {
@@ -136,8 +146,8 @@ internal sealed class CatalogStore(CatalogDbContext db) :
         {
             var pattern = $"%{search.Trim()}%";
             query = query.Where(product =>
-                EF.Functions.ILike(product.Sku, pattern)
-                || EF.Functions.ILike(product.Name, pattern));
+                EF.Functions.ILike(product.Name, pattern)
+                || product.Variants.Any(variant => EF.Functions.ILike(variant.Sku, pattern)));
         }
 
         var total = await query.CountAsync(cancellationToken);
@@ -146,8 +156,11 @@ internal sealed class CatalogStore(CatalogDbContext db) :
             .ThenBy(product => product.Id)
             .Skip(skip)
             .Take(take)
+            .Include(product => product.Variants)
+            .Include(product => product.Media)
+            .AsSplitQuery()
             .ToArrayAsync(cancellationToken);
-        return new PagedResult<ProductDto>(products.Select(ToDto).ToArray(), skip, take, total);
+        return new PagedResult<ProductDto>(products.Select(product => ToDto(product, publicOnly)).ToArray(), skip, take, total);
     }
 
     async Task<PagedResult<CategoryDto>> ICatalogReadService.ListCategoriesAsync(
@@ -257,21 +270,63 @@ internal sealed class CatalogStore(CatalogDbContext db) :
         return new PagedResult<CouponDto>(coupons.Select(ToDto).ToArray(), skip, take, total);
     }
 
-    private static ProductDto ToDto(Product product) => new(
-        product.Id,
-        product.CategoryId,
-        product.Sku,
-        product.Name,
-        product.Description,
-        product.Price,
-        product.Currency,
-        product.IsActive,
-        product.UpdatedOnUtc,
-        product.LifecycleStatus.ToString(),
-        product.NormalizedSku,
-        product.EffectiveOnUtc,
-        product.Revision,
-        product.Version);
+    private static ProductDto ToDto(Product product, bool publicOnly)
+    {
+        var variants = product.Variants
+            .Where(variant => !publicOnly || variant.IsActive)
+            .OrderByDescending(variant => variant.IsDefault)
+            .ThenBy(variant => variant.DisplayName)
+            .ThenBy(variant => variant.Id)
+            .ToArray();
+        var defaultVariant = variants.FirstOrDefault(variant => variant.IsDefault)
+            ?? variants.First();
+        var media = product.Media
+            .Where(item => !publicOnly || item.VariantId is null || variants.Any(variant => variant.Id == item.VariantId))
+            .OrderBy(item => item.SortOrder)
+            .ThenBy(item => item.Id)
+            .ToArray();
+
+        return new ProductDto(
+            product.Id,
+            product.CategoryId,
+            defaultVariant.Sku,
+            product.Name,
+            product.Description,
+            defaultVariant.Price,
+            defaultVariant.Currency,
+            product.IsActive,
+            product.UpdatedOnUtc,
+            product.LifecycleStatus.ToString(),
+            defaultVariant.NormalizedSku,
+            product.EffectiveOnUtc,
+            product.Revision,
+            product.Version,
+            variants.Select(variant => new ProductVariantDto(
+                variant.Id,
+                variant.ProductId,
+                variant.Sku,
+                variant.NormalizedSku,
+                variant.DisplayName,
+                variant.AttributesJson,
+                variant.Barcode,
+                variant.Price,
+                variant.Currency,
+                variant.IsActive,
+                variant.IsDefault,
+                variant.CreatedOnUtc,
+                variant.UpdatedOnUtc)).ToArray(),
+            media.Select(item => new ProductMediaDto(
+                item.Id,
+                item.ProductId,
+                item.VariantId,
+                item.MediaType.ToString(),
+                item.Url,
+                item.ThumbnailUrl,
+                item.AltText,
+                item.SortOrder)).ToArray(),
+            variants.Min(variant => variant.Price),
+            variants.Max(variant => variant.Price));
+    }
 
     private static CategoryDto ToDto(Category category) => new(
         category.Id,

@@ -9,19 +9,14 @@ namespace MSA.CatalogService.Infrastructure;
 
 internal sealed class OutboxCatalogSnapshotPublisher(IOutboxStore outbox) : ICatalogSnapshotPublisher
 {
-    public void Publish(Product product) => PublishEvent(new ProductChangedIntegrationEvent
+    public void Publish(Product product)
     {
-        ProductId = product.Id,
-        CategoryId = product.CategoryId,
-        Sku = product.NormalizedSku,
-        Name = product.Name,
-        Price = product.Price,
-        Currency = product.Currency,
-        IsActive = product.IsActive,
-        LifecycleStatus = product.LifecycleStatus.ToString(),
-        Revision = product.Revision,
-        EffectiveOnUtc = product.EffectiveOnUtc
-    });
+        foreach (var variant in product.Variants)
+            PublishVariant(product, variant, product.IsActive && variant.IsActive);
+    }
+
+    public void PublishUnavailable(Product product, ProductVariant variant) =>
+        PublishVariant(product, variant, isActive: false);
 
     public void Publish(Promotion promotion) => PublishEvent(new PromotionSnapshotChangedIntegrationEvent
     {
@@ -81,6 +76,25 @@ internal sealed class OutboxCatalogSnapshotPublisher(IOutboxStore outbox) : ICat
             .Select(bucket => new CouponQuotaBucketContract(bucket.BucketNumber, bucket.Capacity))
             .ToArray()
     });
+
+    private void PublishVariant(Product product, ProductVariant variant, bool isActive) =>
+        PublishEvent(new ProductVariantChangedIntegrationEvent
+        {
+            ProductId = product.Id,
+            VariantId = variant.Id,
+            CategoryId = product.CategoryId,
+            Sku = variant.NormalizedSku,
+            ProductName = product.Name,
+            VariantName = variant.DisplayName,
+            AttributesJson = variant.AttributesJson,
+            Price = variant.Price,
+            Currency = variant.Currency,
+            IsActive = isActive,
+            IsDefault = variant.IsDefault,
+            LifecycleStatus = product.LifecycleStatus.ToString(),
+            Revision = product.Revision,
+            EffectiveOnUtc = product.EffectiveOnUtc
+        });
 
     private void PublishEvent(IntegrationEvent integrationEvent) =>
         outbox.Add(OutboxMessage.Create(

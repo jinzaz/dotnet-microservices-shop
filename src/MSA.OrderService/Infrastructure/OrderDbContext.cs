@@ -11,7 +11,7 @@ public sealed class OrderDbContext(DbContextOptions<OrderDbContext> options, IMe
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderFulfillmentStatusHistory> OrderFulfillmentStatusHistory => Set<OrderFulfillmentStatusHistory>();
     public DbSet<OrderProductProjection> ProductProjections => Set<OrderProductProjection>();
-    public DbSet<FlashSaleCampaignProjection> FlashSaleCampaignProjections => Set<FlashSaleCampaignProjection>();
+    public DbSet<InventoryAllocationProjection> InventoryAllocationProjections => Set<InventoryAllocationProjection>();
     public DbSet<PromotionProjection> PromotionProjections => Set<PromotionProjection>();
     public DbSet<CouponProjection> CouponProjections => Set<CouponProjection>();
     public DbSet<CouponQuotaBucket> CouponQuotaBuckets => Set<CouponQuotaBucket>();

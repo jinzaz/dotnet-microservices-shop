@@ -1,14 +1,14 @@
 using MediatR;
 using Microsoft.Extensions.Options;
-using MSA.InventoryService.Application.FlashSales;
+using MSA.InventoryService.Application.Allocations;
 
 namespace MSA.InventoryService.Infrastructure;
 
-internal sealed class FlashSaleExpiryService(
+internal sealed class InventoryAllocationExpiryService(
     IServiceScopeFactory scopeFactory,
-    IOptions<FlashSaleOptions> options,
+    IOptions<InventoryAllocationOptions> options,
     TimeProvider clock,
-    ILogger<FlashSaleExpiryService> logger) : BackgroundService
+    ILogger<InventoryAllocationExpiryService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -16,7 +16,7 @@ internal sealed class FlashSaleExpiryService(
         {
             try
             {
-                await CloseExpiredCampaignsAsync(stoppingToken);
+                await CloseExpiredAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -24,22 +24,21 @@ internal sealed class FlashSaleExpiryService(
             }
             catch (Exception exception)
             {
-                logger.LogError(exception, "Failed to close expired flash-sale campaigns.");
+                logger.LogError(exception, "Failed to close expired inventory allocations.");
             }
 
             await Task.Delay(options.Value.ExpiryScanInterval, clock, stoppingToken);
         }
     }
 
-    private async Task CloseExpiredCampaignsAsync(CancellationToken cancellationToken)
+    private async Task CloseExpiredAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var sender = scope.ServiceProvider.GetRequiredService<ISender>();
-        var campaignIds = await sender.Send(
-            new GetExpiredFlashSalesQuery(options.Value.ExpiryBatchSize),
+        var ids = await sender.Send(
+            new GetExpiredInventoryAllocationsQuery(options.Value.ExpiryBatchSize),
             cancellationToken);
-
-        foreach (var campaignId in campaignIds)
-            await sender.Send(new CloseFlashSaleCommand(campaignId), cancellationToken);
+        foreach (var id in ids)
+            await sender.Send(new CloseInventoryAllocationCommand(id), cancellationToken);
     }
 }

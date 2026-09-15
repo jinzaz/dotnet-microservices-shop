@@ -371,8 +371,7 @@ public static class OrderRequestFingerprint
     public static string Create(
         string userId,
         string paymentMethod,
-        Guid? campaignId,
-        IEnumerable<(string Sku, int Quantity)> items,
+        IEnumerable<(string Sku, int Quantity, Guid? OfferId)> items,
         IEnumerable<string> couponCodes,
         ShippingAddressSnapshot shippingAddress,
         Guid? sourceBasketId,
@@ -384,12 +383,13 @@ public static class OrderRequestFingerprint
         if (sourceBasketId == Guid.Empty || sourceBasketVersion is < 0)
             throw new ArgumentOutOfRangeException(nameof(sourceBasketId), "Basket source values are invalid.");
         var canonicalItems = items
-            .Select(item => (Sku: item.Sku.Trim().ToUpperInvariant(), item.Quantity))
+            .Select(item => (Sku: item.Sku.Trim().ToUpperInvariant(), item.Quantity, item.OfferId))
             .OrderBy(item => item.Sku, StringComparer.Ordinal)
             .Select(item => new
             {
                 item.Sku,
-                Quantity = item.Quantity.ToString(CultureInfo.InvariantCulture)
+                Quantity = item.Quantity.ToString(CultureInfo.InvariantCulture),
+                OfferId = item.OfferId?.ToString("N")
             })
             .ToArray();
         var canonicalCoupons = couponCodes
@@ -400,7 +400,6 @@ public static class OrderRequestFingerprint
         {
             UserId = userId.Trim(),
             PaymentMethod = paymentMethod.Trim().ToUpperInvariant(),
-            CampaignId = campaignId?.ToString("N") ?? "regular",
             Items = canonicalItems,
             Coupons = canonicalCoupons,
             Address = new
@@ -441,7 +440,7 @@ internal static class PricingSnapshotHash
         var canonicalItems = string.Join(';', items
             .OrderBy(item => item.Product.Sku, StringComparer.Ordinal)
             .Select(item => string.Join(':',
-                item.Product.ProductId.ToString("N"),
+                item.Product.VariantId.ToString("N"),
                 item.Product.SourceRevision.ToString(CultureInfo.InvariantCulture),
                 item.Product.Price.ToString("0.00", CultureInfo.InvariantCulture),
                 item.Quantity.ToString(CultureInfo.InvariantCulture))));

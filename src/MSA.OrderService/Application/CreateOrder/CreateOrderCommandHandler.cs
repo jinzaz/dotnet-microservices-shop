@@ -31,8 +31,7 @@ internal sealed class CreateOrderCommandHandler(
         var fingerprint = OrderRequestFingerprint.Create(
             request.UserId,
             request.PaymentMethod,
-            null,
-            request.Items.Select(item => (item.Sku, item.Quantity)),
+            request.Items.Select(item => (item.Sku, item.Quantity, item.OfferId)),
             couponCodes,
             shippingAddress,
             request.SourceBasketId,
@@ -100,15 +99,40 @@ internal sealed class CreateOrderCommandHandler(
         }
 
         var requestedItems = request.Items
-            .Select(item => new CreateOrderItem(item.Sku.Trim().ToUpperInvariant(), item.Quantity))
+            .Select(item => new CreateOrderItem(item.Sku.Trim().ToUpperInvariant(), item.Quantity, item.OfferId))
             .ToArray();
         var skus = requestedItems.Select(item => item.Sku).ToArray();
+        var now = clock.GetUtcNow();
         var products = await db.ProductProjections
             .AsNoTracking()
-            .Where(product => skus.Contains(product.Sku) && product.IsActive)
+            .Where(product =>
+                skus.Contains(product.Sku)
+                && product.IsActive
+                && product.UpdatedOnUtc <= now)
             .ToDictionaryAsync(product => product.Sku, StringComparer.Ordinal, cancellationToken);
         if (products.Count != skus.Length)
             throw new InvalidOperationException("One or more products are unavailable.");
+
+        var offeredItems = requestedItems.Where(item => item.OfferId.HasValue).ToArray();
+        if (offeredItems.Length > 0)
+        {
+            var offerIds = offeredItems.Select(item => item.OfferId!.Value).Distinct().ToArray();
+            var offeredSkus = offeredItems.Select(item => item.Sku).Distinct(StringComparer.Ordinal).ToArray();
+            var allocations = await db.InventoryAllocationProjections
+                .AsNoTracking()
+                .Where(allocation => offerIds.Contains(allocation.OfferId) && offeredSkus.Contains(allocation.Sku))
+                .ToArrayAsync(cancellationToken);
+            foreach (var item in offeredItems)
+            {
+                var allocation = allocations.SingleOrDefault(value =>
+                    value.OfferId == item.OfferId && value.Sku == item.Sku)
+                    ?? throw new InvalidOperationException($"Offer inventory is unavailable for SKU '{item.Sku}'.");
+                if (!allocation.AcceptsOrders(now))
+                    throw new InvalidOperationException($"Offer is not accepting orders for SKU '{item.Sku}'.");
+                if (item.Quantity > allocation.PerUserLimit)
+                    throw new InvalidOperationException($"Offer purchase limit is exceeded for SKU '{item.Sku}'.");
+            }
+        }
 
         var currencies = products.Values
             .Select(product => product.Currency)
@@ -117,7 +141,6 @@ internal sealed class CreateOrderCommandHandler(
         if (currencies.Length != 1)
             throw new InvalidOperationException("Mixed currencies are not supported.");
 
-        var now = clock.GetUtcNow();
         var paymentDueOnUtc = now.Add(options.Value.PaymentWindow);
         var pricingItems = requestedItems
             .Select(item => new PricingItem(products[item.Sku], item.Quantity))
@@ -137,14 +160,23 @@ internal sealed class CreateOrderCommandHandler(
             fingerprint,
             request.PaymentMethod,
             shippingAddress,
-            pricingItems.Select(item => new OrderLine(
-                item.Product.Sku,
-                item.Product.Name,
-                item.Quantity,
-                item.Product.Price)),
+            pricingItems.Select(item =>
+            {
+                var requestItem = requestedItems.Single(value => value.Sku == item.Product.Sku);
+                return new OrderLine(
+                    item.Product.ProductId,
+                    item.Product.VariantId,
+                    requestItem.OfferId,
+                    item.Product.Sku,
+                    item.Product.ProductName,
+                    item.Product.VariantName,
+                    item.Product.AttributesJson,
+                    item.Quantity,
+                    item.Product.Price,
+                    item.Product.Price);
+            }),
             price.Discounts,
             currencies[0],
-            flashSaleCampaignId: null,
             request.SourceBasketId,
             request.SourceBasketVersion,
             Guid.NewGuid(),
@@ -181,7 +213,13 @@ internal sealed class CreateOrderCommandHandler(
             OrderId = order.Id,
             UserId = order.UserId,
             Items = order.Lines
-                .Select(line => new OrderItemContract(line.Sku, line.Quantity, line.UnitPrice))
+                .Select(line => new OrderItemContract(
+                    line.Sku,
+                    line.Quantity,
+                    line.UnitPrice,
+                    line.ProductId,
+                    line.VariantId,
+                    line.OfferId))
                 .ToArray(),
             Amount = order.Amount,
             Currency = order.Currency,

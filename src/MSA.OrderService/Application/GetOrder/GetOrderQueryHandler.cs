@@ -47,8 +47,13 @@ internal sealed class GetOrderQueryHandler(OrderDbContext db)
                     order.ShippingAddress.StreetLine2,
                     order.ShippingAddress.PostalCode),
                 order.Lines.Select(line => new OrderLineDto(
+                    line.ProductId,
+                    line.VariantId,
+                    line.OfferId,
                     line.Sku,
                     line.ProductName,
+                    line.VariantName,
+                    line.VariantAttributesJson,
                     line.Quantity,
                     line.ListUnitPrice,
                     line.UnitPrice,

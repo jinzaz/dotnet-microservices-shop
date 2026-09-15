@@ -110,13 +110,13 @@ public enum StockMovementType
     InventoryReserved = 2,
     InventoryCommitted = 3,
     InventoryReleased = 4,
-    CampaignAllocated = 5,
-    CampaignReleased = 6
+    AllocationCreated = 5,
+    AllocationReleased = 6
 }
 
 public enum StockMovementReferenceType
 {
     None = 0,
     Reservation = 1,
-    FlashSaleCampaign = 2
+    InventoryAllocation = 2
 }

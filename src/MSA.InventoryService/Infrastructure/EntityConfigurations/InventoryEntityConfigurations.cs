@@ -23,68 +23,69 @@ internal sealed class StockItemConfiguration : IEntityTypeConfiguration<StockIte
         entity.Ignore(value => value.Available);
     }
 }
-internal sealed class FlashSaleCampaignConfiguration : IEntityTypeConfiguration<FlashSaleCampaign>
+internal sealed class InventoryAllocationConfiguration : IEntityTypeConfiguration<InventoryAllocation>
 {
-    public void Configure(EntityTypeBuilder<FlashSaleCampaign> entity)
+    public void Configure(EntityTypeBuilder<InventoryAllocation> entity)
     {
-        entity.ToTable("inventory_flash_sale_campaigns", table =>
+        entity.ToTable("inventory_allocations", table =>
         {
-            table.HasCheckConstraint("CK_flash_sale_campaigns_quantity", "\"TotalQuantity\" > 0");
-            table.HasCheckConstraint("CK_flash_sale_campaigns_purchase_limit", "\"PurchaseLimit\" > 0 AND \"PurchaseLimit\" <= \"TotalQuantity\"");
-            table.HasCheckConstraint("CK_flash_sale_campaigns_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
+            table.HasCheckConstraint("CK_inventory_allocations_quantity", "\"TotalQuantity\" > 0");
+            table.HasCheckConstraint("CK_inventory_allocations_limit", "\"PerUserLimit\" > 0 AND \"PerUserLimit\" <= \"TotalQuantity\"");
+            table.HasCheckConstraint("CK_inventory_allocations_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
             table.HasCheckConstraint(
-                "CK_flash_sale_campaigns_bucket_count",
-                "\"BucketCount\" BETWEEN 1 AND 128 AND \"BucketCount\" * \"PurchaseLimit\" <= \"TotalQuantity\"");
+                "CK_inventory_allocations_counters",
+                "\"ReservedQuantity\" >= 0 AND \"SoldQuantity\" >= 0 AND \"ReleasedQuantity\" >= 0 AND \"ReservedQuantity\" + \"SoldQuantity\" + \"ReleasedQuantity\" <= \"TotalQuantity\"");
         });
         entity.HasKey(value => value.Id);
-        entity.Property(value => value.Sku).HasMaxLength(80).HasComment("秒杀商品的标准化 SKU");
-        entity.Property(value => value.TotalQuantity).HasComment("活动分配的库存总量");
-        entity.Property(value => value.PurchaseLimit).HasComment("每个用户在本活动中的购买上限");
-        entity.Property(value => value.Strategy).HasComment("秒杀库存采用单行或分桶策略");
-        entity.Property(value => value.BucketCount).HasComment("用于分散热点写入的库存桶数量");
-        entity.Property(value => value.Status).HasComment("秒杀活动状态");
-        entity.Property(value => value.StartsOnUtc).HasComment("活动开始的 UTC 时间");
-        entity.Property(value => value.EndsOnUtc).HasComment("活动结束的 UTC 时间");
-        entity.Property(value => value.Version).IsConcurrencyToken().HasComment("秒杀活动乐观并发版本号");
+        entity.HasIndex(value => new { value.OfferId, value.Sku }).IsUnique();
         entity.HasIndex(value => new { value.Status, value.EndsOnUtc });
-        entity.HasMany(value => value.StockBuckets)
-            .WithOne()
-            .HasForeignKey(value => value.CampaignId)
-            .OnDelete(DeleteBehavior.Cascade);
-        entity.Navigation(value => value.StockBuckets).UsePropertyAccessMode(PropertyAccessMode.Field);
-    }
-}
-internal sealed class FlashSaleStockBucketConfiguration : IEntityTypeConfiguration<FlashSaleStockBucket>
-{
-    public void Configure(EntityTypeBuilder<FlashSaleStockBucket> entity)
-    {
-        entity.ToTable("inventory_flash_sale_stock_buckets", table =>
-        {
-            table.HasCheckConstraint("CK_flash_sale_stock_buckets_allocated", "\"AllocatedQuantity\" >= 0");
-            table.HasCheckConstraint(
-                "CK_flash_sale_stock_buckets_counters",
-                "\"ReservedQuantity\" >= 0 AND \"SoldQuantity\" >= 0 AND \"ReleasedQuantity\" >= 0 AND \"ReservedQuantity\" + \"SoldQuantity\" + \"ReleasedQuantity\" <= \"AllocatedQuantity\"");
-        });
-        entity.HasKey(value => value.Id);
-        entity.HasIndex(value => new { value.CampaignId, value.BucketNumber }).IsUnique();
-        entity.Property(value => value.BucketNumber).HasComment("活动内的库存桶编号");
-        entity.Property(value => value.AllocatedQuantity).HasComment("分配给该桶的库存总量");
-        entity.Property(value => value.ReservedQuantity).HasComment("该桶已预占的库存量");
-        entity.Property(value => value.SoldQuantity).HasComment("该桶已确认售出的库存量");
-        entity.Property(value => value.ReleasedQuantity).HasComment("活动关闭后不再销售的库存量");
-        entity.Property(value => value.Version).IsConcurrencyToken().HasComment("库存桶乐观并发版本号");
+        entity.Property(value => value.OfferId).HasComment("目录促销或限量销售标识");
+        entity.Property(value => value.Sku).HasMaxLength(80).HasComment("配额对应的标准化 SKU");
+        entity.Property(value => value.TotalQuantity).HasComment("从常规库存圈定的总数量");
+        entity.Property(value => value.ReservedQuantity).HasComment("已被未支付订单预占的数量");
+        entity.Property(value => value.SoldQuantity).HasComment("已支付并正式扣减的数量");
+        entity.Property(value => value.ReleasedQuantity).HasComment("关闭后已归还常规库存的数量");
+        entity.Property(value => value.PerUserLimit).HasComment("单用户可同时预占及累计售出的数量上限");
+        entity.Property(value => value.StartsOnUtc).HasComment("配额生效的 UTC 时间");
+        entity.Property(value => value.EndsOnUtc).HasComment("配额失效的 UTC 时间");
+        entity.Property(value => value.Status).HasComment("配额状态：开放或关闭");
+        entity.Property(value => value.CreatedOnUtc).HasComment("配额创建的 UTC 时间");
+        entity.Property(value => value.ClosedOnUtc).HasComment("配额关闭的 UTC 时间");
+        entity.Property(value => value.Version).IsConcurrencyToken().HasComment("配额乐观并发版本号");
         entity.Ignore(value => value.AvailableQuantity);
     }
 }
+
+internal sealed class InventoryAllocationBuyerConfiguration : IEntityTypeConfiguration<InventoryAllocationBuyer>
+{
+    public void Configure(EntityTypeBuilder<InventoryAllocationBuyer> entity)
+    {
+        entity.ToTable("inventory_allocation_buyers", table =>
+            table.HasCheckConstraint(
+                "CK_inventory_allocation_buyers_counters",
+                "\"ReservedQuantity\" >= 0 AND \"SoldQuantity\" >= 0 AND \"ReleasedQuantity\" >= 0"));
+        entity.HasKey(value => new { value.AllocationId, value.UserId });
+        entity.Property(value => value.AllocationId).HasComment("库存配额标识");
+        entity.Property(value => value.UserId).HasMaxLength(200).HasComment("统一认证平台用户标识");
+        entity.Property(value => value.ReservedQuantity).HasComment("该用户当前预占数量");
+        entity.Property(value => value.SoldQuantity).HasComment("该用户累计售出数量");
+        entity.Property(value => value.ReleasedQuantity).HasComment("该用户累计释放数量");
+        entity.Property(value => value.CreatedOnUtc).HasComment("用户计数创建的 UTC 时间");
+        entity.Property(value => value.UpdatedOnUtc).HasComment("用户计数更新的 UTC 时间");
+        entity.Property(value => value.Version).IsConcurrencyToken().HasComment("用户配额计数乐观并发版本号");
+        entity.HasOne<InventoryAllocation>()
+            .WithMany()
+            .HasForeignKey(value => value.AllocationId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 internal sealed class InventoryReservationConfiguration : IEntityTypeConfiguration<InventoryReservation>
 {
     public void Configure(EntityTypeBuilder<InventoryReservation> entity)
     {
         entity.ToTable("inventory_reservations", table =>
         {
-            table.HasCheckConstraint(
-                "CK_inventory_reservations_flash_sale_metadata",
-                "(\"FlashSaleCampaignId\" IS NULL AND \"FlashSaleStockBucketId\" IS NULL AND \"UserId\" IS NULL) OR (\"FlashSaleCampaignId\" IS NOT NULL AND \"FlashSaleStockBucketId\" IS NOT NULL AND \"UserId\" IS NOT NULL)");
             table.HasCheckConstraint(
                 "CK_inventory_reservations_status",
                 "\"Status\" BETWEEN 0 AND 2");
@@ -102,33 +103,20 @@ internal sealed class InventoryReservationConfiguration : IEntityTypeConfigurati
         entity.HasIndex(value => new { value.Status, value.ExpiresOnUtc })
             .HasFilter("\"Status\" = 0");
         entity.HasIndex(value => new { value.Status, value.UpdatedOnUtc });
-        entity.HasIndex(value => new { value.FlashSaleCampaignId, value.UserId })
-            .IsUnique()
-            .HasFilter("\"FlashSaleCampaignId\" IS NOT NULL");
         entity.Property(value => value.OrderId).HasComment("预占关联的订单标识，也是业务唯一键");
-        entity.Property(value => value.UserId).HasMaxLength(200).HasComment("秒杀预占所属用户；普通预占为空");
-        entity.Property(value => value.FlashSaleCampaignId).HasComment("秒杀活动标识；普通预占为空");
-        entity.Property(value => value.FlashSaleStockBucketId).HasComment("秒杀库存桶标识；普通预占为空");
+        entity.Property(value => value.UserId).HasMaxLength(200).HasComment("预占所属用户；历史普通预占可能为空");
         entity.Property(value => value.Status).HasComment("预占状态：已预占、已提交或已释放");
         entity.Property(value => value.ExpiresOnUtc).HasComment("预占自动释放的 UTC 截止时间");
         entity.Property(value => value.CommittedOnUtc).HasComment("库存正式扣减的 UTC 时间");
         entity.Property(value => value.ReleasedOnUtc).HasComment("库存释放的 UTC 时间");
         entity.Property(value => value.TerminalReason).HasMaxLength(1000).HasComment("预占释放的业务原因");
         entity.Property(value => value.Version).IsConcurrencyToken().HasComment("预占乐观并发版本号");
-        entity.Ignore(value => value.IsFlashSale);
+        entity.Ignore(value => value.HasAllocations);
         entity.HasMany(value => value.Lines)
             .WithOne()
             .HasForeignKey("ReservationId")
             .IsRequired()
             .OnDelete(DeleteBehavior.Cascade);
-        entity.HasOne<FlashSaleCampaign>()
-            .WithMany()
-            .HasForeignKey(value => value.FlashSaleCampaignId)
-            .OnDelete(DeleteBehavior.Restrict);
-        entity.HasOne<FlashSaleStockBucket>()
-            .WithMany()
-            .HasForeignKey(value => value.FlashSaleStockBucketId)
-            .OnDelete(DeleteBehavior.Restrict);
     }
 }
 internal sealed class InventoryReservationLineConfiguration : IEntityTypeConfiguration<InventoryReservationLine>
@@ -136,11 +124,23 @@ internal sealed class InventoryReservationLineConfiguration : IEntityTypeConfigu
     public void Configure(EntityTypeBuilder<InventoryReservationLine> entity)
     {
         entity.ToTable("inventory_reservation_lines", table =>
-            table.HasCheckConstraint("CK_inventory_reservation_lines_quantity", "\"Quantity\" > 0"));
+        {
+            table.HasCheckConstraint("CK_inventory_reservation_lines_quantity", "\"Quantity\" > 0");
+            table.HasCheckConstraint(
+                "CK_inventory_reservation_lines_allocation",
+                "(\"AllocationId\" IS NULL AND \"OfferId\" IS NULL) OR (\"AllocationId\" IS NOT NULL AND \"OfferId\" IS NOT NULL)");
+        });
         entity.HasKey(value => value.Id);
         entity.HasIndex("ReservationId", nameof(InventoryReservationLine.Sku)).IsUnique();
         entity.Property(value => value.Sku).HasMaxLength(80).HasComment("预占商品的标准化 SKU");
         entity.Property(value => value.Quantity).HasComment("该商品的预占数量");
+        entity.Property(value => value.AllocationId).HasComment("该订单行使用的库存配额标识；普通库存为空");
+        entity.Property(value => value.OfferId).HasComment("该订单行选择的促销或限量销售标识；普通库存为空");
+        entity.HasIndex(value => new { value.AllocationId, value.OfferId });
+        entity.HasOne<InventoryAllocation>()
+            .WithMany()
+            .HasForeignKey(value => value.AllocationId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }
 internal sealed class InventoryRequestDecisionConfiguration : IEntityTypeConfiguration<InventoryRequestDecision>

@@ -36,10 +36,7 @@ internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         entity.HasIndex(order => new { order.UserId, order.CreatedOnUtc });
         entity.HasIndex(order => new { order.Status, order.CreatedOnUtc });
         entity.HasIndex(order => new { order.FulfillmentStatus, order.UpdatedOnUtc });
-        entity.HasIndex(order => new { order.FlashSaleCampaignId, order.Status });
-        entity.HasIndex(order => new { order.FlashSaleCampaignId, order.UserId })
-            .IsUnique()
-            .HasFilter("\"FlashSaleCampaignId\" IS NOT NULL");
+        entity.Ignore(order => order.FlashSaleCampaignId);
         entity.Property(order => order.OrderNumber).HasMaxLength(48).HasComment("面向用户和运营的订单编号");
         entity.Property(order => order.UserId).HasMaxLength(200).HasComment("下单用户标识");
         entity.Property(order => order.IdempotencyKey).HasMaxLength(100).HasComment("用户维度的下单幂等键");
@@ -117,11 +114,18 @@ internal sealed class OrderLineConfiguration : IEntityTypeConfiguration<OrderLin
         {
             table.HasCheckConstraint("CK_order_lines_quantity", "\"Quantity\" > 0");
             table.HasCheckConstraint("CK_order_lines_prices", "\"ListUnitPrice\" >= 0 AND \"UnitPrice\" >= 0 AND \"UnitPrice\" <= \"ListUnitPrice\" AND \"LineSubtotal\" = round(\"ListUnitPrice\" * \"Quantity\", 2) AND \"DiscountAmount\" = round((\"ListUnitPrice\" - \"UnitPrice\") * \"Quantity\", 2) AND \"LineAmount\" = round(\"UnitPrice\" * \"Quantity\", 2)");
+            table.HasCheckConstraint("CK_order_lines_variant_attributes", "jsonb_typeof(\"VariantAttributesJson\") = 'object'");
         });
         entity.HasKey(line => line.Id);
         entity.HasIndex("OrderId", nameof(OrderLine.Sku)).IsUnique();
+        entity.HasIndex(line => new { line.OfferId, line.Sku });
+        entity.Property(line => line.ProductId).HasComment("下单时的 SPU 商品标识快照");
+        entity.Property(line => line.VariantId).HasComment("下单时的 SKU 变体标识快照");
+        entity.Property(line => line.OfferId).HasComment("该订单行选择的限量销售或促销标识；普通购买为空");
         entity.Property(line => line.Sku).HasMaxLength(80);
-        entity.Property(line => line.ProductName).HasMaxLength(200);
+        entity.Property(line => line.ProductName).HasMaxLength(200).HasComment("下单时的 SPU 商品名称快照");
+        entity.Property(line => line.VariantName).HasMaxLength(200).HasComment("下单时的 SKU 展示名称快照");
+        entity.Property(line => line.VariantAttributesJson).HasColumnType("jsonb").HasComment("下单时的 SKU 销售属性快照");
         entity.Property(line => line.Quantity).HasComment("下单商品数量");
         entity.Property(line => line.ListUnitPrice).HasPrecision(18, 2).HasComment("下单时的目录单价快照");
         entity.Property(line => line.UnitPrice).HasPrecision(18, 2).HasComment("分摊优惠后的成交单价");
@@ -186,31 +190,43 @@ internal sealed class OrderProductProjectionConfiguration : IEntityTypeConfigura
     public void Configure(EntityTypeBuilder<OrderProductProjection> entity)
     {
         entity.ToTable("order_product_projections", table =>
-            table.HasCheckConstraint("CK_product_projections_price", "\"Price\" >= 0"));
-        entity.HasKey(product => product.ProductId);
+        {
+            table.HasCheckConstraint("CK_product_projections_price", "\"Price\" >= 0");
+            table.HasCheckConstraint("CK_product_projections_attributes", "jsonb_typeof(\"AttributesJson\") = 'object'");
+        });
+        entity.HasKey(product => product.VariantId);
         entity.HasIndex(product => product.Sku).IsUnique();
+        entity.HasIndex(product => product.ProductId);
         entity.HasIndex(product => new { product.IsActive, product.CategoryId });
+        entity.Property(product => product.VariantId).HasComment("目录 SKU 变体标识");
+        entity.Property(product => product.ProductId).HasComment("目录 SPU 商品标识");
         entity.Property(product => product.Sku).HasMaxLength(80);
-        entity.Property(product => product.Name).HasMaxLength(200);
+        entity.Property(product => product.ProductName).HasMaxLength(200);
+        entity.Property(product => product.VariantName).HasMaxLength(200);
+        entity.Property(product => product.AttributesJson).HasColumnType("jsonb");
+        entity.Ignore(product => product.Name);
         entity.Property(product => product.Price).HasPrecision(18, 2).HasComment("下单侧使用的目录单价投影");
         entity.Property(product => product.Currency).HasMaxLength(3);
     }
 }
 
-internal sealed class FlashSaleCampaignProjectionConfiguration : IEntityTypeConfiguration<FlashSaleCampaignProjection>
+internal sealed class InventoryAllocationProjectionConfiguration : IEntityTypeConfiguration<InventoryAllocationProjection>
 {
-    public void Configure(EntityTypeBuilder<FlashSaleCampaignProjection> entity)
+    public void Configure(EntityTypeBuilder<InventoryAllocationProjection> entity)
     {
-        entity.ToTable("order_flash_sale_campaign_projections", table =>
+        entity.ToTable("order_inventory_allocation_projections", table =>
         {
-            table.HasCheckConstraint("CK_flash_sale_campaign_projections_limit", "\"PurchaseLimit\" > 0");
-            table.HasCheckConstraint("CK_flash_sale_campaign_projections_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
+            table.HasCheckConstraint("CK_inventory_allocation_projections_limit", "\"PerUserLimit\" > 0");
+            table.HasCheckConstraint("CK_inventory_allocation_projections_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
         });
-        entity.HasKey(campaign => campaign.CampaignId);
-        entity.Property(campaign => campaign.Sku).HasMaxLength(80);
-        entity.Property(campaign => campaign.Strategy).HasMaxLength(30);
-        entity.Property(campaign => campaign.Version).IsConcurrencyToken();
-        entity.HasIndex(campaign => new { campaign.IsOpen, campaign.StartsOnUtc, campaign.EndsOnUtc });
+        entity.HasKey(allocation => allocation.AllocationId);
+        entity.HasIndex(allocation => new { allocation.OfferId, allocation.Sku }).IsUnique();
+        entity.Property(allocation => allocation.AllocationId).HasComment("库存配额内部标识");
+        entity.Property(allocation => allocation.OfferId).HasComment("目录促销或限量销售标识");
+        entity.Property(allocation => allocation.Sku).HasMaxLength(80);
+        entity.Property(allocation => allocation.PerUserLimit).HasComment("单个用户可同时预占及累计售出的数量上限");
+        entity.Property(allocation => allocation.Version).IsConcurrencyToken();
+        entity.HasIndex(allocation => new { allocation.IsOpen, allocation.StartsOnUtc, allocation.EndsOnUtc });
     }
 }
 

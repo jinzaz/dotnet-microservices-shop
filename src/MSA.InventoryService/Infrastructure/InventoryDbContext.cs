@@ -12,8 +12,8 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
     public DbSet<InventoryReservation> Reservations => Set<InventoryReservation>();
     public DbSet<InventoryRequestDecision> RequestDecisions => Set<InventoryRequestDecision>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
-    public DbSet<FlashSaleCampaign> FlashSaleCampaigns => Set<FlashSaleCampaign>();
-    public DbSet<FlashSaleStockBucket> FlashSaleStockBuckets => Set<FlashSaleStockBucket>();
+    public DbSet<InventoryAllocation> InventoryAllocations => Set<InventoryAllocation>();
+    public DbSet<InventoryAllocationBuyer> InventoryAllocationBuyers => Set<InventoryAllocationBuyer>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

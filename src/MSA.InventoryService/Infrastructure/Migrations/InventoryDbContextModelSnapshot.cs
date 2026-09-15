@@ -81,119 +81,127 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     b.ToTable("inventory_outbox_messages", (string)null);
                 });
 
-            modelBuilder.Entity("MSA.InventoryService.Domain.FlashSaleCampaign", b =>
+            modelBuilder.Entity("MSA.InventoryService.Domain.InventoryAllocation", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<int>("BucketCount")
-                        .HasColumnType("integer")
-                        .HasComment("用于分散热点写入的库存桶数量");
-
                     b.Property<DateTimeOffset?>("ClosedOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("配额关闭的 UTC 时间");
 
                     b.Property<DateTimeOffset>("CreatedOnUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("配额创建的 UTC 时间");
 
                     b.Property<DateTimeOffset>("EndsOnUtc")
                         .HasColumnType("timestamp with time zone")
-                        .HasComment("活动结束的 UTC 时间");
+                        .HasComment("配额失效的 UTC 时间");
 
-                    b.Property<int>("PurchaseLimit")
+                    b.Property<Guid>("OfferId")
+                        .HasColumnType("uuid")
+                        .HasComment("目录促销或限量销售标识");
+
+                    b.Property<int>("PerUserLimit")
                         .HasColumnType("integer")
-                        .HasComment("每个用户在本活动中的购买上限");
+                        .HasComment("单用户可同时预占及累计售出的数量上限");
+
+                    b.Property<int>("ReleasedQuantity")
+                        .HasColumnType("integer")
+                        .HasComment("关闭后已归还常规库存的数量");
+
+                    b.Property<int>("ReservedQuantity")
+                        .HasColumnType("integer")
+                        .HasComment("已被未支付订单预占的数量");
 
                     b.Property<string>("Sku")
                         .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)")
-                        .HasComment("秒杀商品的标准化 SKU");
-
-                    b.Property<DateTimeOffset>("StartsOnUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasComment("活动开始的 UTC 时间");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer")
-                        .HasComment("秒杀活动状态");
-
-                    b.Property<int>("Strategy")
-                        .HasColumnType("integer")
-                        .HasComment("秒杀库存采用单行或分桶策略");
-
-                    b.Property<int>("TotalQuantity")
-                        .HasColumnType("integer")
-                        .HasComment("活动分配的库存总量");
-
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint")
-                        .HasComment("秒杀活动乐观并发版本号");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Status", "EndsOnUtc");
-
-                    b.ToTable("inventory_flash_sale_campaigns", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_flash_sale_campaigns_bucket_count", "\"BucketCount\" BETWEEN 1 AND 128 AND \"BucketCount\" * \"PurchaseLimit\" <= \"TotalQuantity\"");
-
-                            t.HasCheckConstraint("CK_flash_sale_campaigns_purchase_limit", "\"PurchaseLimit\" > 0 AND \"PurchaseLimit\" <= \"TotalQuantity\"");
-
-                            t.HasCheckConstraint("CK_flash_sale_campaigns_quantity", "\"TotalQuantity\" > 0");
-
-                            t.HasCheckConstraint("CK_flash_sale_campaigns_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
-                        });
-                });
-
-            modelBuilder.Entity("MSA.InventoryService.Domain.FlashSaleStockBucket", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<int>("AllocatedQuantity")
-                        .HasColumnType("integer")
-                        .HasComment("分配给该桶的库存总量");
-
-                    b.Property<int>("BucketNumber")
-                        .HasColumnType("integer")
-                        .HasComment("活动内的库存桶编号");
-
-                    b.Property<Guid>("CampaignId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("ReleasedQuantity")
-                        .HasColumnType("integer")
-                        .HasComment("活动关闭后不再销售的库存量");
-
-                    b.Property<int>("ReservedQuantity")
-                        .HasColumnType("integer")
-                        .HasComment("该桶已预占的库存量");
+                        .HasComment("配额对应的标准化 SKU");
 
                     b.Property<int>("SoldQuantity")
                         .HasColumnType("integer")
-                        .HasComment("该桶已确认售出的库存量");
+                        .HasComment("已支付并正式扣减的数量");
+
+                    b.Property<DateTimeOffset>("StartsOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("配额生效的 UTC 时间");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasComment("配额状态：开放或关闭");
+
+                    b.Property<int>("TotalQuantity")
+                        .HasColumnType("integer")
+                        .HasComment("从常规库存圈定的总数量");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
                         .HasColumnType("bigint")
-                        .HasComment("库存桶乐观并发版本号");
+                        .HasComment("配额乐观并发版本号");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CampaignId", "BucketNumber")
+                    b.HasIndex("OfferId", "Sku")
                         .IsUnique();
 
-                    b.ToTable("inventory_flash_sale_stock_buckets", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_flash_sale_stock_buckets_allocated", "\"AllocatedQuantity\" >= 0");
+                    b.HasIndex("Status", "EndsOnUtc");
 
-                            t.HasCheckConstraint("CK_flash_sale_stock_buckets_counters", "\"ReservedQuantity\" >= 0 AND \"SoldQuantity\" >= 0 AND \"ReleasedQuantity\" >= 0 AND \"ReservedQuantity\" + \"SoldQuantity\" + \"ReleasedQuantity\" <= \"AllocatedQuantity\"");
+                    b.ToTable("inventory_allocations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_inventory_allocations_counters", "\"ReservedQuantity\" >= 0 AND \"SoldQuantity\" >= 0 AND \"ReleasedQuantity\" >= 0 AND \"ReservedQuantity\" + \"SoldQuantity\" + \"ReleasedQuantity\" <= \"TotalQuantity\"");
+
+                            t.HasCheckConstraint("CK_inventory_allocations_limit", "\"PerUserLimit\" > 0 AND \"PerUserLimit\" <= \"TotalQuantity\"");
+
+                            t.HasCheckConstraint("CK_inventory_allocations_quantity", "\"TotalQuantity\" > 0");
+
+                            t.HasCheckConstraint("CK_inventory_allocations_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.InventoryService.Domain.InventoryAllocationBuyer", b =>
+                {
+                    b.Property<Guid>("AllocationId")
+                        .HasColumnType("uuid")
+                        .HasComment("库存配额标识");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("统一认证平台用户标识");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("用户计数创建的 UTC 时间");
+
+                    b.Property<int>("ReleasedQuantity")
+                        .HasColumnType("integer")
+                        .HasComment("该用户累计释放数量");
+
+                    b.Property<int>("ReservedQuantity")
+                        .HasColumnType("integer")
+                        .HasComment("该用户当前预占数量");
+
+                    b.Property<int>("SoldQuantity")
+                        .HasColumnType("integer")
+                        .HasComment("该用户累计售出数量");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("用户计数更新的 UTC 时间");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasComment("用户配额计数乐观并发版本号");
+
+                    b.HasKey("AllocationId", "UserId");
+
+                    b.ToTable("inventory_allocation_buyers", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_inventory_allocation_buyers_counters", "\"ReservedQuantity\" >= 0 AND \"SoldQuantity\" >= 0 AND \"ReleasedQuantity\" >= 0");
                         });
                 });
 
@@ -262,14 +270,6 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasComment("预占自动释放的 UTC 截止时间");
 
-                    b.Property<Guid?>("FlashSaleCampaignId")
-                        .HasColumnType("uuid")
-                        .HasComment("秒杀活动标识；普通预占为空");
-
-                    b.Property<long?>("FlashSaleStockBucketId")
-                        .HasColumnType("bigint")
-                        .HasComment("秒杀库存桶标识；普通预占为空");
-
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uuid")
                         .HasComment("预占关联的订单标识，也是业务唯一键");
@@ -293,7 +293,7 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     b.Property<string>("UserId")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
-                        .HasComment("秒杀预占所属用户；普通预占为空");
+                        .HasComment("预占所属用户；历史普通预占可能为空");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
@@ -302,14 +302,8 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FlashSaleStockBucketId");
-
                     b.HasIndex("OrderId")
                         .IsUnique();
-
-                    b.HasIndex("FlashSaleCampaignId", "UserId")
-                        .IsUnique()
-                        .HasFilter("\"FlashSaleCampaignId\" IS NOT NULL");
 
                     b.HasIndex("Status", "ExpiresOnUtc")
                         .HasFilter("\"Status\" = 0");
@@ -318,8 +312,6 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.ToTable("inventory_reservations", null, t =>
                         {
-                            t.HasCheckConstraint("CK_inventory_reservations_flash_sale_metadata", "(\"FlashSaleCampaignId\" IS NULL AND \"FlashSaleStockBucketId\" IS NULL AND \"UserId\" IS NULL) OR (\"FlashSaleCampaignId\" IS NOT NULL AND \"FlashSaleStockBucketId\" IS NOT NULL AND \"UserId\" IS NOT NULL)");
-
                             t.HasCheckConstraint("CK_inventory_reservations_status", "\"Status\" BETWEEN 0 AND 2");
 
                             t.HasCheckConstraint("CK_inventory_reservations_terminal_state", "(\"Status\" = 0 AND \"CommittedOnUtc\" IS NULL AND \"ReleasedOnUtc\" IS NULL AND \"TerminalReason\" IS NULL) OR (\"Status\" = 1 AND \"CommittedOnUtc\" IS NOT NULL AND \"ReleasedOnUtc\" IS NULL AND \"TerminalReason\" IS NULL) OR (\"Status\" = 2 AND \"CommittedOnUtc\" IS NULL AND \"ReleasedOnUtc\" IS NOT NULL AND \"TerminalReason\" IS NOT NULL)");
@@ -336,6 +328,14 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<Guid?>("AllocationId")
+                        .HasColumnType("uuid")
+                        .HasComment("该订单行使用的库存配额标识；普通库存为空");
+
+                    b.Property<Guid?>("OfferId")
+                        .HasColumnType("uuid")
+                        .HasComment("该订单行选择的促销或限量销售标识；普通库存为空");
+
                     b.Property<int>("Quantity")
                         .HasColumnType("integer")
                         .HasComment("该商品的预占数量");
@@ -351,11 +351,15 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AllocationId", "OfferId");
+
                     b.HasIndex("ReservationId", "Sku")
                         .IsUnique();
 
                     b.ToTable("inventory_reservation_lines", null, t =>
                         {
+                            t.HasCheckConstraint("CK_inventory_reservation_lines_allocation", "(\"AllocationId\" IS NULL AND \"OfferId\" IS NULL) OR (\"AllocationId\" IS NOT NULL AND \"OfferId\" IS NOT NULL)");
+
                             t.HasCheckConstraint("CK_inventory_reservation_lines_quantity", "\"Quantity\" > 0");
                         });
                 });
@@ -583,11 +587,11 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     b.ToTable("inventory_saga_states", (string)null);
                 });
 
-            modelBuilder.Entity("MSA.InventoryService.Domain.FlashSaleStockBucket", b =>
+            modelBuilder.Entity("MSA.InventoryService.Domain.InventoryAllocationBuyer", b =>
                 {
-                    b.HasOne("MSA.InventoryService.Domain.FlashSaleCampaign", null)
-                        .WithMany("StockBuckets")
-                        .HasForeignKey("CampaignId")
+                    b.HasOne("MSA.InventoryService.Domain.InventoryAllocation", null)
+                        .WithMany()
+                        .HasForeignKey("AllocationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -600,21 +604,13 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
-            modelBuilder.Entity("MSA.InventoryService.Domain.InventoryReservation", b =>
-                {
-                    b.HasOne("MSA.InventoryService.Domain.FlashSaleCampaign", null)
-                        .WithMany()
-                        .HasForeignKey("FlashSaleCampaignId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("MSA.InventoryService.Domain.FlashSaleStockBucket", null)
-                        .WithMany()
-                        .HasForeignKey("FlashSaleStockBucketId")
-                        .OnDelete(DeleteBehavior.Restrict);
-                });
-
             modelBuilder.Entity("MSA.InventoryService.Domain.InventoryReservationLine", b =>
                 {
+                    b.HasOne("MSA.InventoryService.Domain.InventoryAllocation", null)
+                        .WithMany()
+                        .HasForeignKey("AllocationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("MSA.InventoryService.Domain.InventoryReservation", null)
                         .WithMany("Lines")
                         .HasForeignKey("ReservationId")
@@ -629,11 +625,6 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                         .HasForeignKey("StockItemId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("MSA.InventoryService.Domain.FlashSaleCampaign", b =>
-                {
-                    b.Navigation("StockBuckets");
                 });
 
             modelBuilder.Entity("MSA.InventoryService.Domain.InventoryReservation", b =>

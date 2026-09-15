@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using MSA.CatalogService.Application;
+using MSA.CatalogService.Domain;
 
 namespace MSA.CatalogService.Endpoints;
 
@@ -129,6 +130,119 @@ internal static class CatalogAdminEndpoints
         {
             await sender.Send(
                 new ChangeProductPriceCommand(id, request.Price, request.Currency, request.ExpectedVersion, GetActor(context)),
+                cancellationToken);
+            return Results.NoContent();
+        });
+
+        write.MapPost("/products/{id:guid}/variants", async (
+            Guid id,
+            CreateProductVariantRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var variantId = await sender.Send(new CreateProductVariantCommand(
+                id,
+                request.Sku,
+                request.DisplayName,
+                request.AttributesJson,
+                request.Barcode,
+                request.Price,
+                request.Currency,
+                request.IsActive,
+                request.ExpectedVersion,
+                GetActor(context)), cancellationToken);
+            return Results.Created($"/api/catalog/admin/products/{id}/variants/{variantId}", new { id = variantId });
+        });
+
+        write.MapPut("/products/{id:guid}/variants/{variantId:guid}", async (
+            Guid id,
+            Guid variantId,
+            UpdateProductVariantRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new UpdateProductVariantCommand(
+                id,
+                variantId,
+                request.DisplayName,
+                request.AttributesJson,
+                request.Barcode,
+                request.Price,
+                request.Currency,
+                request.IsActive,
+                request.ExpectedVersion,
+                GetActor(context)), cancellationToken);
+            return Results.NoContent();
+        });
+
+        write.MapDelete("/products/{id:guid}/variants/{variantId:guid}", async (
+            Guid id,
+            Guid variantId,
+            long? expectedVersion,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(
+                new DeleteProductVariantCommand(id, variantId, expectedVersion, GetActor(context)),
+                cancellationToken);
+            return Results.NoContent();
+        });
+
+        write.MapPost("/products/{id:guid}/media", async (
+            Guid id,
+            ProductMediaRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var mediaId = await sender.Send(new AddProductMediaCommand(
+                id,
+                request.VariantId,
+                request.MediaType,
+                request.Url,
+                request.ThumbnailUrl,
+                request.AltText,
+                request.SortOrder,
+                request.ExpectedVersion,
+                GetActor(context)), cancellationToken);
+            return Results.Created($"/api/catalog/admin/products/{id}/media/{mediaId}", new { id = mediaId });
+        });
+
+        write.MapPut("/products/{id:guid}/media/{mediaId:guid}", async (
+            Guid id,
+            Guid mediaId,
+            ProductMediaRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new UpdateProductMediaCommand(
+                id,
+                mediaId,
+                request.VariantId,
+                request.MediaType,
+                request.Url,
+                request.ThumbnailUrl,
+                request.AltText,
+                request.SortOrder,
+                request.ExpectedVersion,
+                GetActor(context)), cancellationToken);
+            return Results.NoContent();
+        });
+
+        write.MapDelete("/products/{id:guid}/media/{mediaId:guid}", async (
+            Guid id,
+            Guid mediaId,
+            long? expectedVersion,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(
+                new DeleteProductMediaCommand(id, mediaId, expectedVersion, GetActor(context)),
                 cancellationToken);
             return Results.NoContent();
         });
@@ -382,6 +496,34 @@ public sealed record VersionedCatalogRequest(long? ExpectedVersion);
 public sealed record CatalogStateChangeRequest(long? ExpectedVersion, string? Reason);
 public sealed record UpdateProductDetailsRequest(string Name, string Description, long? ExpectedVersion);
 public sealed record ChangeProductPriceRequest(decimal Price, string Currency, long? ExpectedVersion);
+
+public sealed record CreateProductVariantRequest(
+    string Sku,
+    string DisplayName,
+    string AttributesJson,
+    string? Barcode,
+    decimal Price,
+    string Currency = "CNY",
+    bool IsActive = true,
+    long? ExpectedVersion = null);
+
+public sealed record UpdateProductVariantRequest(
+    string DisplayName,
+    string AttributesJson,
+    string? Barcode,
+    decimal Price,
+    string Currency,
+    bool IsActive,
+    long? ExpectedVersion = null);
+
+public sealed record ProductMediaRequest(
+    Guid? VariantId,
+    ProductMediaType MediaType,
+    string Url,
+    string? ThumbnailUrl,
+    string? AltText,
+    int SortOrder = 0,
+    long? ExpectedVersion = null);
 
 public sealed record PromotionDefinitionRequest(
     string Code,

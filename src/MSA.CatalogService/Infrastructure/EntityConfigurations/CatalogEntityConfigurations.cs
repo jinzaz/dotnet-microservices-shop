@@ -40,35 +40,31 @@ internal sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
     {
         entity.ToTable("catalog_products", table =>
         {
-            table.HasCheckConstraint("CK_products_price", "\"Price\" >= 0");
-            table.HasCheckConstraint("CK_products_currency", "\"Currency\" ~ '^[A-Z]{3}$'");
             table.HasCheckConstraint(
                 "CK_products_lifecycle",
                 $"\"LifecycleStatus\" BETWEEN {(int)ProductLifecycleStatus.Draft} AND {(int)ProductLifecycleStatus.Archived}");
             table.HasCheckConstraint("CK_products_revision", "\"Revision\" > 0 AND \"Version\" > 0");
             table.HasCheckConstraint("CK_products_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
-            table.HasCheckConstraint("CK_products_normalized_sku", "\"NormalizedSku\" = upper(trim(\"Sku\"))");
             table.HasCheckConstraint(
                 "CK_products_active_lifecycle",
                 $"(\"IsActive\" AND \"LifecycleStatus\" = {(int)ProductLifecycleStatus.Published} AND \"EffectiveOnUtc\" IS NOT NULL) OR (NOT \"IsActive\" AND \"LifecycleStatus\" <> {(int)ProductLifecycleStatus.Published})");
         });
         entity.HasKey(value => value.Id);
         entity.Property(value => value.CategoryId).HasComment("商品所属分类标识");
-        entity.Property(value => value.Sku).HasMaxLength(80).IsRequired().HasComment("商品 SKU 原始值");
-        entity.Property(value => value.NormalizedSku).HasMaxLength(80).IsRequired().HasComment("用于唯一匹配的标准化 SKU");
-        entity.Property(value => value.Name).HasMaxLength(200).IsRequired();
-        entity.Property(value => value.Description).HasColumnType("text").IsRequired();
-        entity.Property(value => value.Price).HasPrecision(18, 2).HasComment("商品当前目录单价");
-        entity.Property(value => value.Currency).HasMaxLength(3).IsRequired().HasComment("价格的三位币种代码");
+        entity.Property(value => value.Name).HasMaxLength(200).IsRequired().HasComment("SPU 商品名称");
+        entity.Property(value => value.Description).HasColumnType("text").IsRequired().HasComment("SPU 商品描述");
         entity.Property(value => value.LifecycleStatus).HasComment("商品生命周期状态");
-        entity.Property(value => value.IsActive).HasComment("面向公共目录查询的可售状态投影");
+        entity.Property(value => value.IsActive).HasComment("面向公共目录查询的可售状态");
         entity.Property(value => value.EffectiveOnUtc).HasComment("商品发布生效的 UTC 时间");
-        entity.Property(value => value.Revision).HasComment("向下游发布快照时使用的业务修订号");
+        entity.Property(value => value.Revision).HasComment("向下游发布商品快照时使用的业务修订号");
         entity.Property(value => value.CreatedBy).HasMaxLength(200).IsRequired();
         entity.Property(value => value.UpdatedBy).HasMaxLength(200).IsRequired();
         entity.Property(value => value.Version).IsConcurrencyToken().HasComment("商品乐观并发版本号");
-        entity.HasIndex(value => value.Sku).IsUnique();
-        entity.HasIndex(value => value.NormalizedSku).IsUnique();
+        entity.Ignore(value => value.DefaultVariant);
+        entity.Ignore(value => value.Sku);
+        entity.Ignore(value => value.NormalizedSku);
+        entity.Ignore(value => value.Price);
+        entity.Ignore(value => value.Currency);
         entity.HasIndex(value => new { value.CategoryId, value.LifecycleStatus, value.Id });
         entity.HasIndex(value => new { value.LifecycleStatus, value.EffectiveOnUtc, value.Id });
         entity.HasOne<Category>()
@@ -76,6 +72,78 @@ internal sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
             .HasForeignKey(value => value.CategoryId)
             .OnDelete(DeleteBehavior.Restrict)
             .IsRequired();
+        entity.HasMany(value => value.Variants)
+            .WithOne()
+            .HasForeignKey(value => value.ProductId)
+            .OnDelete(DeleteBehavior.Cascade);
+        entity.Navigation(value => value.Variants).UsePropertyAccessMode(PropertyAccessMode.Field);
+        entity.HasMany(value => value.Media)
+            .WithOne()
+            .HasForeignKey(value => value.ProductId)
+            .OnDelete(DeleteBehavior.Cascade);
+        entity.Navigation(value => value.Media).UsePropertyAccessMode(PropertyAccessMode.Field);
+    }
+}
+
+internal sealed class ProductVariantConfiguration : IEntityTypeConfiguration<ProductVariant>
+{
+    public void Configure(EntityTypeBuilder<ProductVariant> entity)
+    {
+        entity.ToTable("catalog_product_variants", table =>
+        {
+            table.HasCheckConstraint("CK_product_variants_price", "\"Price\" >= 0");
+            table.HasCheckConstraint("CK_product_variants_currency", "\"Currency\" ~ '^[A-Z]{3}$'");
+            table.HasCheckConstraint("CK_product_variants_normalized_sku", "\"NormalizedSku\" = upper(trim(\"Sku\"))");
+            table.HasCheckConstraint("CK_product_variants_attributes", "jsonb_typeof(\"AttributesJson\") = 'object'");
+            table.HasCheckConstraint("CK_product_variants_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+        });
+        entity.HasKey(value => value.Id);
+        entity.Property(value => value.ProductId).HasComment("SKU 所属的 SPU 商品标识");
+        entity.Property(value => value.Sku).HasMaxLength(80).IsRequired().HasComment("SKU 原始值");
+        entity.Property(value => value.NormalizedSku).HasMaxLength(80).IsRequired().HasComment("用于唯一匹配的标准化 SKU");
+        entity.Property(value => value.DisplayName).HasMaxLength(200).IsRequired().HasComment("SKU 展示名称");
+        entity.Property(value => value.AttributesJson).HasColumnType("jsonb").IsRequired().HasComment("颜色、尺码等销售属性 JSON 对象");
+        entity.Property(value => value.Barcode).HasMaxLength(80).HasComment("SKU 条码");
+        entity.Property(value => value.Price).HasPrecision(18, 2).HasComment("SKU 当前目录单价");
+        entity.Property(value => value.Currency).HasMaxLength(3).IsRequired().HasComment("价格的三位币种代码");
+        entity.Property(value => value.IsActive).HasComment("SKU 是否启用销售");
+        entity.Property(value => value.IsDefault).HasComment("是否为兼容单 SKU 接口的默认 SKU");
+        entity.Property(value => value.CreatedOnUtc).HasComment("SKU 创建的 UTC 时间");
+        entity.Property(value => value.UpdatedOnUtc).HasComment("SKU 最近更新的 UTC 时间");
+        entity.HasIndex(value => value.NormalizedSku).IsUnique();
+        entity.HasIndex(value => value.Barcode).IsUnique().HasFilter("\"Barcode\" IS NOT NULL");
+        entity.HasIndex(value => new { value.ProductId, value.IsDefault })
+            .IsUnique()
+            .HasFilter("\"IsDefault\"");
+        entity.HasIndex(value => new { value.ProductId, value.IsActive, value.Id });
+    }
+}
+
+internal sealed class ProductMediaConfiguration : IEntityTypeConfiguration<ProductMedia>
+{
+    public void Configure(EntityTypeBuilder<ProductMedia> entity)
+    {
+        entity.ToTable("catalog_product_media", table =>
+        {
+            table.HasCheckConstraint("CK_product_media_type", "\"MediaType\" BETWEEN 0 AND 1");
+            table.HasCheckConstraint("CK_product_media_sort_order", "\"SortOrder\" BETWEEN 0 AND 10000");
+            table.HasCheckConstraint("CK_product_media_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+        });
+        entity.HasKey(value => value.Id);
+        entity.Property(value => value.ProductId).HasComment("媒体所属的 SPU 商品标识");
+        entity.Property(value => value.VariantId).HasComment("媒体限定的 SKU 标识；空值表示 SPU 通用媒体");
+        entity.Property(value => value.MediaType).HasComment("媒体类型：图片或视频");
+        entity.Property(value => value.Url).HasMaxLength(2_000).IsRequired().HasComment("媒体资源 URL");
+        entity.Property(value => value.ThumbnailUrl).HasMaxLength(2_000).HasComment("视频或大图的缩略图 URL");
+        entity.Property(value => value.AltText).HasMaxLength(300).HasComment("图片替代文本或视频说明");
+        entity.Property(value => value.SortOrder).HasComment("同一商品内的展示顺序");
+        entity.Property(value => value.CreatedOnUtc).HasComment("媒体创建的 UTC 时间");
+        entity.Property(value => value.UpdatedOnUtc).HasComment("媒体最近更新的 UTC 时间");
+        entity.HasIndex(value => new { value.ProductId, value.VariantId, value.SortOrder, value.Id });
+        entity.HasOne<ProductVariant>()
+            .WithMany()
+            .HasForeignKey(value => value.VariantId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
 

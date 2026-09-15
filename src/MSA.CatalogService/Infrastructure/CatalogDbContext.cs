@@ -11,6 +11,8 @@ public sealed class CatalogDbContext(
 {
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
+    public DbSet<ProductMedia> ProductMedia => Set<ProductMedia>();
     public DbSet<Promotion> Promotions => Set<Promotion>();
     public DbSet<PromotionRule> PromotionRules => Set<PromotionRule>();
     public DbSet<PromotionBenefit> PromotionBenefits => Set<PromotionBenefit>();

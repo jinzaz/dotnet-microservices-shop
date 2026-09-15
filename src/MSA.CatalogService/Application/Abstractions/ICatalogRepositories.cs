@@ -66,6 +66,7 @@ public interface ICatalogReadService
 public interface ICatalogSnapshotPublisher
 {
     void Publish(Product product);
+    void PublishUnavailable(Product product, ProductVariant variant);
     void Publish(Promotion promotion);
     void Publish(Coupon coupon);
 }

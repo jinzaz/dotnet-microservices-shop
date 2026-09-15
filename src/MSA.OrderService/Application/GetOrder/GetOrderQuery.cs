@@ -3,8 +3,13 @@ using MSA.Infrastrucute.Mediator;
 namespace MSA.OrderService.Application.GetOrder;
 
 public sealed record OrderLineDto(
+    Guid? ProductId,
+    Guid? VariantId,
+    Guid? OfferId,
     string Sku,
     string ProductName,
+    string VariantName,
+    string VariantAttributesJson,
     int Quantity,
     decimal ListUnitPrice,
     decimal UnitPrice,

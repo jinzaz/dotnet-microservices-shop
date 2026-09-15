@@ -11,6 +11,9 @@ internal static class InventoryRequestHasher
     {
         ArgumentNullException.ThrowIfNull(integrationEvent);
 
+        if (integrationEvent.Items.Any(item => item.OfferId.HasValue))
+            return ComputeVariantAware(integrationEvent);
+
         // 商品行顺序不影响业务语义；所有会影响库存预占或后续支付的值都必须参与摘要。
         var canonicalItems = integrationEvent.Items
             .OrderBy(item => item.Sku, StringComparer.Ordinal)
@@ -30,6 +33,35 @@ internal static class InventoryRequestHasher
             integrationEvent.PaymentMethod.Trim().ToUpperInvariant(),
             integrationEvent.PaymentDueOnUtc?.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
         var payload = JsonSerializer.SerializeToUtf8Bytes(canonicalRequest);
+        return Convert.ToHexString(SHA256.HashData(payload));
+    }
+
+    private static string ComputeVariantAware(OrderSubmittedIntegrationEvent integrationEvent)
+    {
+        var items = integrationEvent.Items
+            .OrderBy(item => item.Sku, StringComparer.Ordinal)
+            .ThenBy(item => item.OfferId)
+            .ThenBy(item => item.UnitPrice)
+            .ThenBy(item => item.Quantity)
+            .Select(item => new
+            {
+                Sku = item.Sku.Trim().ToUpperInvariant(),
+                item.Quantity,
+                UnitPrice = item.UnitPrice.ToString("G29", CultureInfo.InvariantCulture),
+                item.ProductId,
+                item.VariantId,
+                item.OfferId
+            })
+            .ToArray();
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            UserId = integrationEvent.UserId.Trim(),
+            Items = items,
+            Amount = integrationEvent.Amount.ToString("G29", CultureInfo.InvariantCulture),
+            Currency = integrationEvent.Currency.Trim().ToUpperInvariant(),
+            PaymentMethod = integrationEvent.PaymentMethod.Trim().ToUpperInvariant(),
+            PaymentDueOnUtc = integrationEvent.PaymentDueOnUtc?.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)
+        });
         return Convert.ToHexString(SHA256.HashData(payload));
     }
 

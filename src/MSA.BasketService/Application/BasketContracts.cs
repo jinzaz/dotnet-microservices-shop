@@ -6,8 +6,11 @@ public sealed record BasketMoneyTotalDto(string Currency, decimal Amount);
 
 public sealed record BasketItemDto(
     Guid ProductId,
+    Guid VariantId,
     string Sku,
     string ProductName,
+    string VariantName,
+    string AttributesJson,
     int Quantity,
     decimal UnitPrice,
     string Currency,

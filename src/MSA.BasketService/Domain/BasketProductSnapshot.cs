@@ -8,8 +8,11 @@ public sealed class BasketProductSnapshot
 
     public BasketProductSnapshot(
         Guid productId,
+        Guid variantId,
         string sku,
-        string name,
+        string productName,
+        string variantName,
+        string attributesJson,
         decimal price,
         string currency,
         bool isAvailable,
@@ -18,15 +21,20 @@ public sealed class BasketProductSnapshot
     {
         if (productId == Guid.Empty)
             throw new ArgumentException("Product id is required.", nameof(productId));
+        if (variantId == Guid.Empty)
+            throw new ArgumentException("Variant id is required.", nameof(variantId));
 
         ProductId = productId;
-        Sku = Basket.NormalizeSku(sku);
-        Apply(sku, name, price, currency, isAvailable, sourceRevision, effectiveOnUtc);
+        VariantId = variantId;
+        Apply(sku, productName, variantName, attributesJson, price, currency, isAvailable, sourceRevision, effectiveOnUtc);
     }
 
     public Guid ProductId { get; private set; }
+    public Guid VariantId { get; private set; }
     public string Sku { get; private set; } = string.Empty;
-    public string Name { get; private set; } = string.Empty;
+    public string ProductName { get; private set; } = string.Empty;
+    public string VariantName { get; private set; } = string.Empty;
+    public string AttributesJson { get; private set; } = "{}";
     public decimal Price { get; private set; }
     public string Currency { get; private set; } = string.Empty;
     public bool IsAvailable { get; private set; }
@@ -35,7 +43,9 @@ public sealed class BasketProductSnapshot
 
     public bool Apply(
         string sku,
-        string name,
+        string productName,
+        string variantName,
+        string attributesJson,
         decimal price,
         string currency,
         bool isAvailable,
@@ -47,13 +57,12 @@ public sealed class BasketProductSnapshot
         if (sourceRevision < SourceRevision
             || sourceRevision == SourceRevision && effectiveOnUtc <= EffectiveOnUtc)
         {
-            // 同一商品只接受更新的修订，修订相同时用生效时间抵御重复或乱序事件。
             return false;
         }
 
-        var normalizedName = name?.Trim() ?? string.Empty;
-        if (normalizedName.Length is 0 or > 200)
-            throw new ArgumentException("Product name must contain 1-200 characters.", nameof(name));
+        ProductName = NormalizeName(productName, nameof(productName));
+        VariantName = NormalizeName(variantName, nameof(variantName));
+        AttributesJson = string.IsNullOrWhiteSpace(attributesJson) ? "{}" : attributesJson.Trim();
         if (price is < 0 or > 9_999_999_999_999_999.99m)
             throw new ArgumentOutOfRangeException(nameof(price));
         var normalizedCurrency = currency?.Trim().ToUpperInvariant() ?? string.Empty;
@@ -61,7 +70,6 @@ public sealed class BasketProductSnapshot
             throw new ArgumentException("Currency must be a three-letter ISO-style code.", nameof(currency));
 
         Sku = Basket.NormalizeSku(sku);
-        Name = normalizedName;
         Price = decimal.Round(price, 2, MidpointRounding.AwayFromZero);
         Currency = normalizedCurrency;
         IsAvailable = isAvailable;
@@ -71,5 +79,23 @@ public sealed class BasketProductSnapshot
     }
 
     public ProductSelection ToSelection() =>
-        new(ProductId, Sku, Name, Price, Currency, IsAvailable, SourceRevision);
+        new(
+            ProductId,
+            VariantId,
+            Sku,
+            ProductName,
+            VariantName,
+            AttributesJson,
+            Price,
+            Currency,
+            IsAvailable,
+            SourceRevision);
+
+    private static string NormalizeName(string value, string parameterName)
+    {
+        var normalized = value?.Trim() ?? string.Empty;
+        if (normalized.Length is 0 or > 200)
+            throw new ArgumentException("Name must contain 1-200 characters.", parameterName);
+        return normalized;
+    }
 }

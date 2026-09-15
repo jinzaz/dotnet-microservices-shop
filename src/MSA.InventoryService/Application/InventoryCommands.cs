@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using MSA.Infrastrucute.Mediator;
-using MSA.InventoryService.Application.FlashSales;
 using MSA.InventoryService.Domain;
 using MSA.InventoryService.Infrastructure;
 using System.Text.Json;

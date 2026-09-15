@@ -1,7 +1,13 @@
 using MSA.EventBus.Abstractions;
 namespace MSA.Contracts;
 
-public sealed record OrderItemContract(string Sku, int Quantity, decimal UnitPrice);
+public sealed record OrderItemContract(
+    string Sku,
+    int Quantity,
+    decimal UnitPrice,
+    Guid? ProductId = null,
+    Guid? VariantId = null,
+    Guid? OfferId = null);
 
 public sealed class OrderSubmittedIntegrationEvent : IntegrationEvent
 {
@@ -159,6 +165,27 @@ public sealed class ProductChangedIntegrationEvent : IntegrationEvent
     public DateTimeOffset? EffectiveOnUtc { get; init; }
 }
 
+/// <summary>
+/// Variant-level catalog snapshot. ProductId identifies the SPU; VariantId identifies the sellable SKU.
+/// </summary>
+public sealed class ProductVariantChangedIntegrationEvent : IntegrationEvent
+{
+    public required Guid ProductId { get; init; }
+    public required Guid VariantId { get; init; }
+    public required string Sku { get; init; }
+    public required string ProductName { get; init; }
+    public required string VariantName { get; init; }
+    public required string AttributesJson { get; init; }
+    public required decimal Price { get; init; }
+    public required string Currency { get; init; }
+    public required bool IsActive { get; init; }
+    public bool IsDefault { get; init; }
+    public Guid? CategoryId { get; init; }
+    public string? LifecycleStatus { get; init; }
+    public long Revision { get; init; }
+    public DateTimeOffset? EffectiveOnUtc { get; init; }
+}
+
 public sealed record PromotionRuleContract(
     string RuleType,
     int SchemaVersion,
@@ -223,5 +250,23 @@ public sealed class FlashSaleCampaignOpenedIntegrationEvent : IntegrationEvent
 public sealed class FlashSaleCampaignClosedIntegrationEvent : IntegrationEvent
 {
     public required Guid CampaignId { get; init; }
+    public required DateTimeOffset ClosedOnUtc { get; init; }
+}
+
+public sealed class InventoryAllocationOpenedIntegrationEvent : IntegrationEvent
+{
+    public required Guid AllocationId { get; init; }
+    public required Guid OfferId { get; init; }
+    public required string Sku { get; init; }
+    public required DateTimeOffset StartsOnUtc { get; init; }
+    public required DateTimeOffset EndsOnUtc { get; init; }
+    public required int PerUserLimit { get; init; }
+}
+
+public sealed class InventoryAllocationClosedIntegrationEvent : IntegrationEvent
+{
+    public required Guid AllocationId { get; init; }
+    public required Guid OfferId { get; init; }
+    public required string Sku { get; init; }
     public required DateTimeOffset ClosedOnUtc { get; init; }
 }

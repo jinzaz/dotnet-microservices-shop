@@ -16,6 +16,9 @@ public sealed class CreateOrderCommandValidator : AbstractValidator<CreateOrderC
         {
             item.RuleFor(value => value.Sku).NotEmpty().MaximumLength(80);
             item.RuleFor(value => value.Quantity).InclusiveBetween(1, 999);
+            item.RuleFor(value => value.OfferId)
+                .Must(id => !id.HasValue || id.Value != Guid.Empty)
+                .WithMessage("OfferId cannot be an empty GUID.");
         });
         RuleFor(command => command.PaymentMethod).Must(value => value is "Alipay" or "WeChatPay");
         RuleFor(command => command.ShippingAddress)

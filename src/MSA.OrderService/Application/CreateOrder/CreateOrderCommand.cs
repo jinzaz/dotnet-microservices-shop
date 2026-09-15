@@ -3,7 +3,7 @@ using MSA.OrderService.Domain;
 
 namespace MSA.OrderService.Application.CreateOrder;
 
-public sealed record CreateOrderItem(string Sku, int Quantity);
+public sealed record CreateOrderItem(string Sku, int Quantity, Guid? OfferId = null);
 
 public sealed record ShippingAddressInput(
     Guid? AddressId,

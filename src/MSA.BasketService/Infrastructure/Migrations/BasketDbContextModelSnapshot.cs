@@ -110,7 +110,8 @@ namespace MSA.BasketService.Infrastructure.Migrations
                         .HasComment("商品价格快照的三位币种代码");
 
                     b.Property<Guid>("ProductId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("购物项所属的 SPU 商品标识");
 
                     b.Property<string>("ProductNameAtSelection")
                         .IsRequired()
@@ -140,12 +141,27 @@ namespace MSA.BasketService.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("UpdatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("VariantAttributesJsonAtSelection")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasComment("最近选择时的 SKU 销售属性快照");
+
+                    b.Property<Guid>("VariantId")
+                        .HasColumnType("uuid")
+                        .HasComment("购物项选择的 SKU 变体标识");
+
+                    b.Property<string>("VariantNameAtSelection")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("最近选择时的 SKU 展示名称快照");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("BasketId", "ProductId")
+                    b.HasIndex("BasketId", "Sku")
                         .IsUnique();
 
-                    b.HasIndex("BasketId", "Sku")
+                    b.HasIndex("BasketId", "VariantId")
                         .IsUnique();
 
                     b.ToTable("basket_items", null, t =>
@@ -161,14 +177,22 @@ namespace MSA.BasketService.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_basket_items_sku", "\"Sku\" = upper(trim(\"Sku\"))");
 
                             t.HasCheckConstraint("CK_basket_items_timestamps", "\"UpdatedOnUtc\" >= \"AddedOnUtc\"");
+
+                            t.HasCheckConstraint("CK_basket_items_variant_attributes", "jsonb_typeof(\"VariantAttributesJsonAtSelection\") = 'object'");
                         });
                 });
 
             modelBuilder.Entity("MSA.BasketService.Domain.BasketProductSnapshot", b =>
                 {
-                    b.Property<Guid>("ProductId")
+                    b.Property<Guid>("VariantId")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("目录 SKU 变体标识");
+
+                    b.Property<string>("AttributesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasComment("目录 SKU 销售属性的本地投影");
 
                     b.Property<string>("Currency")
                         .IsRequired()
@@ -184,16 +208,20 @@ namespace MSA.BasketService.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasComment("目录商品当前是否允许加入购物车");
 
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasComment("目录商品名称的本地投影");
-
                     b.Property<decimal>("Price")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)")
                         .HasComment("目录商品当前单价的本地投影");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasComment("目录 SPU 商品标识");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("目录 SPU 商品名称的本地投影");
 
                     b.Property<string>("Sku")
                         .IsRequired()
@@ -205,7 +233,15 @@ namespace MSA.BasketService.Infrastructure.Migrations
                         .HasColumnType("bigint")
                         .HasComment("已应用的目录商品修订号，用于拒绝乱序事件");
 
-                    b.HasKey("ProductId");
+                    b.Property<string>("VariantName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("目录 SKU 展示名称的本地投影");
+
+                    b.HasKey("VariantId");
+
+                    b.HasIndex("ProductId");
 
                     b.HasIndex("Sku")
                         .IsUnique();
@@ -214,6 +250,8 @@ namespace MSA.BasketService.Infrastructure.Migrations
 
                     b.ToTable("basket_product_snapshots", null, t =>
                         {
+                            t.HasCheckConstraint("CK_basket_product_snapshots_attributes", "jsonb_typeof(\"AttributesJson\") = 'object'");
+
                             t.HasCheckConstraint("CK_basket_product_snapshots_currency", "\"Currency\" ~ '^[A-Z]{3}$'");
 
                             t.HasCheckConstraint("CK_basket_product_snapshots_price", "\"Price\" >= 0");

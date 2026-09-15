@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using MSA.OrderService.Application.CreateOrder;
 using MSA.OrderService.Application.GetOrder;
 using MSA.OrderService.Application.GetOrders;
@@ -15,7 +16,7 @@ namespace MSA.OrderService.Controllers;
 [Route("order/orders")]
 public sealed class OrdersController(ISender sender) : ControllerBase
 {
-    public sealed record CreateOrderItemRequest(string Sku, int Quantity);
+    public sealed record CreateOrderItemRequest(string Sku, int Quantity, Guid? OfferId = null);
 
     public sealed record CreateOrderRequest(
         IReadOnlyList<CreateOrderItemRequest> Items,
@@ -27,6 +28,7 @@ public sealed class OrdersController(ISender sender) : ControllerBase
 
     [HttpPost]
     [Authorize(Policy = "order-api")]
+    [EnableRateLimiting("OrderSubmission")]
     public async Task<ActionResult> Create(
         CreateOrderRequest request,
         [FromHeader(Name = "Idempotency-Key")] string idempotencyKey,
@@ -37,7 +39,7 @@ public sealed class OrdersController(ISender sender) : ControllerBase
             new CreateOrderCommand(
                 userId,
                 idempotencyKey,
-                request.Items.Select(item => new CreateOrderItem(item.Sku, item.Quantity)).ToArray(),
+                request.Items.Select(item => new CreateOrderItem(item.Sku, item.Quantity, item.OfferId)).ToArray(),
                 request.PaymentMethod,
                 request.ShippingAddress,
                 request.CouponCodes,

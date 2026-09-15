@@ -2,7 +2,6 @@ using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using MSA.Infrastrucute.Mediator;
-using MSA.InventoryService.Application.FlashSales;
 using MSA.InventoryService.Domain;
 using MSA.InventoryService.Infrastructure;
 using System.Security.Cryptography;

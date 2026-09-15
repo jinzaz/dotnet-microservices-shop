@@ -195,11 +195,12 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         });
                 });
 
-            modelBuilder.Entity("MSA.OrderService.Domain.FlashSaleCampaignProjection", b =>
+            modelBuilder.Entity("MSA.OrderService.Domain.InventoryAllocationProjection", b =>
                 {
-                    b.Property<Guid>("CampaignId")
+                    b.Property<Guid>("AllocationId")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("库存配额内部标识");
 
                     b.Property<DateTimeOffset?>("ClosedOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -210,8 +211,13 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.Property<bool>("IsOpen")
                         .HasColumnType("boolean");
 
-                    b.Property<int>("PurchaseLimit")
-                        .HasColumnType("integer");
+                    b.Property<Guid>("OfferId")
+                        .HasColumnType("uuid")
+                        .HasComment("目录促销或限量销售标识");
+
+                    b.Property<int>("PerUserLimit")
+                        .HasColumnType("integer")
+                        .HasComment("单个用户可同时预占及累计售出的数量上限");
 
                     b.Property<string>("Sku")
                         .IsRequired()
@@ -221,11 +227,6 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("StartsOnUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("Strategy")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
                     b.Property<DateTimeOffset>("UpdatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -233,15 +234,18 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
-                    b.HasKey("CampaignId");
+                    b.HasKey("AllocationId");
+
+                    b.HasIndex("OfferId", "Sku")
+                        .IsUnique();
 
                     b.HasIndex("IsOpen", "StartsOnUtc", "EndsOnUtc");
 
-                    b.ToTable("order_flash_sale_campaign_projections", null, t =>
+                    b.ToTable("order_inventory_allocation_projections", null, t =>
                         {
-                            t.HasCheckConstraint("CK_flash_sale_campaign_projections_limit", "\"PurchaseLimit\" > 0");
+                            t.HasCheckConstraint("CK_inventory_allocation_projections_limit", "\"PerUserLimit\" > 0");
 
-                            t.HasCheckConstraint("CK_flash_sale_campaign_projections_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
+                            t.HasCheckConstraint("CK_inventory_allocation_projections_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
                         });
                 });
 
@@ -291,9 +295,6 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)")
                         .HasComment("订单优惠总额");
-
-                    b.Property<Guid?>("FlashSaleCampaignId")
-                        .HasColumnType("uuid");
 
                     b.Property<int>("FulfillmentStatus")
                         .HasColumnType("integer")
@@ -390,12 +391,6 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasIndex("OrderNumber")
                         .IsUnique();
-
-                    b.HasIndex("FlashSaleCampaignId", "Status");
-
-                    b.HasIndex("FlashSaleCampaignId", "UserId")
-                        .IsUnique()
-                        .HasFilter("\"FlashSaleCampaignId\" IS NOT NULL");
 
                     b.HasIndex("FulfillmentStatus", "UpdatedOnUtc");
 
@@ -639,13 +634,22 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasComment("下单时的目录单价快照");
 
+                    b.Property<Guid?>("OfferId")
+                        .HasColumnType("uuid")
+                        .HasComment("该订单行选择的限量销售或促销标识；普通购买为空");
+
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasComment("下单时的 SPU 商品标识快照");
 
                     b.Property<string>("ProductName")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasColumnType("character varying(200)")
+                        .HasComment("下单时的 SPU 商品名称快照");
 
                     b.Property<int>("Quantity")
                         .HasColumnType("integer")
@@ -661,7 +665,24 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasComment("分摊优惠后的成交单价");
 
+                    b.Property<string>("VariantAttributesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasComment("下单时的 SKU 销售属性快照");
+
+                    b.Property<Guid?>("VariantId")
+                        .HasColumnType("uuid")
+                        .HasComment("下单时的 SKU 变体标识快照");
+
+                    b.Property<string>("VariantName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("下单时的 SKU 展示名称快照");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("OfferId", "Sku");
 
                     b.HasIndex("OrderId", "Sku")
                         .IsUnique();
@@ -671,14 +692,21 @@ namespace MSA.OrderService.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_order_lines_prices", "\"ListUnitPrice\" >= 0 AND \"UnitPrice\" >= 0 AND \"UnitPrice\" <= \"ListUnitPrice\" AND \"LineSubtotal\" = round(\"ListUnitPrice\" * \"Quantity\", 2) AND \"DiscountAmount\" = round((\"ListUnitPrice\" - \"UnitPrice\") * \"Quantity\", 2) AND \"LineAmount\" = round(\"UnitPrice\" * \"Quantity\", 2)");
 
                             t.HasCheckConstraint("CK_order_lines_quantity", "\"Quantity\" > 0");
+
+                            t.HasCheckConstraint("CK_order_lines_variant_attributes", "jsonb_typeof(\"VariantAttributesJson\") = 'object'");
                         });
                 });
 
             modelBuilder.Entity("MSA.OrderService.Domain.OrderProductProjection", b =>
                 {
-                    b.Property<Guid>("ProductId")
+                    b.Property<Guid>("VariantId")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasComment("目录 SKU 变体标识");
+
+                    b.Property<string>("AttributesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
 
                     b.Property<Guid?>("CategoryId")
                         .HasColumnType("uuid");
@@ -691,15 +719,19 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
                     b.Property<decimal>("Price")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)")
                         .HasComment("下单侧使用的目录单价投影");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasComment("目录 SPU 商品标识");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("Sku")
                         .IsRequired()
@@ -712,7 +744,14 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("UpdatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.HasKey("ProductId");
+                    b.Property<string>("VariantName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("VariantId");
+
+                    b.HasIndex("ProductId");
 
                     b.HasIndex("Sku")
                         .IsUnique();
@@ -721,6 +760,8 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.ToTable("order_product_projections", null, t =>
                         {
+                            t.HasCheckConstraint("CK_product_projections_attributes", "jsonb_typeof(\"AttributesJson\") = 'object'");
+
                             t.HasCheckConstraint("CK_product_projections_price", "\"Price\" >= 0");
                         });
                 });

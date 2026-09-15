@@ -8,7 +8,6 @@ using MSA.EventBusOutbox.Extensions;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
 using MSA.OrderService.Application;
-using MSA.OrderService.Application.CreateFlashSaleOrder;
 using MSA.OrderService.Application.CreateOrder;
 using MSA.OrderService.Application.ManageFulfillment;
 using MSA.OrderService.Application.Pricing;
@@ -59,14 +58,13 @@ builder.Services.AddOptions<OrderCheckoutOptions>()
 builder.Services.AddMediatR(configuration =>
     configuration.RegisterServicesFromAssemblyContaining<CreateOrderCommand>());
 builder.Services.AddScoped<IValidator<CreateOrderCommand>, CreateOrderCommandValidator>();
-builder.Services.AddScoped<IValidator<CreateFlashSaleOrderCommand>, CreateFlashSaleOrderCommandValidator>();
 builder.Services.AddScoped<IValidator<UpdateOrderFulfillmentCommand>, UpdateOrderFulfillmentCommandValidator>();
 builder.Services.AddMsaApplicationPipeline();
 
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddPolicy("FlashSaleSubmission", httpContext =>
+    options.AddPolicy("OrderSubmission", httpContext =>
         RateLimitPartition.GetTokenBucketLimiter(
             httpContext.User.FindFirstValue("sub")
                 ?? httpContext.Connection.RemoteIpAddress?.ToString()
@@ -96,10 +94,13 @@ builder.Services.AddRabbitMQEventBus(options =>
 builder.Services.AddOutbox<OrderDbContext>();
 builder.Services.AddSaga<OrderDbContext>();
 builder.Services.AddIntegrationEventHandler<ProductChangedIntegrationEvent, ProductChangedHandler>();
+builder.Services.AddIntegrationEventHandler<ProductVariantChangedIntegrationEvent, ProductVariantChangedHandler>();
 builder.Services.AddIntegrationEventHandler<PromotionSnapshotChangedIntegrationEvent, PromotionSnapshotChangedHandler>();
 builder.Services.AddIntegrationEventHandler<CouponSnapshotChangedIntegrationEvent, CouponSnapshotChangedHandler>();
 builder.Services.AddIntegrationEventHandler<FlashSaleCampaignOpenedIntegrationEvent, FlashSaleCampaignOpenedHandler>();
 builder.Services.AddIntegrationEventHandler<FlashSaleCampaignClosedIntegrationEvent, FlashSaleCampaignClosedHandler>();
+builder.Services.AddIntegrationEventHandler<InventoryAllocationOpenedIntegrationEvent, InventoryAllocationOpenedHandler>();
+builder.Services.AddIntegrationEventHandler<InventoryAllocationClosedIntegrationEvent, InventoryAllocationClosedHandler>();
 builder.Services.AddIntegrationEventHandler<InventoryReservedIntegrationEvent, InventoryReservedHandler>();
 builder.Services.AddIntegrationEventHandler<InventoryRejectedIntegrationEvent, InventoryRejectedHandler>();
 builder.Services.AddIntegrationEventHandler<PaymentSucceededIntegrationEvent, PaymentSucceededHandler>();

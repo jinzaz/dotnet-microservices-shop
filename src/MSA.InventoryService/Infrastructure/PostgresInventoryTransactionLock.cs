@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using MSA.InventoryService.Application.FlashSales;
+using MSA.InventoryService.Application;
 using System.Data;
 
 namespace MSA.InventoryService.Infrastructure;
@@ -32,11 +32,11 @@ internal sealed class PostgresInventoryTransactionLock(InventoryDbContext db) : 
             ],
             cancellationToken);
 
-    public Task AcquireFlashSaleBuyerAsync(
-        Guid campaignId,
+    public Task AcquireAllocationBuyerAsync(
+        Guid allocationId,
         string userId,
         CancellationToken cancellationToken) =>
-        AcquireAsync([$"inventory-flash-buyer:{campaignId:N}:{userId}"], cancellationToken);
+        AcquireAsync([$"inventory-allocation-buyer:{allocationId:N}:{userId}"], cancellationToken);
 
     private async Task AcquireAsync(
         IEnumerable<string> resourceKeys,

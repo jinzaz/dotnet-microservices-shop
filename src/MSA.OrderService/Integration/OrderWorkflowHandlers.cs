@@ -62,7 +62,7 @@ internal sealed class ProductChangedHandler(OrderDbContext db, IOutboxStore outb
         var effectiveOnUtc = integrationEvent.EffectiveOnUtc
             ?? new DateTimeOffset(DateTime.SpecifyKind(integrationEvent.CreationDate, DateTimeKind.Utc));
         var product = await Db.ProductProjections
-            .SingleOrDefaultAsync(value => value.ProductId == integrationEvent.ProductId, cancellationToken);
+            .SingleOrDefaultAsync(value => value.VariantId == integrationEvent.ProductId, cancellationToken);
         if (product is null)
         {
             Db.ProductProjections.Add(new OrderProductProjection(
@@ -80,6 +80,48 @@ internal sealed class ProductChangedHandler(OrderDbContext db, IOutboxStore outb
 
         product.Apply(
             integrationEvent.Name,
+            integrationEvent.Price,
+            integrationEvent.Currency,
+            integrationEvent.IsActive,
+            integrationEvent.CategoryId,
+            integrationEvent.Revision,
+            effectiveOnUtc);
+    }
+}
+
+internal sealed class ProductVariantChangedHandler(OrderDbContext db, IOutboxStore outbox)
+    : OrderEventHandler<ProductVariantChangedIntegrationEvent>(db, outbox, "ordering.catalog-product-variant.v1")
+{
+    protected override async Task HandleCoreAsync(
+        ProductVariantChangedIntegrationEvent integrationEvent,
+        CancellationToken cancellationToken)
+    {
+        var effectiveOnUtc = integrationEvent.EffectiveOnUtc
+            ?? new DateTimeOffset(DateTime.SpecifyKind(integrationEvent.CreationDate, DateTimeKind.Utc));
+        var product = await Db.ProductProjections
+            .SingleOrDefaultAsync(value => value.VariantId == integrationEvent.VariantId, cancellationToken);
+        if (product is null)
+        {
+            Db.ProductProjections.Add(new OrderProductProjection(
+                integrationEvent.VariantId,
+                integrationEvent.ProductId,
+                integrationEvent.Sku.Trim().ToUpperInvariant(),
+                integrationEvent.ProductName,
+                integrationEvent.VariantName,
+                integrationEvent.AttributesJson,
+                integrationEvent.Price,
+                integrationEvent.Currency,
+                integrationEvent.IsActive,
+                integrationEvent.CategoryId,
+                integrationEvent.Revision,
+                effectiveOnUtc));
+            return;
+        }
+
+        product.Apply(
+            integrationEvent.ProductName,
+            integrationEvent.VariantName,
+            integrationEvent.AttributesJson,
             integrationEvent.Price,
             integrationEvent.Currency,
             integrationEvent.IsActive,
@@ -203,19 +245,19 @@ internal sealed class FlashSaleCampaignOpenedHandler(OrderDbContext db, IOutboxS
         FlashSaleCampaignOpenedIntegrationEvent integrationEvent,
         CancellationToken cancellationToken)
     {
-        var projection = await Db.FlashSaleCampaignProjections
-            .SingleOrDefaultAsync(value => value.CampaignId == integrationEvent.CampaignId, cancellationToken);
+        var projection = await Db.InventoryAllocationProjections
+            .SingleOrDefaultAsync(value => value.AllocationId == integrationEvent.CampaignId, cancellationToken);
         var occurredOnUtc = new DateTimeOffset(
             DateTime.SpecifyKind(integrationEvent.CreationDate, DateTimeKind.Utc));
         if (projection is null)
         {
-            Db.FlashSaleCampaignProjections.Add(new FlashSaleCampaignProjection(
+            Db.InventoryAllocationProjections.Add(new InventoryAllocationProjection(
+                integrationEvent.CampaignId,
                 integrationEvent.CampaignId,
                 integrationEvent.Sku,
                 integrationEvent.StartsOnUtc,
                 integrationEvent.EndsOnUtc,
                 integrationEvent.PurchaseLimit,
-                integrationEvent.Strategy,
                 occurredOnUtc));
             return;
         }
@@ -225,7 +267,6 @@ internal sealed class FlashSaleCampaignOpenedHandler(OrderDbContext db, IOutboxS
             integrationEvent.StartsOnUtc,
             integrationEvent.EndsOnUtc,
             integrationEvent.PurchaseLimit,
-            integrationEvent.Strategy,
             occurredOnUtc);
     }
 }
@@ -237,14 +278,73 @@ internal sealed class FlashSaleCampaignClosedHandler(OrderDbContext db, IOutboxS
         FlashSaleCampaignClosedIntegrationEvent integrationEvent,
         CancellationToken cancellationToken)
     {
-        var projection = await Db.FlashSaleCampaignProjections
-            .SingleOrDefaultAsync(value => value.CampaignId == integrationEvent.CampaignId, cancellationToken);
+        var projection = await Db.InventoryAllocationProjections
+            .SingleOrDefaultAsync(value => value.AllocationId == integrationEvent.CampaignId, cancellationToken);
         if (projection is null)
         {
-            Db.FlashSaleCampaignProjections.Add(
-                FlashSaleCampaignProjection.CreateClosed(
+            Db.InventoryAllocationProjections.Add(
+                InventoryAllocationProjection.CreateClosed(
                     integrationEvent.CampaignId,
+                    integrationEvent.CampaignId,
+                    $"CLOSED:{integrationEvent.CampaignId:N}",
                     integrationEvent.ClosedOnUtc));
+            return;
+        }
+        projection.Close(integrationEvent.ClosedOnUtc);
+    }
+}
+
+internal sealed class InventoryAllocationOpenedHandler(OrderDbContext db, IOutboxStore outbox)
+    : OrderEventHandler<InventoryAllocationOpenedIntegrationEvent>(db, outbox, "ordering.inventory-allocation-opened.v1")
+{
+    protected override async Task HandleCoreAsync(
+        InventoryAllocationOpenedIntegrationEvent integrationEvent,
+        CancellationToken cancellationToken)
+    {
+        var projection = await Db.InventoryAllocationProjections
+            .SingleOrDefaultAsync(value => value.AllocationId == integrationEvent.AllocationId, cancellationToken);
+        var occurredOnUtc = new DateTimeOffset(
+            DateTime.SpecifyKind(integrationEvent.CreationDate, DateTimeKind.Utc));
+        if (projection is null)
+        {
+            Db.InventoryAllocationProjections.Add(new InventoryAllocationProjection(
+                integrationEvent.AllocationId,
+                integrationEvent.OfferId,
+                integrationEvent.Sku,
+                integrationEvent.StartsOnUtc,
+                integrationEvent.EndsOnUtc,
+                integrationEvent.PerUserLimit,
+                occurredOnUtc));
+            return;
+        }
+
+        if (projection.OfferId != integrationEvent.OfferId)
+            throw new InvalidOperationException("Inventory allocation cannot be reassigned to another offer.");
+        projection.ApplyOpen(
+            integrationEvent.Sku,
+            integrationEvent.StartsOnUtc,
+            integrationEvent.EndsOnUtc,
+            integrationEvent.PerUserLimit,
+            occurredOnUtc);
+    }
+}
+
+internal sealed class InventoryAllocationClosedHandler(OrderDbContext db, IOutboxStore outbox)
+    : OrderEventHandler<InventoryAllocationClosedIntegrationEvent>(db, outbox, "ordering.inventory-allocation-closed.v1")
+{
+    protected override async Task HandleCoreAsync(
+        InventoryAllocationClosedIntegrationEvent integrationEvent,
+        CancellationToken cancellationToken)
+    {
+        var projection = await Db.InventoryAllocationProjections
+            .SingleOrDefaultAsync(value => value.AllocationId == integrationEvent.AllocationId, cancellationToken);
+        if (projection is null)
+        {
+            Db.InventoryAllocationProjections.Add(InventoryAllocationProjection.CreateClosed(
+                integrationEvent.AllocationId,
+                integrationEvent.OfferId,
+                integrationEvent.Sku,
+                integrationEvent.ClosedOnUtc));
             return;
         }
         projection.Close(integrationEvent.ClosedOnUtc);

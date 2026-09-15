@@ -13,7 +13,6 @@ public sealed class StockItem : AggregateRoot<Guid>
         ArgumentException.ThrowIfNullOrWhiteSpace(sku);
         if (onHand < 0)
             throw new ArgumentOutOfRangeException(nameof(onHand));
-
         Id = id;
         Sku = sku.Trim().ToUpperInvariant();
         OnHand = onHand;
@@ -29,7 +28,6 @@ public sealed class StockItem : AggregateRoot<Guid>
     {
         if (quantity <= 0)
             throw new ArgumentOutOfRangeException(nameof(quantity));
-
         Adjust(quantity);
     }
 
@@ -37,19 +35,15 @@ public sealed class StockItem : AggregateRoot<Guid>
     {
         if (quantityDelta == 0)
             throw new ArgumentOutOfRangeException(nameof(quantityDelta));
-
         var adjustedOnHand = (long)OnHand + quantityDelta;
         if (adjustedOnHand < Reserved || adjustedOnHand > int.MaxValue)
-            throw new InvalidOperationException(
-                $"Inventory adjustment for {Sku} would produce an invalid on-hand balance.");
-
+            throw new InvalidOperationException($"Inventory adjustment for {Sku} would produce an invalid on-hand balance.");
         OnHand = (int)adjustedOnHand;
         Version++;
     }
 
     public void Reserve(int quantity)
     {
-        // 预占只冻结可售量，不立即扣减实物库存；订单确认后才由 Commit 完成扣减。
         if (quantity <= 0 || Available < quantity)
             throw new InvalidOperationException($"Insufficient inventory for {Sku}.");
         Reserved = checked(Reserved + quantity);
@@ -84,7 +78,7 @@ public sealed class InventoryReservation : AggregateRoot<Guid>
     }
 
     public InventoryReservation(Guid id, Guid orderId, IEnumerable<InventoryReservationLine> lines)
-        : this(id, orderId, lines, DateTimeOffset.UtcNow)
+        : this(id, orderId, null, lines, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.Add(DefaultReservationLifetime))
     {
     }
 
@@ -93,13 +87,24 @@ public sealed class InventoryReservation : AggregateRoot<Guid>
         Guid orderId,
         IEnumerable<InventoryReservationLine> lines,
         DateTimeOffset createdOnUtc)
-        : this(id, orderId, lines, createdOnUtc, createdOnUtc.Add(DefaultReservationLifetime))
+        : this(id, orderId, null, lines, createdOnUtc, createdOnUtc.Add(DefaultReservationLifetime))
     {
     }
 
     public InventoryReservation(
         Guid id,
         Guid orderId,
+        IEnumerable<InventoryReservationLine> lines,
+        DateTimeOffset createdOnUtc,
+        DateTimeOffset expiresOnUtc)
+        : this(id, orderId, null, lines, createdOnUtc, expiresOnUtc)
+    {
+    }
+
+    public InventoryReservation(
+        Guid id,
+        Guid orderId,
+        string? userId,
         IEnumerable<InventoryReservationLine> lines,
         DateTimeOffset createdOnUtc,
         DateTimeOffset expiresOnUtc)
@@ -116,6 +121,7 @@ public sealed class InventoryReservation : AggregateRoot<Guid>
 
         Id = id;
         OrderId = orderId;
+        UserId = string.IsNullOrWhiteSpace(userId) ? null : userId.Trim();
         Status = ReservationStatus.Reserved;
         CreatedOnUtc = createdOnUtc;
         UpdatedOnUtc = createdOnUtc;
@@ -123,32 +129,8 @@ public sealed class InventoryReservation : AggregateRoot<Guid>
         _lines.AddRange(reservationLines);
     }
 
-    private InventoryReservation(
-        Guid id,
-        Guid orderId,
-        string userId,
-        Guid campaignId,
-        long stockBucketId,
-        InventoryReservationLine line,
-        DateTimeOffset createdOnUtc,
-        DateTimeOffset expiresOnUtc)
-        : this(id, orderId, [line], createdOnUtc, expiresOnUtc)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
-        if (campaignId == Guid.Empty)
-            throw new ArgumentException("Campaign id is required.", nameof(campaignId));
-        if (stockBucketId <= 0)
-            throw new ArgumentOutOfRangeException(nameof(stockBucketId));
-
-        UserId = userId;
-        FlashSaleCampaignId = campaignId;
-        FlashSaleStockBucketId = stockBucketId;
-    }
-
     public Guid OrderId { get; private set; }
     public string? UserId { get; private set; }
-    public Guid? FlashSaleCampaignId { get; private set; }
-    public long? FlashSaleStockBucketId { get; private set; }
     public ReservationStatus Status { get; private set; }
     public DateTimeOffset CreatedOnUtc { get; private set; }
     public DateTimeOffset UpdatedOnUtc { get; private set; }
@@ -158,57 +140,15 @@ public sealed class InventoryReservation : AggregateRoot<Guid>
     public string? TerminalReason { get; private set; }
     public long Version { get; private set; }
     public IReadOnlyCollection<InventoryReservationLine> Lines => _lines;
-    public bool IsFlashSale => FlashSaleCampaignId.HasValue;
+    public bool HasAllocations => _lines.Any(line => line.AllocationId.HasValue);
 
-    public static InventoryReservation CreateFlashSale(
-        Guid id,
-        Guid orderId,
-        string userId,
-        Guid campaignId,
-        long stockBucketId,
-        string sku,
-        int quantity,
-        DateTimeOffset createdOnUtc) =>
-        CreateFlashSale(
-            id,
-            orderId,
-            userId,
-            campaignId,
-            stockBucketId,
-            sku,
-            quantity,
-            createdOnUtc,
-            createdOnUtc.Add(DefaultReservationLifetime));
-
-    public static InventoryReservation CreateFlashSale(
-        Guid id,
-        Guid orderId,
-        string userId,
-        Guid campaignId,
-        long stockBucketId,
-        string sku,
-        int quantity,
-        DateTimeOffset createdOnUtc,
-        DateTimeOffset expiresOnUtc) =>
-        new(
-            id,
-            orderId,
-            userId,
-            campaignId,
-            stockBucketId,
-            new InventoryReservationLine(sku, quantity),
-            createdOnUtc,
-            expiresOnUtc);
-
-    public bool TryRelease()
-        => TryRelease(DateTimeOffset.UtcNow, "Inventory reservation released.");
+    public bool TryRelease() =>
+        TryRelease(DateTimeOffset.UtcNow, "Inventory reservation released.");
 
     public bool TryRelease(DateTimeOffset releasedOnUtc, string reason)
     {
-        // 终态转换采用 Try 语义，使重复的释放/补偿消息可以安全返回而不重复回补库存。
         if (Status != ReservationStatus.Reserved)
             return false;
-
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         var normalizedReason = reason.Trim();
         if (normalizedReason.Length > 1000)
@@ -224,17 +164,14 @@ public sealed class InventoryReservation : AggregateRoot<Guid>
         return true;
     }
 
-    public bool TryCommit()
-        => TryCommit(DateTimeOffset.UtcNow);
+    public bool TryCommit() => TryCommit(DateTimeOffset.UtcNow);
 
     public bool TryCommit(DateTimeOffset committedOnUtc)
     {
-        // 已提交或已释放的预占均不可再次推进，保证库存终态转换幂等。
         if (Status != ReservationStatus.Reserved)
             return false;
         if (committedOnUtc < CreatedOnUtc)
             throw new ArgumentOutOfRangeException(nameof(committedOnUtc));
-
         Status = ReservationStatus.Committed;
         UpdatedOnUtc = committedOnUtc;
         CommittedOnUtc = committedOnUtc;
@@ -250,17 +187,34 @@ public sealed class InventoryReservationLine
     }
 
     public InventoryReservationLine(string sku, int quantity)
+        : this(sku, quantity, null, null)
+    {
+    }
+
+    public InventoryReservationLine(
+        string sku,
+        int quantity,
+        Guid? allocationId,
+        Guid? offerId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sku);
         if (quantity <= 0)
             throw new ArgumentOutOfRangeException(nameof(quantity));
+        if (allocationId.HasValue != offerId.HasValue)
+            throw new ArgumentException("AllocationId and OfferId must be provided together.");
+        if (allocationId == Guid.Empty || offerId == Guid.Empty)
+            throw new ArgumentException("Allocation identifiers cannot be empty GUID values.");
         Sku = sku.Trim().ToUpperInvariant();
         Quantity = quantity;
+        AllocationId = allocationId;
+        OfferId = offerId;
     }
 
     public long Id { get; private set; }
     public string Sku { get; private set; } = string.Empty;
     public int Quantity { get; private set; }
+    public Guid? AllocationId { get; private set; }
+    public Guid? OfferId { get; private set; }
 }
 
 public enum ReservationStatus

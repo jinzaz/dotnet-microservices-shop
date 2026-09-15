@@ -66,6 +66,7 @@ builder.Services.AddRabbitMQEventBus(options =>
 });
 builder.Services.AddOutbox<BasketDbContext>();
 builder.Services.AddIntegrationEventHandler<ProductChangedIntegrationEvent, ProductChangedHandler>();
+builder.Services.AddIntegrationEventHandler<ProductVariantChangedIntegrationEvent, ProductVariantChangedHandler>();
 builder.Services.AddIntegrationEventHandler<OrderSubmittedIntegrationEvent, OrderSubmittedHandler>();
 
 builder.Services.AddOpenIddict().AddValidation(options =>

@@ -281,15 +281,10 @@ namespace MSA.CatalogService.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("CreatedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)")
-                        .HasComment("价格的三位币种代码");
-
                     b.Property<string>("Description")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasComment("SPU 商品描述");
 
                     b.Property<DateTimeOffset?>("EffectiveOnUtc")
                         .HasColumnType("timestamp with time zone")
@@ -297,7 +292,7 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
-                        .HasComment("面向公共目录查询的可售状态投影");
+                        .HasComment("面向公共目录查询的可售状态");
 
                     b.Property<int>("LifecycleStatus")
                         .HasColumnType("integer")
@@ -306,31 +301,15 @@ namespace MSA.CatalogService.Infrastructure.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("NormalizedSku")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
-                        .HasComment("用于唯一匹配的标准化 SKU");
-
-                    b.Property<decimal>("Price")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)")
-                        .HasComment("商品当前目录单价");
+                        .HasColumnType("character varying(200)")
+                        .HasComment("SPU 商品名称");
 
                     b.Property<DateTimeOffset?>("PublishedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<long>("Revision")
                         .HasColumnType("bigint")
-                        .HasComment("向下游发布快照时使用的业务修订号");
-
-                    b.Property<string>("Sku")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
-                        .HasComment("商品 SKU 原始值");
+                        .HasComment("向下游发布商品快照时使用的业务修订号");
 
                     b.Property<DateTimeOffset?>("UnpublishedOnUtc")
                         .HasColumnType("timestamp with time zone");
@@ -350,12 +329,6 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("NormalizedSku")
-                        .IsUnique();
-
-                    b.HasIndex("Sku")
-                        .IsUnique();
-
                     b.HasIndex("CategoryId", "LifecycleStatus", "Id");
 
                     b.HasIndex("LifecycleStatus", "EffectiveOnUtc", "Id");
@@ -366,15 +339,165 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_products_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
 
-                            t.HasCheckConstraint("CK_products_currency", "\"Currency\" ~ '^[A-Z]{3}$'");
-
                             t.HasCheckConstraint("CK_products_lifecycle", "\"LifecycleStatus\" BETWEEN 0 AND 3");
 
-                            t.HasCheckConstraint("CK_products_normalized_sku", "\"NormalizedSku\" = upper(trim(\"Sku\"))");
-
-                            t.HasCheckConstraint("CK_products_price", "\"Price\" >= 0");
-
                             t.HasCheckConstraint("CK_products_revision", "\"Revision\" > 0 AND \"Version\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.ProductMedia", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AltText")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasComment("图片替代文本或视频说明");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("媒体创建的 UTC 时间");
+
+                    b.Property<int>("MediaType")
+                        .HasColumnType("integer")
+                        .HasComment("媒体类型：图片或视频");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasComment("媒体所属的 SPU 商品标识");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasComment("同一商品内的展示顺序");
+
+                    b.Property<string>("ThumbnailUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasComment("视频或大图的缩略图 URL");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("媒体最近更新的 UTC 时间");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasComment("媒体资源 URL");
+
+                    b.Property<Guid?>("VariantId")
+                        .HasColumnType("uuid")
+                        .HasComment("媒体限定的 SKU 标识；空值表示 SPU 通用媒体");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VariantId");
+
+                    b.HasIndex("ProductId", "VariantId", "SortOrder", "Id");
+
+                    b.ToTable("catalog_product_media", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_product_media_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+
+                            t.HasCheckConstraint("CK_product_media_sort_order", "\"SortOrder\" BETWEEN 0 AND 10000");
+
+                            t.HasCheckConstraint("CK_product_media_type", "\"MediaType\" BETWEEN 0 AND 1");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.ProductVariant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AttributesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasComment("颜色、尺码等销售属性 JSON 对象");
+
+                    b.Property<string>("Barcode")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasComment("SKU 条码");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("SKU 创建的 UTC 时间");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasComment("价格的三位币种代码");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("SKU 展示名称");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasComment("SKU 是否启用销售");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean")
+                        .HasComment("是否为兼容单 SKU 接口的默认 SKU");
+
+                    b.Property<string>("NormalizedSku")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasComment("用于唯一匹配的标准化 SKU");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("SKU 当前目录单价");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasComment("SKU 所属的 SPU 商品标识");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasComment("SKU 原始值");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("SKU 最近更新的 UTC 时间");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Barcode")
+                        .IsUnique()
+                        .HasFilter("\"Barcode\" IS NOT NULL");
+
+                    b.HasIndex("NormalizedSku")
+                        .IsUnique();
+
+                    b.HasIndex("ProductId", "IsDefault")
+                        .IsUnique()
+                        .HasFilter("\"IsDefault\"");
+
+                    b.HasIndex("ProductId", "IsActive", "Id");
+
+                    b.ToTable("catalog_product_variants", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_product_variants_attributes", "jsonb_typeof(\"AttributesJson\") = 'object'");
+
+                            t.HasCheckConstraint("CK_product_variants_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+
+                            t.HasCheckConstraint("CK_product_variants_currency", "\"Currency\" ~ '^[A-Z]{3}$'");
+
+                            t.HasCheckConstraint("CK_product_variants_normalized_sku", "\"NormalizedSku\" = upper(trim(\"Sku\"))");
+
+                            t.HasCheckConstraint("CK_product_variants_price", "\"Price\" >= 0");
                         });
                 });
 
@@ -804,6 +927,29 @@ namespace MSA.CatalogService.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("MSA.CatalogService.Domain.ProductMedia", b =>
+                {
+                    b.HasOne("MSA.CatalogService.Domain.Product", null)
+                        .WithMany("Media")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MSA.CatalogService.Domain.ProductVariant", null)
+                        .WithMany()
+                        .HasForeignKey("VariantId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.ProductVariant", b =>
+                {
+                    b.HasOne("MSA.CatalogService.Domain.Product", null)
+                        .WithMany("Variants")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("MSA.CatalogService.Domain.PromotionBenefit", b =>
                 {
                     b.HasOne("MSA.CatalogService.Domain.Promotion", null)
@@ -834,6 +980,13 @@ namespace MSA.CatalogService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.CatalogService.Domain.Coupon", b =>
                 {
                     b.Navigation("QuotaBuckets");
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.Product", b =>
+                {
+                    b.Navigation("Media");
+
+                    b.Navigation("Variants");
                 });
 
             modelBuilder.Entity("MSA.CatalogService.Domain.Promotion", b =>
