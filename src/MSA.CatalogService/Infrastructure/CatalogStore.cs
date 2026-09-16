@@ -37,12 +37,22 @@ internal sealed class CatalogStore(CatalogDbContext db) :
 
     void ICategoryRepository.Add(Category category) => db.Categories.Add(category);
 
-    Task<Product?> IProductRepository.FindAsync(Guid id, CancellationToken cancellationToken) =>
-        db.Products
-            .Include(product => product.Variants)
-            .Include(product => product.Media)
-            .AsSplitQuery()
-            .SingleOrDefaultAsync(product => product.Id == id, cancellationToken);
+    async Task<Product?> IProductRepository.FindAsync(Guid id, CancellationToken cancellationToken)
+    {
+        if (!db.HasActiveTransaction)
+            throw new InvalidOperationException("Product writes require an active transaction.");
+
+        // 先锁定 SPU 再读取子项，避免并发 SKU/媒体操作基于同一个旧版本更新父商品。
+        var product = (await db.Products
+            .FromSqlInterpolated($"SELECT * FROM catalog_products WHERE \"Id\" = {id} FOR UPDATE")
+            .ToListAsync(cancellationToken)).SingleOrDefault();
+        if (product is null)
+            return null;
+
+        await db.Entry(product).Collection(value => value.Variants).LoadAsync(cancellationToken);
+        await db.Entry(product).Collection(value => value.Media).LoadAsync(cancellationToken);
+        return product;
+    }
 
     Task<bool> IProductRepository.SkuExistsAsync(
         string normalizedSku,

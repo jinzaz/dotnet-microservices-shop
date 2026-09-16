@@ -14,7 +14,7 @@ export default function PaymentsPage() {
   const [status, setStatus] = useState('');
   const [channel, setChannel] = useState('');
   const listQuery = useQuery({ queryKey: ['payments', status, channel], queryFn: () => { const params = new URLSearchParams({ skip: '0', take: '100' }); if (status) params.set('status', status); if (channel) params.set('channel', channel); return api<PaymentPage>(`/api/payment/admin/payments?${params}`); }, enabled: can('payment.transactions.query') });
-  const query = useQuery({ queryKey: ['payment', orderId], queryFn: () => api<Payment>(`/api/payment/orders/${encodeURIComponent(orderId)}`), enabled: Boolean(orderId) && can('payment.transactions.query'), retry: false });
+  const query = useQuery({ queryKey: ['payment', orderId], queryFn: () => api<Payment>(`/api/payment/admin/orders/${encodeURIComponent(orderId)}`), enabled: Boolean(orderId) && can('payment.transactions.query'), retry: false });
   const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setOrderId(String(new FormData(event.currentTarget).get('orderId') ?? '').trim()); };
   const filter = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const data = new FormData(event.currentTarget); setStatus(String(data.get('status') ?? '')); setChannel(String(data.get('channel') ?? '')); };
 

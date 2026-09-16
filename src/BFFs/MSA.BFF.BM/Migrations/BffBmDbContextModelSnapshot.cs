@@ -1218,10 +1218,10 @@ namespace MSA.BFF.BM.Migrations
                         },
                         new
                         {
-                            Id = new Guid("00055747-1428-57ce-a0ea-0bc666bbb294"),
+                            Id = new Guid("02b9daef-134e-2812-f5d0-c9fd9328ac92"),
                             HttpMethod = "GET",
                             Order = 36,
-                            PathTemplate = "/api/inventory/allocations/{allocationId}",
+                            PathTemplate = "/api/inventory/admin/allocations/{allocationId}",
                             PermissionId = new Guid("18fdbe7c-a146-5417-5489-478efaaca309")
                         },
                         new
@@ -1266,18 +1266,18 @@ namespace MSA.BFF.BM.Migrations
                         },
                         new
                         {
-                            Id = new Guid("2e55c024-0eef-9c59-ddb0-57751ab0f119"),
+                            Id = new Guid("604d15d2-ee7c-6096-5293-9045adb9b4a7"),
                             HttpMethod = "GET",
                             Order = 42,
-                            PathTemplate = "/api/payment/orders/{orderId}",
+                            PathTemplate = "/api/payment/admin/orders/{orderId}",
                             PermissionId = new Guid("82ce7c5b-8dcf-6d26-baee-ddf208b15cc8")
                         },
                         new
                         {
-                            Id = new Guid("02f0dca8-e7ea-1f5a-e324-f7a3b8a04e01"),
+                            Id = new Guid("4439c5c5-fa6f-15e3-cd3e-21ea43571a01"),
                             HttpMethod = "GET",
                             Order = 43,
-                            PathTemplate = "/api/notification/users/{userId}",
+                            PathTemplate = "/api/notification/admin/users/{userId}",
                             PermissionId = new Guid("ededa9aa-140d-3b5b-91b8-87828e6dd382")
                         },
                         new
@@ -1314,18 +1314,18 @@ namespace MSA.BFF.BM.Migrations
                         },
                         new
                         {
-                            Id = new Guid("1a405d1c-ac38-1adc-e154-83468a0a3078"),
+                            Id = new Guid("88cf0664-8a90-543f-76a7-358ebced433a"),
                             HttpMethod = "GET",
                             Order = 48,
-                            PathTemplate = "/api/order/orders",
+                            PathTemplate = "/api/order/admin/orders",
                             PermissionId = new Guid("30fea92a-e975-7a82-3922-6a4f99624868")
                         },
                         new
                         {
-                            Id = new Guid("30b4969a-842c-775c-d3ab-d933d020e2ca"),
+                            Id = new Guid("ee4d0d8e-9f27-c97d-8194-c71a20120595"),
                             HttpMethod = "GET",
                             Order = 49,
-                            PathTemplate = "/api/order/orders/{id}",
+                            PathTemplate = "/api/order/admin/orders/{id}",
                             PermissionId = new Guid("30fea92a-e975-7a82-3922-6a4f99624868")
                         },
                         new

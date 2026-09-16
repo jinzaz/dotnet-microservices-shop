@@ -15,6 +15,7 @@ using MSA.InventoryService.Middleware;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using System.Text.Json.Serialization;
+using OpenIddict.Validation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 var postgresql = builder.Configuration.GetConnectionString("Postgresql");
@@ -70,15 +71,15 @@ builder.Services.AddIntegrationEventHandler<CommitInventoryIntegrationEvent, Com
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
     options.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/");
-    options.AddAudiences("inventory-api", "inventory.admin.write", "inventory.admin.read");
+    options.AddAudiences("inventory-api");
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });
+builder.Services.AddAuthentication(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
 builder.Services.AddMsaApiAuthorization(
     "inventory-api",
     "inventory.admin.read",
-    "inventory.admin.write",
-    "inventory-api-or-admin-read");
+    "inventory.admin.write");
 
 builder.Services.AddValidation();
 builder.Services.ConfigureHttpJsonOptions(options =>

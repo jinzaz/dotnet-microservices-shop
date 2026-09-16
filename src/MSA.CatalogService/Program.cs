@@ -9,6 +9,7 @@ using MSA.EventBus.DependencyInjection;
 using MSA.EventBusOutbox.Extensions;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
+using OpenIddict.Validation.AspNetCore;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
@@ -69,10 +70,11 @@ builder.Services.AddHealthChecks();
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
     options.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/");
-    options.AddAudiences("catalog-api", "catalog.admin.write", "catalog.admin.read");
+    options.AddAudiences("catalog-api");
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });
+builder.Services.AddAuthentication(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
 builder.Services.AddMsaApiAuthorization(
     "catalog-api",
     "catalog.admin.read",

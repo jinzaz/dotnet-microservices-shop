@@ -178,9 +178,7 @@ internal sealed class RetryNotificationHandler(
         RetryNotificationCommand request,
         CancellationToken cancellationToken)
     {
-        var notification = await db.Notifications.SingleOrDefaultAsync(
-            value => value.Id == request.NotificationId,
-            cancellationToken);
+        var notification = await db.LockNotificationAsync(request.NotificationId, cancellationToken);
         return notification is null
             ? new RetryNotificationResult(false, false)
             : new RetryNotificationResult(true, notification.Retry(clock.GetUtcNow()));

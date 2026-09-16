@@ -16,7 +16,6 @@ public sealed record CreateProductVariantCommand(
     decimal Price,
     string Currency,
     bool IsActive,
-    long? ExpectedVersion,
     string Actor) : ICommand<Guid>;
 
 public sealed record UpdateProductVariantCommand(
@@ -166,7 +165,6 @@ internal sealed class CreateProductVariantHandler(
     public async Task<Guid> Handle(CreateProductVariantCommand request, CancellationToken cancellationToken)
     {
         var product = await ProductAggregateCommands.GetAsync(products, request.ProductId, cancellationToken);
-        ProductAggregateCommands.EnsureVersion(product, request.ExpectedVersion);
         var normalizedSku = Product.NormalizeSku(request.Sku);
         if (await products.SkuExistsAsync(normalizedSku, null, cancellationToken))
             throw new InvalidOperationException($"SKU '{request.Sku}' already exists.");

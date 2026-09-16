@@ -13,6 +13,7 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using System.Security.Claims;
 using System.Text.Json.Serialization;
+using OpenIddict.Validation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("Postgresql");
@@ -42,15 +43,15 @@ builder.Services.AddHostedService<NotificationDispatchService>();
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
     options.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/");
-    options.AddAudiences("notification-api", "notification.admin.write", "notification.admin.read");
+    options.AddAudiences("notification-api");
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });
+builder.Services.AddAuthentication(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
 builder.Services.AddMsaApiAuthorization(
     "notification-api",
     "notification.admin.read",
-    "notification.admin.write",
-    "notification-api-or-admin-read");
+    "notification.admin.write");
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddHealthChecks();
@@ -80,9 +81,27 @@ app.MapGet("/notification/users/{userId}", async (
     NotificationDbContext db,
     CancellationToken ct) =>
 {
-    if (user.FindFirstValue("sub") != userId && !user.HasMsaScope("notification.admin.read"))
+    if (user.FindFirstValue("sub") != userId)
         return Results.Forbid();
 
+    return await ListUserNotificationsAsync(userId, skip, take, db, ct);
+}).RequireAuthorization("notification-api");
+
+app.MapGet("/notification/admin/users/{userId}", (
+    string userId,
+    int skip,
+    int take,
+    NotificationDbContext db,
+    CancellationToken ct) => ListUserNotificationsAsync(userId, skip, take, db, ct))
+    .RequireAuthorization("notification.admin.read");
+
+static async Task<IResult> ListUserNotificationsAsync(
+    string userId,
+    int skip,
+    int take,
+    NotificationDbContext db,
+    CancellationToken ct)
+{
     var rows = await db.Notifications.AsNoTracking()
         .Where(x => x.UserId == userId)
         .OrderByDescending(x => x.CreatedOnUtc)
@@ -91,7 +110,7 @@ app.MapGet("/notification/users/{userId}", async (
         .Select(x => new { x.Id, x.Subject, x.Body, x.Status, x.CreatedOnUtc, x.SentOnUtc })
         .ToListAsync(ct);
     return Results.Ok(rows);
-}).RequireAuthorization("notification-api-or-admin-read");
+}
 
 app.MapGet("/notification/admin/messages", async (
     ISender sender,

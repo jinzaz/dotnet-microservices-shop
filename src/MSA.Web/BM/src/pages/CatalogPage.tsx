@@ -65,11 +65,11 @@ export default function CatalogPage() {
   const categoryNames = useMemo(() => new Map(categoriesQuery.data?.items.map((item) => [item.id, item.name]) ?? []), [categoriesQuery.data]);
   const promotionNames = useMemo(() => new Map(promotionsQuery.data?.items.map((item) => [item.id, item]) ?? []), [promotionsQuery.data]);
 
-  const refreshProducts = () => {
-    void queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] });
-    void queryClient.invalidateQueries({ queryKey: ['catalog', 'product', selectedProductId] });
-    void queryClient.invalidateQueries({ queryKey: ['catalog', 'product-options'] });
-  };
+  const refreshProducts = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['catalog', 'products'] }),
+    queryClient.invalidateQueries({ queryKey: ['catalog', 'product', selectedProductId] }),
+    queryClient.invalidateQueries({ queryKey: ['catalog', 'product-options'] }),
+  ]);
 
   const createMutation = useMutation({
     mutationFn: async ({ kind, body, mediaFiles }: { kind: Tab; body: unknown; mediaFiles?: File[] }) => {
@@ -109,7 +109,7 @@ export default function CatalogPage() {
     mutationFn: ({ path, method = 'POST', body }: { path: string; method?: string; body?: unknown }) => api<void>(path, { method, body }),
     onSuccess: () => {
       setVariantDraft(null);
-      refreshProducts();
+      return refreshProducts();
     },
   });
   const mediaMutation = useMutation({
@@ -179,7 +179,7 @@ export default function CatalogPage() {
     const product = productQuery.data;
     if (!product || !variantDraft) return;
     if (variantDraft === 'new') {
-      productMutation.mutate({ path: `/api/catalog/admin/products/${product.id}/variants`, body: { ...payload, sku: payload.sku, expectedVersion: product.version } });
+      productMutation.mutate({ path: `/api/catalog/admin/products/${product.id}/variants`, body: { ...payload, sku: payload.sku } });
     } else {
       const { sku: _, ...update } = payload;
       productMutation.mutate({ path: `/api/catalog/admin/products/${product.id}/variants/${variantDraft.id}`, method: 'PUT', body: { ...update, expectedVersion: product.version } });

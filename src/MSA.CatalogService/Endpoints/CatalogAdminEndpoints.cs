@@ -150,7 +150,6 @@ internal static class CatalogAdminEndpoints
                 request.Price,
                 request.Currency,
                 request.IsActive,
-                request.ExpectedVersion,
                 GetActor(context)), cancellationToken);
             return Results.Created($"/api/catalog/admin/products/{id}/variants/{variantId}", new { id = variantId });
         });
@@ -504,8 +503,7 @@ public sealed record CreateProductVariantRequest(
     string? Barcode,
     decimal Price,
     string Currency = "CNY",
-    bool IsActive = true,
-    long? ExpectedVersion = null);
+    bool IsActive = true);
 
 public sealed record UpdateProductVariantRequest(
     string DisplayName,

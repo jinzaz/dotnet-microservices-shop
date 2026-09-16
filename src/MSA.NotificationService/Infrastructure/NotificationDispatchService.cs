@@ -72,7 +72,18 @@ internal sealed class NotificationDispatchService(
                 logger.LogError(exception, "Notification {NotificationId} failed", row.Id);
                 row.Failed(_workerId, exception);
             }
-            await db.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException exception)
+            {
+                // 租约可能已被其他实例接管；停止本批次，下一轮使用新上下文读取当前状态。
+                logger.LogWarning(exception,
+                    "Notification {NotificationId} lease changed while completing delivery; stopping this batch.",
+                    row.Id);
+                return;
+            }
         }
     }
 }

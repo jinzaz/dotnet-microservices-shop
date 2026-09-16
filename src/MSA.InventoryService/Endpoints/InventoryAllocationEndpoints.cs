@@ -10,7 +10,7 @@ internal static class InventoryAllocationEndpoints
     public static IEndpointRouteBuilder MapInventoryAllocationEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/inventory/allocations/{allocationId:guid}", GetAsync)
-            .RequireAuthorization("inventory-api-or-admin-read")
+            .RequireAuthorization("inventory-api")
             .WithName("GetInventoryAllocation")
             .Produces<InventoryAllocationDto>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
@@ -20,6 +20,10 @@ internal static class InventoryAllocationEndpoints
         var write = endpoints.MapGroup("/inventory/admin/allocations")
             .RequireAuthorization("inventory.admin.write");
 
+        read.MapGet("/{allocationId:guid}", GetAsync)
+            .WithName("GetAdminInventoryAllocation")
+            .Produces<InventoryAllocationDto>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
         read.MapGet("/", ListAsync)
             .WithName("ListInventoryAllocations")
             .Produces<InventoryAllocationPage>(StatusCodes.Status200OK);
@@ -49,7 +53,7 @@ internal static class InventoryAllocationEndpoints
                 ? Results.NotFound()
                 : Results.Ok(ToCompatibilityDto(value));
         })
-        .RequireAuthorization("inventory-api-or-admin-read")
+        .RequireAuthorization("inventory-api")
         .WithName("GetFlashSale");
         return endpoints;
     }
@@ -139,7 +143,7 @@ internal static class InventoryAllocationEndpoints
             request.EndsOnUtc,
             request.PerUserLimit), cancellationToken);
         return TypedResults.Created(
-            $"/api/inventory/allocations/{id}",
+            $"/api/inventory/admin/allocations/{id}",
             new InventoryAllocationCreatedResponse(id));
     }
 

@@ -98,13 +98,13 @@ export default function OrdersPage() {
       const query = new URLSearchParams({ skip: '0', take: '100' });
       if (filters.userId) query.set('userId', filters.userId);
       if (filters.fulfillmentStatus) query.set('fulfillmentStatus', filters.fulfillmentStatus);
-      return api<Order[]>(`/api/order/orders?${query}`);
+      return api<Order[]>(`/api/order/admin/orders?${query}`);
     },
     enabled: can('order.fulfillment.query'),
   });
   const detailQuery = useQuery({
     queryKey: ['orders', 'detail', detailOrderId],
-    queryFn: () => api<OrderDetail>(`/api/order/orders/${detailOrderId}`),
+    queryFn: () => api<OrderDetail>(`/api/order/admin/orders/${detailOrderId}`),
     enabled: Boolean(detailOrderId) && can('order.fulfillment.query'),
   });
   const mutation = useMutation({

@@ -7,20 +7,19 @@ public static class AuthorizationExtensions
 {
     public static IServiceCollection AddMsaApiAuthorization(
         this IServiceCollection services,
-        string apiAudience,
+        string apiScope,
         string adminReadScope,
-        string adminWriteScope,
-        string? sharedReadPolicy = null)
+        string adminWriteScope)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(apiAudience);
+        ArgumentException.ThrowIfNullOrWhiteSpace(apiScope);
         ArgumentException.ThrowIfNullOrWhiteSpace(adminReadScope);
         ArgumentException.ThrowIfNullOrWhiteSpace(adminWriteScope);
 
         return services.AddAuthorization(options =>
         {
-            options.AddPolicy(apiAudience, policy => policy
+            options.AddPolicy(apiScope, policy => policy
                 .RequireAuthenticatedUser()
-                .RequireClaim("aud", apiAudience));
+                .RequireAssertion(context => context.User.HasMsaScope(apiScope)));
             options.AddPolicy(adminReadScope, policy => policy
                 .RequireAuthenticatedUser()
                 .RequireAssertion(context => context.User.HasMsaScope(adminReadScope)));
@@ -28,14 +27,6 @@ public static class AuthorizationExtensions
                 .RequireAuthenticatedUser()
                 .RequireAssertion(context => context.User.HasMsaScope(adminWriteScope)));
 
-            if (!string.IsNullOrWhiteSpace(sharedReadPolicy))
-            {
-                options.AddPolicy(sharedReadPolicy, policy => policy
-                    .RequireAuthenticatedUser()
-                    .RequireAssertion(context =>
-                        context.User.HasClaim("aud", apiAudience) ||
-                        context.User.HasMsaScope(adminReadScope)));
-            }
         });
     }
 

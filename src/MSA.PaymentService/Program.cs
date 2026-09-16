@@ -8,15 +8,12 @@ using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
 using MSA.PaymentCore;
 using MSA.PaymentService.Application;
-using MSA.PaymentService.Domain;
+using MSA.PaymentService.Endpoints;
 using MSA.PaymentService.Infrastructure;
 using MSA.PaymentService.Integration;
+using OpenIddict.Validation.AspNetCore;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
-using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("Postgresql");
@@ -66,11 +63,11 @@ builder.Services.AddOpenIddict().AddValidation(options =>
     options.UseSystemNetHttp();
     options.UseAspNetCore();
 });
+builder.Services.AddAuthentication(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
 builder.Services.AddMsaApiAuthorization(
     "payment-api",
     "payment.admin.read",
-    "payment.admin.write",
-    "payment-api-or-admin-read");
+    "payment.admin.write");
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
 builder.Services.AddOpenTelemetry().WithTracing(tracing => tracing
@@ -90,103 +87,8 @@ app.UseExceptionHandler();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealthChecks("/health");
-
-app.MapGet("/payment/orders/{orderId:guid}", async (Guid orderId, ClaimsPrincipal user, ISender sender, CancellationToken ct) =>
-{
-    var subject = user.FindFirstValue("sub") ?? string.Empty;
-    var canReadAll = user.HasMsaScope("payment.admin.read");
-    var payment = await sender.Send(new GetPaymentByOrderQuery(orderId, subject, canReadAll), ct);
-    return payment is null ? Results.NotFound() : Results.Ok(payment);
-}).RequireAuthorization("payment-api-or-admin-read");
-
-app.MapGet("/payment/admin/payments", async (
-    ISender sender,
-    CancellationToken cancellationToken,
-    PaymentStatus? status = null,
-    PaymentChannel? channel = null,
-    Guid? orderId = null,
-    string? userId = null,
-    int skip = 0,
-    int take = 50) => TypedResults.Ok(await sender.Send(
-        new ListPaymentsQuery(status, channel, orderId, userId, skip, take),
-        cancellationToken)))
-    .RequireAuthorization("payment.admin.read")
-    .WithName("ListAdminPayments")
-    .WithSummary("List payment transactions with admin filters")
-    .Produces<PaymentPage>(StatusCodes.Status200OK);
-
-app.MapPost("/payment/callbacks/alipay", async (
-    HttpRequest request,
-    IEnumerable<IPaymentNotificationVerifier> verifiers,
-    ISender sender,
-    CancellationToken ct) =>
-{
-    var form = await request.ReadFormAsync(ct);
-    var values = form.ToDictionary(x => x.Key, x => x.Value.ToString());
-    var verified = await verifiers.Single(x => x.Channel == PaymentChannel.Alipay)
-        .VerifyAsync(new PaymentNotification(values, string.Empty), ct);
-    if (!verified.Succeeded)
-        return Results.BadRequest();
-
-    await sender.Send(new ConfirmPaymentCommand(
-        verified.MerchantTradeNo,
-        verified.ProviderTransactionId,
-        verified.Amount,
-        verified.Currency,
-        PaymentChannel.Alipay,
-        values.GetValueOrDefault("notify_id"),
-        ComputeSha256(string.Join(
-            '&',
-            values.OrderBy(value => value.Key, StringComparer.Ordinal)
-                .Select(value => $"{value.Key}={value.Value}")))), ct);
-    return Results.Text("success");
-}).AllowAnonymous();
-
-app.MapPost("/payment/callbacks/wechatpay", async (
-    HttpRequest request,
-    IEnumerable<IPaymentNotificationVerifier> verifiers,
-    ISender sender,
-    CancellationToken ct) =>
-{
-    using var reader = new StreamReader(request.Body);
-    var body = await reader.ReadToEndAsync(ct);
-    string Header(string name) => request.Headers[name].ToString();
-    var notification = new PaymentNotification(
-        new Dictionary<string, string>(), body, Header("Request-ID"), Header("Wechatpay-Serial"),
-        Header("Wechatpay-Timestamp"), Header("Wechatpay-Nonce"), Header("Wechatpay-Signature"),
-        Header("Wechatpay-Signature-Type"));
-    var verified = await verifiers.Single(x => x.Channel == PaymentChannel.WeChatPay)
-        .VerifyAsync(notification, ct);
-    if (!verified.Succeeded)
-        return Results.BadRequest();
-
-    await sender.Send(new ConfirmPaymentCommand(
-        verified.MerchantTradeNo,
-        verified.ProviderTransactionId,
-        verified.Amount,
-        verified.Currency,
-        PaymentChannel.WeChatPay,
-        TryReadNotificationId(body),
-        ComputeSha256(body)), ct);
-    return Results.Json(new { code = "SUCCESS", message = "成功" });
-}).AllowAnonymous();
+app.MapPaymentApiEndpoints();
+app.MapPaymentAdminEndpoints();
+app.MapPaymentCallbackEndpoints();
 
 app.Run();
-
-static string ComputeSha256(string value) =>
-    Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
-
-static string? TryReadNotificationId(string body)
-{
-    try
-    {
-        using var document = JsonDocument.Parse(body);
-        return document.RootElement.TryGetProperty("id", out var id)
-            ? id.GetString()
-            : null;
-    }
-    catch (JsonException)
-    {
-        return null;
-    }
-}

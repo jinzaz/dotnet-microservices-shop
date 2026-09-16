@@ -6,7 +6,6 @@ using MSA.OrderService.Application.CreateOrder;
 using MSA.OrderService.Application.GetOrder;
 using MSA.OrderService.Application.GetOrders;
 using MSA.OrderService.Domain;
-using MSA.Infrastrucute.Extensions;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 
@@ -50,21 +49,19 @@ public sealed class OrdersController(ISender sender) : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Policy = "order-api-or-admin-read")]
+    [Authorize(Policy = "order-api")]
     public Task<IReadOnlyList<OrderListItemDto>> List(
-        [FromQuery] string? userId,
         [FromQuery] OrderFulfillmentStatus? fulfillmentStatus,
         [FromQuery, Range(0, int.MaxValue)] int skip = 0,
         [FromQuery, Range(1, 200)] int take = 50,
         CancellationToken cancellationToken = default)
     {
         var requestingUserId = User.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
-        var canReadAll = User.HasMsaScope("order.admin.read");
         return sender.Send(
             new GetOrdersQuery(
                 requestingUserId,
-                canReadAll,
-                canReadAll ? userId : null,
+                false,
+                null,
                 fulfillmentStatus,
                 skip,
                 take),
@@ -72,7 +69,7 @@ public sealed class OrdersController(ISender sender) : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [Authorize(Policy = "order-api-or-admin-read")]
+    [Authorize(Policy = "order-api")]
     public async Task<ActionResult<OrderDto>> Get(Guid id, CancellationToken cancellationToken)
     {
         var userId = User.FindFirstValue("sub") ?? string.Empty;
@@ -80,7 +77,7 @@ public sealed class OrdersController(ISender sender) : ControllerBase
             new GetOrderQuery(
                 id,
                 userId,
-                User.HasMsaScope("order.admin.read")),
+                false),
             cancellationToken);
         return value is null ? NotFound() : Ok(value);
     }
