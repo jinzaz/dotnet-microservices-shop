@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using MSA.Infrastrucute.Abstractions;
 using MSA.Infrastrucute.Events;
+using MSA.Infrastrucute.Persistence;
 using System.Data;
 
 namespace MSA.Infrastrucute;
@@ -12,6 +13,13 @@ public abstract class MSADbContext(DbContextOptions options, IMediator mediator)
     private IDbContextTransaction? _currentTransaction;
     public IDbContextTransaction? CurrentTransaction => _currentTransaction;
     public bool HasActiveTransaction => _currentTransaction is not null;
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        base.ConfigureConventions(configurationBuilder);
+        // 所有聚合与子实体都由领域代码分配 Guid；否则经导航新增的子实体会被误判为已存在并执行 UPDATE。
+        configurationBuilder.Conventions.Add(_ => new ClientGeneratedGuidKeyConvention());
+    }
 
     public async Task<bool> SaveEntitiesAsync(CancellationToken cancellationToken = default)
     {
