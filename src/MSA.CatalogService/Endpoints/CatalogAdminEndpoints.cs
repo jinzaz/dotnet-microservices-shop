@@ -466,6 +466,18 @@ internal static class CatalogAdminEndpoints
                 cancellationToken);
             return Results.NoContent();
         });
+
+        // 过期是终态：只允许在有效期结束后执行，由领域模型拒绝提前过期。
+        write.MapPost("/coupons/{id:guid}/expire", async (
+            Guid id,
+            VersionedCatalogRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new ExpireCouponCommand(id, request.ExpectedVersion, GetActor(context)), cancellationToken);
+            return Results.NoContent();
+        });
     }
 
     private static string GetActor(HttpContext context) =>

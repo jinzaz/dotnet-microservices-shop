@@ -1423,6 +1423,30 @@ namespace MSA.BFF.BM.Migrations
                             Order = 61,
                             PathTemplate = "/api/inventory/admin/allocations",
                             PermissionId = new Guid("18fdbe7c-a146-5417-5489-478efaaca309")
+                        },
+                        new
+                        {
+                            Id = new Guid("413bfea8-d819-cd40-6a76-69c87b833b03"),
+                            HttpMethod = "GET",
+                            Order = 62,
+                            PathTemplate = "/api/order/admin/orders/summary",
+                            PermissionId = new Guid("30fea92a-e975-7a82-3922-6a4f99624868")
+                        },
+                        new
+                        {
+                            Id = new Guid("c8693ac5-dcb1-41fa-5ea8-5714b10c2fb7"),
+                            HttpMethod = "GET",
+                            Order = 63,
+                            PathTemplate = "/api/payment/admin/payments/summary",
+                            PermissionId = new Guid("82ce7c5b-8dcf-6d26-baee-ddf208b15cc8")
+                        },
+                        new
+                        {
+                            Id = new Guid("d8797562-44d6-1d7d-ff44-b300d086dc8f"),
+                            HttpMethod = "POST",
+                            Order = 64,
+                            PathTemplate = "/api/catalog/admin/coupons/{id}/expire",
+                            PermissionId = new Guid("83630e28-746d-3387-ea54-046054e22e88")
                         });
                 });
 

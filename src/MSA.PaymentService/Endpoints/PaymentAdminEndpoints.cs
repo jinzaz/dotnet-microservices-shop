@@ -38,6 +38,24 @@ internal static class PaymentAdminEndpoints
             .WithSummary("List payment transactions with admin filters")
             .Produces<PaymentPage>(StatusCodes.Status200OK);
 
+        read.MapGet("/payments/summary", async Task<Results<Ok<PaymentSummaryDto>, ValidationProblem>> (
+            ISender sender,
+            CancellationToken cancellationToken,
+            int days = 7) =>
+        {
+            if (days is < 1 or > 31)
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    [nameof(days)] = ["days must be between 1 and 31."]
+                });
+            }
+
+            return TypedResults.Ok(await sender.Send(new GetPaymentSummaryQuery(days), cancellationToken));
+        })
+            .WithName("GetAdminPaymentSummary")
+            .WithSummary("Summarize payment counts and amounts by status for the operations dashboard");
+
         return endpoints;
     }
 }

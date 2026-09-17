@@ -148,7 +148,10 @@ internal static class PbacSeedData
             ("catalog.products.edit", HttpMethods.Post, "/api/catalog/admin/products/{id}/media"),
             ("catalog.products.edit", HttpMethods.Put, "/api/catalog/admin/products/{id}/media/{mediaId}"),
             ("catalog.products.edit", HttpMethods.Delete, "/api/catalog/admin/products/{id}/media/{mediaId}"),
-            ("inventory.allocations.query", HttpMethods.Get, "/api/inventory/admin/allocations")
+            ("inventory.allocations.query", HttpMethods.Get, "/api/inventory/admin/allocations"),
+            ("order.fulfillment.query", HttpMethods.Get, "/api/order/admin/orders/summary"),
+            ("payment.transactions.query", HttpMethods.Get, "/api/payment/admin/payments/summary"),
+            ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupons/{id}/expire")
         ];
 
         return definitions

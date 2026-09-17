@@ -31,6 +31,25 @@ internal sealed class GetOrdersQueryHandler(OrderDbContext db)
             query = query.Where(order => order.FulfillmentStatus == status);
         }
 
+        // 搜索仅对后台开放，避免买家通过手机号或运单号探测他人订单。
+        if (request.CanReadAll && !string.IsNullOrWhiteSpace(request.Search))
+        {
+            var search = request.Search.Trim();
+            if (Guid.TryParse(search, out var orderId))
+            {
+                query = query.Where(order => order.Id == orderId);
+            }
+            else
+            {
+                var lowered = search.ToLowerInvariant();
+                var upper = search.ToUpperInvariant();
+                query = query.Where(order =>
+                    order.OrderNumber.ToLower().Contains(lowered)
+                    || order.ShippingAddress.PhoneNumber == search
+                    || order.TrackingNumber == upper);
+            }
+        }
+
         return await query
             .OrderByDescending(order => order.CreatedOnUtc)
             .ThenByDescending(order => order.Id)

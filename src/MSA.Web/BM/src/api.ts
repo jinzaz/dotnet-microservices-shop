@@ -20,6 +20,15 @@ export type ObjectUpload = {
   headers: Record<string, string>;
 };
 
+export type VerifiedObject = {
+  objectKey: string;
+  publicUrl: string | null;
+  contentType: string;
+  contentLength: number;
+};
+
+export type Paged<T> = { items: T[]; skip: number; take: number; total: number };
+
 type Problem = {
   title?: string;
   detail?: string;
@@ -37,6 +46,15 @@ export class ApiError extends Error {
     super(message);
   }
 }
+
+const statusMessages: Record<number, string> = {
+  401: '登录已过期，请刷新页面重新登录。',
+  403: '当前 BM 身份没有执行该操作的权限。',
+  404: '请求的资源不存在或已被删除。',
+  409: '数据已被他人修改或状态已变化，请刷新后重试。',
+  412: '数据版本已变化，请刷新后重试。',
+  429: '操作过于频繁，请稍后再试。',
+};
 
 function absolute(path: string) {
   return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
@@ -95,7 +113,8 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new Error('暂时无法连接 MSA.BFF.BM，请确认服务已启动。');
   }
 
@@ -103,11 +122,22 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     const problem = await readProblem(response);
     throw new ApiError(
       response.status,
-      firstError(problem) ?? problem?.detail ?? problem?.title ?? `请求失败（${response.status}）`,
+      firstError(problem) ?? problem?.detail ?? statusMessages[response.status] ?? problem?.title ?? `请求失败（${response.status}）`,
     );
   }
-  if (response.status === 204) return undefined as T;
+  if (response.status === 204 || response.status === 202 && !response.headers.get('content-type')?.includes('json')) {
+    return undefined as T;
+  }
   return await response.json() as T;
+}
+
+/** Builds a query string, dropping empty values so optional filters are omitted. */
+export function query(values: Record<string, string | number | boolean | null | undefined>) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined && value !== null && value !== '') params.set(key, String(value));
+  }
+  return params.toString();
 }
 
 export async function getSession(): Promise<BffSession | null> {
@@ -145,27 +175,75 @@ export function idempotencyKey() {
   return crypto.randomUUID();
 }
 
-export async function uploadCatalogMedia(file: File): Promise<ObjectUpload> {
+/** Mirrors the BFF upload policy so bad files are rejected before a signed URL is requested. */
+export const catalogMediaPolicy = {
+  accept: 'image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime',
+  imageMaxBytes: 20 * 1024 * 1024,
+  videoMaxBytes: 512 * 1024 * 1024,
+};
+
+export function validateCatalogMedia(file: File): string | null {
+  if (!catalogMediaPolicy.accept.split(',').includes(file.type)) return `“${file.name}” 的格式不受支持。`;
+  const limit = file.type.startsWith('video/') ? catalogMediaPolicy.videoMaxBytes : catalogMediaPolicy.imageMaxBytes;
+  if (file.size === 0) return `“${file.name}” 是空文件。`;
+  if (file.size > limit) return `“${file.name}” 超过 ${formatBytes(limit)} 上限。`;
+  return null;
+}
+
+export function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function putWithProgress(url: string, file: File, headers: Record<string, string>, onProgress?: (ratio: number) => void, signal?: AbortSignal) {
+  // fetch() cannot report upload progress, so the direct object-storage PUT uses XMLHttpRequest.
+  return new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('PUT', url);
+    for (const [key, value] of Object.entries(headers)) request.setRequestHeader(key, value);
+    request.upload.onprogress = (event) => { if (event.lengthComputable) onProgress?.(event.loaded / event.total); };
+    request.onload = () => request.status >= 200 && request.status < 300
+      ? resolve()
+      : reject(new Error(`对象上传失败（${request.status}）`));
+    request.onerror = () => reject(new Error('无法上传到对象存储，请检查 RustFS 网络与跨域配置。'));
+    request.onabort = () => reject(new DOMException('上传已取消。', 'AbortError'));
+    signal?.addEventListener('abort', () => request.abort(), { once: true });
+    request.send(file);
+  });
+}
+
+/** Best-effort cleanup for catalog objects that are no longer (or never were) referenced by Catalog. */
+export async function discardCatalogMedia(target: { objectKey?: string; publicUrl?: string }) {
+  try {
+    await api<void>('/bff/object-storage/catalog-media/discard', { method: 'POST', body: target });
+  } catch {
+    // An orphaned object is a storage cost, not a user-facing failure.
+  }
+}
+
+/**
+ * Signs, uploads, and verifies one catalog media file. The returned public URL is only handed back after the BFF has
+ * confirmed the stored object matches the declared size and type.
+ */
+export async function uploadCatalogMedia(file: File, onProgress?: (ratio: number) => void, signal?: AbortSignal): Promise<VerifiedObject> {
+  const invalid = validateCatalogMedia(file);
+  if (invalid) throw new Error(invalid);
+
   const ticket = await api<ObjectUpload>('/bff/object-storage/catalog-media/upload-url', {
     method: 'POST',
-    body: {
-      fileName: file.name,
-      contentType: file.type,
-      contentLength: file.size,
-    },
+    body: { fileName: file.name, contentType: file.type, contentLength: file.size },
   });
-  if (!ticket.publicUrl) throw new Error('对象存储未返回商品媒体访问地址。');
-
-  let response: Response;
   try {
-    response = await fetch(ticket.uploadUrl, {
-      method: 'PUT',
-      body: file,
-      headers: ticket.headers,
+    await putWithProgress(ticket.uploadUrl, file, ticket.headers, onProgress, signal);
+    const verified = await api<VerifiedObject>('/bff/object-storage/catalog-media/verify', {
+      method: 'POST',
+      body: { objectKey: ticket.objectKey, contentType: file.type, contentLength: file.size },
     });
-  } catch {
-    throw new Error('无法上传到对象存储，请检查 RustFS 网络与跨域配置。');
+    if (!verified.publicUrl) throw new Error('对象存储未返回商品媒体访问地址。');
+    return verified;
+  } catch (error) {
+    await discardCatalogMedia({ objectKey: ticket.objectKey });
+    throw error;
   }
-  if (!response.ok) throw new Error(`对象上传失败（${response.status}）`);
-  return ticket;
 }

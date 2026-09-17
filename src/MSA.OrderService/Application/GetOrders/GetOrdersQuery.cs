@@ -18,10 +18,12 @@ public sealed record OrderListItemDto(
     DateTimeOffset CreatedOnUtc,
     DateTimeOffset UpdatedOnUtc);
 
+/// <param name="Search">Admin-only: order id, order number fragment, recipient phone or tracking number.</param>
 public sealed record GetOrdersQuery(
     string RequestingUserId,
     bool CanReadAll,
     string? UserIdFilter,
     OrderFulfillmentStatus? FulfillmentStatus,
     int Skip,
-    int Take) : IQuery<IReadOnlyList<OrderListItemDto>>;
+    int Take,
+    string? Search = null) : IQuery<IReadOnlyList<OrderListItemDto>>;

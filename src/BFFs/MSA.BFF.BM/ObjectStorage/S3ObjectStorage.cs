@@ -1,4 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Net;
+using System.Text.RegularExpressions;
 using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
@@ -41,7 +44,15 @@ internal enum ObjectStorageArea
     RefundEvidence
 }
 
-internal sealed class S3ObjectStorage : IDisposable
+internal enum ObjectVerificationOutcome
+{
+    Verified,
+    InvalidKey,
+    NotFound,
+    Mismatch
+}
+
+internal sealed partial class S3ObjectStorage : IDisposable
 {
     private static readonly IReadOnlyDictionary<string, UploadPolicy> UploadPolicies =
         new Dictionary<string, UploadPolicy>(StringComparer.OrdinalIgnoreCase)
@@ -78,6 +89,18 @@ internal sealed class S3ObjectStorage : IDisposable
             });
     }
 
+    /// <summary>Upload rules exposed to the BM UI so it can reject bad files before requesting a signed URL.</summary>
+    internal static ObjectUploadPolicyResponse GetUploadPolicy(ObjectStorageArea area) =>
+        new(UploadPolicies
+            .Where(item => area == ObjectStorageArea.CatalogMedia || item.Value.IsImage)
+            .Select(item => new ObjectContentTypePolicy(
+                item.Key,
+                item.Value.SourceExtensions,
+                item.Value.MaxBytes,
+                item.Value.IsImage ? "Image" : "Video"))
+            .ToArray(),
+            (int)UploadUrlLifetime.TotalSeconds);
+
     internal bool TryCreateUploadUrl(
         ObjectStorageArea area,
         CreateObjectUploadUrlRequest request,
@@ -94,11 +117,11 @@ internal sealed class S3ObjectStorage : IDisposable
         var contentType = request.ContentType.Trim().ToLowerInvariant();
         var policy = UploadPolicies[contentType];
         var isPublic = area == ObjectStorageArea.CatalogMedia;
-        var bucket = isPublic ? options.PublicBucket : options.PrivateBucket;
-        var prefix = isPublic ? "catalog-media" : "refund-evidence";
+        var bucket = BucketFor(area);
         var now = clock.GetUtcNow();
         var expiresOnUtc = now.Add(UploadUrlLifetime);
-        var objectKey = $"{prefix}/{now:yyyy/MM}/{Guid.NewGuid():N}.{policy.StoredExtension}";
+        // Quoted separator: an unquoted "/" is the culture date separator and would break the managed-key pattern.
+        var objectKey = $"{PrefixFor(area)}/{now.ToString("yyyy'/'MM", CultureInfo.InvariantCulture)}/{Guid.NewGuid():N}.{policy.StoredExtension}";
         var uploadUrl = client.GetPreSignedURL(new GetPreSignedUrlRequest
         {
             BucketName = bucket,
@@ -119,15 +142,64 @@ internal sealed class S3ObjectStorage : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Confirms a browser upload landed with the size and type that were signed. A mismatched object is removed so
+    /// that a truncated or substituted file can never be referenced by catalog data.
+    /// </summary>
+    internal async Task<(ObjectVerificationOutcome Outcome, VerifiedObjectResponse? Object)> VerifyUploadAsync(
+        ObjectStorageArea area,
+        VerifyObjectUploadRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!IsManagedKey(area, request.ObjectKey))
+            return (ObjectVerificationOutcome.InvalidKey, null);
+
+        var bucket = BucketFor(area);
+        GetObjectMetadataResponse metadata;
+        try
+        {
+            metadata = await client.GetObjectMetadataAsync(bucket, request.ObjectKey, cancellationToken);
+        }
+        catch (AmazonS3Exception exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+        {
+            return (ObjectVerificationOutcome.NotFound, null);
+        }
+
+        var expectedType = request.ContentType?.Trim() ?? string.Empty;
+        if (metadata.ContentLength != request.ContentLength ||
+            !string.Equals(metadata.Headers.ContentType, expectedType, StringComparison.OrdinalIgnoreCase))
+        {
+            await client.DeleteObjectAsync(bucket, request.ObjectKey, cancellationToken);
+            return (ObjectVerificationOutcome.Mismatch, null);
+        }
+
+        return (ObjectVerificationOutcome.Verified, new VerifiedObjectResponse(
+            request.ObjectKey,
+            area == ObjectStorageArea.CatalogMedia ? BuildObjectUrl(bucket, request.ObjectKey) : null,
+            metadata.Headers.ContentType,
+            metadata.ContentLength,
+            metadata.LastModified.HasValue ? new DateTimeOffset(metadata.LastModified.Value.ToUniversalTime()) : null));
+    }
+
+    /// <summary>Deletes a managed public catalog object identified by its key or the public URL stored in Catalog.</summary>
+    internal async Task<bool> TryDiscardCatalogMediaAsync(
+        DiscardObjectRequest request,
+        CancellationToken cancellationToken)
+    {
+        var objectKey = request.ObjectKey ?? TryGetCatalogMediaKey(request.PublicUrl);
+        if (!IsManagedKey(ObjectStorageArea.CatalogMedia, objectKey))
+            return false;
+
+        // S3 DELETE is idempotent, so retries and already-removed objects are both successful outcomes.
+        await client.DeleteObjectAsync(options.PublicBucket, objectKey, cancellationToken);
+        return true;
+    }
+
     internal bool TryCreateRefundReadUrl(
         string? objectKey,
         [NotNullWhen(true)] out PrivateObjectReadUrlResponse? response)
     {
-        if (string.IsNullOrWhiteSpace(objectKey) ||
-            objectKey.Length > 1024 ||
-            !objectKey.StartsWith("refund-evidence/", StringComparison.Ordinal) ||
-            objectKey.Contains("..", StringComparison.Ordinal) ||
-            objectKey.Any(char.IsControl))
+        if (!IsManagedKey(ObjectStorageArea.RefundEvidence, objectKey))
         {
             response = null;
             return false;
@@ -144,6 +216,20 @@ internal sealed class S3ObjectStorage : IDisposable
         });
         response = new PrivateObjectReadUrlResponse(accessUrl, expiresOnUtc);
         return true;
+    }
+
+    internal static bool IsManagedKey(ObjectStorageArea area, [NotNullWhen(true)] string? objectKey) =>
+        objectKey is not null && ManagedKeyPattern().Match(objectKey) is { Success: true } match &&
+        match.Groups["prefix"].Value == PrefixFor(area) &&
+        UploadPolicies.Values.Any(policy => policy.StoredExtension == match.Groups["extension"].Value &&
+            (area == ObjectStorageArea.CatalogMedia || policy.IsImage));
+
+    private string? TryGetCatalogMediaKey(string? publicUrl)
+    {
+        var prefix = BuildObjectUrl(options.PublicBucket, string.Empty);
+        return publicUrl is not null && publicUrl.StartsWith(prefix, StringComparison.Ordinal)
+            ? Uri.UnescapeDataString(publicUrl[prefix.Length..])
+            : null;
     }
 
     private static Dictionary<string, string[]> ValidateUpload(
@@ -176,8 +262,18 @@ internal sealed class S3ObjectStorage : IDisposable
         return errors;
     }
 
+    private string BucketFor(ObjectStorageArea area) =>
+        area == ObjectStorageArea.CatalogMedia ? options.PublicBucket : options.PrivateBucket;
+
+    private static string PrefixFor(ObjectStorageArea area) =>
+        area == ObjectStorageArea.CatalogMedia ? "catalog-media" : "refund-evidence";
+
     private string BuildObjectUrl(string bucket, string objectKey) =>
         $"{endpoint.AbsoluteUri.TrimEnd('/')}/{Uri.EscapeDataString(bucket)}/{string.Join('/', objectKey.Split('/').Select(Uri.EscapeDataString))}";
+
+    // Only keys minted by TryCreateUploadUrl are accepted; this blocks traversal and deletion of foreign objects.
+    [GeneratedRegex(@"^(?<prefix>catalog-media|refund-evidence)/\d{4}/\d{2}/[0-9a-f]{32}\.(?<extension>[a-z0-9]{3,4})$", RegexOptions.CultureInvariant)]
+    private static partial Regex ManagedKeyPattern();
 
     public void Dispose() => client.Dispose();
 
@@ -202,6 +298,26 @@ public sealed record ObjectUploadUrlResponse(
     string UploadUrl,
     DateTimeOffset ExpiresOnUtc,
     IReadOnlyDictionary<string, string> Headers);
+
+/// <summary>Confirms that a signed upload completed with the declared size and content type.</summary>
+public sealed record VerifyObjectUploadRequest(string ObjectKey, string ContentType, long ContentLength);
+
+/// <summary>Stored object metadata after a successful upload verification.</summary>
+public sealed record VerifiedObjectResponse(
+    string ObjectKey,
+    string? PublicUrl,
+    string ContentType,
+    long ContentLength,
+    DateTimeOffset? LastModifiedOnUtc);
+
+/// <summary>Identifies a managed catalog object by key or by the public URL persisted in Catalog.</summary>
+public sealed record DiscardObjectRequest(string? ObjectKey, string? PublicUrl);
+
+/// <summary>Accepted content type and its size limit.</summary>
+public sealed record ObjectContentTypePolicy(string ContentType, IReadOnlyList<string> Extensions, long MaxBytes, string MediaType);
+
+/// <summary>Client-side validation rules mirroring the server upload policy.</summary>
+public sealed record ObjectUploadPolicyResponse(IReadOnlyList<ObjectContentTypePolicy> ContentTypes, int UploadUrlLifetimeSeconds);
 
 /// <summary>Requests temporary read access to a private refund-evidence object.</summary>
 public sealed record CreatePrivateObjectReadUrlRequest(string ObjectKey);
