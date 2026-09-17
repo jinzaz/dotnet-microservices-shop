@@ -40,6 +40,7 @@
     <Project Path="src/MSA.UserService/MSA.UserService.csproj" Id="9a9806f8-c9a2-4512-b64f-ac9f5a11cc35" />
   </Folder>
   <Folder Name="/3.Tests/">
+    <Project Path="tests/MSA.CommerceTests/MSA.CommerceTests.csproj" />
     <Project Path="tests/MSA.FlashSaleTests/MSA.FlashSaleTests.csproj" />
   </Folder>
 </Solution>
