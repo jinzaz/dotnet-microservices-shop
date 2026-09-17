@@ -1,0 +1,231 @@
+using System.Text.Json;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Moq;
+using MSA.OrderService.Application;
+using MSA.OrderService.Application.CreateOrder;
+using MSA.OrderService.Application.ManageFulfillment;
+using MSA.OrderService.Application.Pricing;
+using MSA.OrderService.Domain;
+
+namespace MSA.CommerceTests;
+
+[TestClass]
+public sealed class OrderApplicationTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 9, 16, 8, 0, 0, TimeSpan.Zero);
+    private static readonly string PriceHash = new('A', 64);
+
+    [TestMethod]
+    public void RequestFingerprint_IsStableForEquivalentPayloadAndSensitiveToBusinessChanges()
+    {
+        var address = Address();
+        var fingerprint = OrderRequestFingerprint.Create(
+            " buyer-1 ", "alipay", [("sku-b", 1, null), ("SKU-A", 2, null)], ["save10"], address, null, null);
+
+        Assert.AreEqual(fingerprint, OrderRequestFingerprint.Create(
+            "buyer-1", "ALIPAY", [(" sku-a ", 2, null), ("SKU-B", 1, null)], [" SAVE10 "], address, null, null));
+        Assert.AreNotEqual(fingerprint, OrderRequestFingerprint.Create(
+            "buyer-1", "ALIPAY", [("SKU-A", 3, null), ("SKU-B", 1, null)], ["SAVE10"], address, null, null));
+        Assert.AreNotEqual(fingerprint, OrderRequestFingerprint.Create(
+            "buyer-1", "ALIPAY", [("SKU-A", 2, null), ("SKU-B", 1, null)], ["SAVE10"], address, Guid.NewGuid(), 3));
+        Assert.ThrowsExactly<ArgumentException>(() => OrderRequestFingerprint.Create(
+            "buyer-1", "ALIPAY", [("SKU-A", 2, null)], [], address, Guid.NewGuid(), null));
+    }
+
+    [TestMethod]
+    public void CouponDigest_NormalizesCodeBeforeHashing()
+    {
+        Assert.AreEqual(CouponCode.Digest("SAVE10"), CouponCode.Digest(" save10 "));
+        Assert.AreEqual(64, CouponCode.Digest("SAVE10").Length);
+        Assert.ThrowsExactly<ArgumentException>(() => CouponCode.Digest(" "));
+    }
+
+    [TestMethod]
+    public void PercentageOff_RespectsEligibleSubtotalRemainingAmountAndCap()
+    {
+        var context = new PromotionEvaluationContext([Item(100m, 1)], Subtotal: 150m, EligibleSubtotal: 100m);
+        var benefit = new PercentageOffBenefit();
+
+        Assert.AreEqual(10m, benefit.Calculate("{\"percentage\":10}", context, 150m));
+        Assert.AreEqual(5m, benefit.Calculate("{\"percentage\":10}", context, 50m));
+        Assert.AreEqual(3m, benefit.Calculate("{\"percentage\":10,\"maximumDiscount\":3}", context, 150m));
+        Assert.ThrowsExactly<InvalidOperationException>(() => benefit.Calculate("{\"percentage\":101}", context, 150m));
+    }
+
+    [TestMethod]
+    public void FixedAmountOffAndRules_UseConfiguredThresholds()
+    {
+        var context = new PromotionEvaluationContext([Item(20m, 2), Item(5m, 1)], Subtotal: 45m, EligibleSubtotal: 40m);
+
+        Assert.AreEqual(40m, new FixedAmountOffBenefit().Calculate("{\"amount\":60}", context, 45m));
+        Assert.AreEqual(30m, new FixedAmountOffBenefit().Calculate("{\"amount\":60}", context, 30m));
+        Assert.IsTrue(new MinimumOrderAmountRule().IsSatisfied("{\"amount\":45}", context));
+        Assert.IsFalse(new MinimumOrderAmountRule().IsSatisfied("{\"amount\":45.01}", context));
+        Assert.IsTrue(new MinimumItemQuantityRule().IsSatisfied("{\"quantity\":3}", context));
+        Assert.IsFalse(new MinimumItemQuantityRule().IsSatisfied("{\"quantity\":4}", context));
+        Assert.ThrowsExactly<InvalidOperationException>(() => new MinimumItemQuantityRule().IsSatisfied("{\"quantity\":0}", context));
+    }
+
+    [TestMethod]
+    public void CreateOrderValidator_ReportsInvalidLinesInsteadOfThrowing()
+    {
+        var validator = new CreateOrderCommandValidator();
+
+        var nullSku = validator.Validate(Command([new CreateOrderItem(null!, 1)]));
+        var duplicate = validator.Validate(Command([new CreateOrderItem("sku-1", 1), new CreateOrderItem(" SKU-1 ", 2)]));
+        var partialBasket = validator.Validate(Command([new CreateOrderItem("SKU-1", 1)]) with { SourceBasketId = Guid.NewGuid() });
+        var unsupportedPayment = validator.Validate(Command([new CreateOrderItem("SKU-1", 1)]) with { PaymentMethod = "Cash" });
+        var valid = validator.Validate(Command([new CreateOrderItem("SKU-1", 1)]));
+
+        Assert.IsFalse(nullSku.IsValid);
+        Assert.IsTrue(duplicate.Errors.Any(error => error.ErrorMessage.Contains("Duplicate SKU", StringComparison.Ordinal)));
+        Assert.IsFalse(partialBasket.IsValid);
+        Assert.IsFalse(unsupportedPayment.IsValid);
+        Assert.IsTrue(valid.IsValid, string.Join("; ", valid.Errors));
+    }
+
+    [TestMethod]
+    public async Task UpdateFulfillment_LocksBeforeLoadingAndShipsWithInjectedClock()
+    {
+        var order = ConfirmedOrder();
+        var calls = new List<string>();
+        var fulfillmentLock = new Mock<IOrderFulfillmentLock>();
+        fulfillmentLock.Setup(value => value.AcquireAsync(order.Id, It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("lock")).Returns(Task.CompletedTask);
+        var orders = new Mock<IOrderRepository>();
+        orders.Setup(value => value.GetWithFulfillmentHistoryAsync(order.Id, It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("load")).ReturnsAsync(order);
+        var handler = new UpdateOrderFulfillmentCommandHandler(orders.Object, fulfillmentLock.Object, new TestClock(Now.AddHours(1)));
+        var command = new UpdateOrderFulfillmentCommand(order.Id, "ship-1", OrderFulfillmentStatus.Shipped,
+            "sf", "Shunfeng", "track-1", null, "operator");
+
+        var first = await handler.Handle(command, CancellationToken.None);
+        var replay = await handler.Handle(command with { CarrierCode = " SF " }, CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { "lock", "load", "lock", "load" }, calls);
+        Assert.IsTrue(first.Changed);
+        Assert.IsFalse(replay.Changed, "A normalized replay of the same request is idempotent.");
+        Assert.AreEqual(OrderFulfillmentStatus.Shipped, first.Status);
+        Assert.AreEqual(Now.AddHours(1), first.UpdatedOnUtc);
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => handler.Handle(
+            command with { TrackingNumber = "TRACK-2" }, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task UpdateFulfillment_UnknownOrder_ThrowsNotFound()
+    {
+        var handler = new UpdateOrderFulfillmentCommandHandler(
+            Mock.Of<IOrderRepository>(), Mock.Of<IOrderFulfillmentLock>(), new TestClock(Now));
+
+        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() => handler.Handle(
+            new UpdateOrderFulfillmentCommand(Guid.NewGuid(), "key", OrderFulfillmentStatus.Delivered, null, null, null, null, "operator"),
+            CancellationToken.None));
+    }
+
+    [TestMethod]
+    public void FulfillmentValidator_RequiresCarrierDataOnlyForShipment()
+    {
+        var validator = new UpdateOrderFulfillmentCommandValidator();
+
+        Assert.IsFalse(validator.Validate(new UpdateOrderFulfillmentCommand(
+            Guid.NewGuid(), "key", OrderFulfillmentStatus.Shipped, null, null, null, null, "operator")).IsValid);
+        Assert.IsTrue(validator.Validate(new UpdateOrderFulfillmentCommand(
+            Guid.NewGuid(), "key", OrderFulfillmentStatus.InTransit, null, null, null, null, "operator")).IsValid);
+        Assert.IsFalse(validator.Validate(new UpdateOrderFulfillmentCommand(
+            Guid.NewGuid(), "key", OrderFulfillmentStatus.Cancelled, null, null, null, null, "operator")).IsValid);
+    }
+
+    [TestMethod]
+    public void Ship_InvalidInput_LeavesNoPartialCarrierState()
+    {
+        var order = ConfirmedOrder();
+        var version = order.Version;
+
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => order.Ship("ship-1", new string('B', 64), "SF",
+            new string('x', 121), "TRACK-1", null, "operator", Now.AddHours(1)));
+        Assert.ThrowsExactly<ArgumentException>(() => order.Ship("ship-1", new string('B', 64), "SF",
+            "Shunfeng", "TRACK-1", null, " ", Now.AddHours(1)));
+        Assert.ThrowsExactly<ArgumentException>(() => order.MarkInTransit("transit", "not-a-hash", null, "operator", Now));
+
+        Assert.IsNull(order.CarrierCode);
+        Assert.IsNull(order.TrackingNumber);
+        Assert.IsNull(order.ShippedOnUtc);
+        Assert.AreEqual(version, order.Version);
+        Assert.AreEqual(OrderFulfillmentStatus.AwaitingShipment, order.FulfillmentStatus);
+    }
+
+    [TestMethod]
+    public void SagaData_RoundTripsAndReportsCompensationCompletion()
+    {
+        var data = OrderFulfillmentSagaData.Start(ConfirmedOrder()) with
+        {
+            RequiresInventoryCompensation = true,
+            RequiresPaymentCompensation = true,
+            InventoryCompensated = true
+        };
+
+        var parsed = OrderFulfillmentSagaData.Parse(JsonSerializer.Serialize(data));
+
+        Assert.AreEqual(data, parsed);
+        Assert.IsFalse(parsed.IsCompensationComplete);
+        Assert.IsTrue((parsed with { PaymentCompensated = true }).IsCompensationComplete);
+        Assert.IsTrue((parsed with { RequiresInventoryCompensation = false, RequiresPaymentCompensation = false, InventoryCompensated = false }).IsCompensationComplete);
+        Assert.ThrowsExactly<InvalidOperationException>(() => OrderFulfillmentSagaData.Parse("null"));
+    }
+
+    [TestMethod]
+    public void ProductProjection_NormalizesSkuAndIgnoresStaleOrDuplicateRevisions()
+    {
+        var projection = new OrderProductProjection(Guid.NewGuid(), Guid.NewGuid(), " sku-1 ", "Product", "Variant",
+            "", 10.005m, "cny", true, null, 2, Now);
+
+        Assert.IsFalse(projection.Apply("Old", "Old", "{}", 1m, "CNY", false, null, 1, Now.AddMinutes(1)));
+        Assert.IsFalse(projection.Apply("Same", "Same", "{}", 1m, "CNY", false, null, 2, Now));
+        Assert.IsTrue(projection.Apply("New", "Variant", "{}", 12m, "usd", false, null, 3, Now.AddMinutes(1)));
+
+        Assert.AreEqual("SKU-1", projection.Sku);
+        Assert.AreEqual("New", projection.ProductName);
+        Assert.AreEqual("USD", projection.Currency);
+        Assert.IsFalse(projection.IsActive);
+        Assert.AreEqual(3L, projection.SourceRevision);
+    }
+
+    [TestMethod]
+    public void AllocationProjection_OutOfOrderOpenCannotReopenNewerClose()
+    {
+        var projection = new InventoryAllocationProjection(Guid.NewGuid(), Guid.NewGuid(), "sku-1",
+            Now, Now.AddHours(1), 2, Now);
+
+        Assert.IsTrue(projection.AcceptsOrders(Now.AddMinutes(1)));
+        projection.Close(Now.AddMinutes(10));
+        projection.ApplyOpen("SKU-1", Now, Now.AddHours(2), 5, Now.AddMinutes(5));
+        projection.Close(Now.AddMinutes(9));
+
+        Assert.IsFalse(projection.AcceptsOrders(Now.AddMinutes(11)));
+        Assert.AreEqual(2, projection.PerUserLimit);
+        Assert.AreEqual(Now.AddMinutes(10), projection.ClosedOnUtc);
+        Assert.AreEqual("SKU-1", projection.Sku);
+    }
+
+    private static PricingItem Item(decimal price, int quantity) =>
+        new(new OrderProductProjection(Guid.NewGuid(), Guid.NewGuid(), $"SKU-{Guid.NewGuid():N}", "Product", "Variant",
+            "{}", price, "CNY", true, null, 1, Now), quantity);
+
+    private static CreateOrderCommand Command(IReadOnlyList<CreateOrderItem> items) =>
+        new("buyer-1", "order-key", items, "Alipay", new ShippingAddressInput(
+            null, "Buyer", "13800000000", "CN", "Province", "City", "District", "Street", null, null));
+
+    private static ShippingAddressSnapshot Address() =>
+        new(null, "Buyer", "13800000000", "CN", "Province", "City", "District", "Street", null, null);
+
+    private static Order ConfirmedOrder()
+    {
+        var order = new Order(
+            Guid.NewGuid(), "buyer-1", "order-key", new string('F', 64), "Alipay", Address(),
+            [new OrderLine(Guid.NewGuid(), Guid.NewGuid(), null, "SKU-1", "Product", "Variant", "{}", 1, 10m, 10m)],
+            [], "CNY", null, null, Guid.NewGuid(), PriceHash, Now.AddMinutes(20), Now);
+        order.InventoryReserved(Guid.NewGuid(), Now.AddMinutes(1));
+        order.Confirm(Guid.NewGuid(), 10m, "CNY", PriceHash, Now.AddMinutes(2));
+        return order;
+    }
+}

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using MSA.InventoryService.Application;
+using MSA.InventoryService.Domain;
 using System.Data;
 
 namespace MSA.InventoryService.Infrastructure;
@@ -13,7 +14,7 @@ internal sealed class PostgresInventoryTransactionLock(InventoryDbContext db) : 
     {
         var resourceKeys = skus
             .Where(sku => !string.IsNullOrWhiteSpace(sku))
-            .Select(sku => $"inventory-stock:{sku.Trim().ToUpperInvariant()}");
+            .Select(sku => $"inventory-stock:{StockItem.NormalizeSku(sku)}");
         await AcquireAsync(resourceKeys, cancellationToken);
     }
 
@@ -28,7 +29,7 @@ internal sealed class PostgresInventoryTransactionLock(InventoryDbContext db) : 
         AcquireAsync(
             [
                 $"inventory-adjustment:{operatorId.Trim()}:{idempotencyKey.Trim()}",
-                $"inventory-stock:{sku.Trim().ToUpperInvariant()}"
+                $"inventory-stock:{StockItem.NormalizeSku(sku)}"
             ],
             cancellationToken);
 

@@ -24,7 +24,7 @@ builder.Services.AddDbContext<CatalogDbContext>(options => options.UseNpgsql(pos
 builder.Services.AddScoped<MSADbContext>(services => services.GetRequiredService<CatalogDbContext>());
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddMediatR(configuration =>
-    configuration.RegisterServicesFromAssemblyContaining<CreateProductCommand>());
+    configuration.RegisterServicesFromAssemblyContaining<CreateDraftProductCommand>());
 builder.Services.AddMsaApplicationPipeline();
 
 builder.Services.AddScoped<CatalogStore>();
@@ -36,11 +36,8 @@ builder.Services.AddScoped<ICatalogReadService>(services => services.GetRequired
 builder.Services.AddScoped<ICatalogSnapshotPublisher, OutboxCatalogSnapshotPublisher>();
 builder.Services.AddScoped<ICatalogAuditWriter, CatalogAuditWriter>();
 
-builder.Services.AddScoped<IValidator<CreateCategoryCommand>, CreateCategoryValidator>();
 builder.Services.AddScoped<IValidator<CreateCategoryAdminCommand>, CreateCategoryAdminValidator>();
-builder.Services.AddScoped<IValidator<CreateProductCommand>, CreateProductValidator>();
 builder.Services.AddScoped<IValidator<CreateDraftProductCommand>, CreateDraftProductValidator>();
-builder.Services.AddScoped<IValidator<UpdateProductCommand>, UpdateProductValidator>();
 builder.Services.AddScoped<IValidator<ChangeProductPriceCommand>, ChangeProductPriceValidator>();
 builder.Services.AddScoped<IValidator<CreateProductVariantCommand>, CreateProductVariantValidator>();
 builder.Services.AddScoped<IValidator<UpdateProductVariantCommand>, UpdateProductVariantValidator>();

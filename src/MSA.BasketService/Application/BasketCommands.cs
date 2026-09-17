@@ -46,12 +46,23 @@ internal abstract class BasketCommandHandler(
 
     protected Basket Create(string userId, long? expectedVersion)
     {
-        if (expectedVersion.HasValue && expectedVersion.Value != 0)
-            throw new BasketVersionConflictException(expectedVersion.Value, 0);
-
+        EnsureMissingBasketVersion(expectedVersion);
         var basket = new Basket(Guid.NewGuid(), userId, clock.GetUtcNow());
         baskets.Add(basket);
         return basket;
+    }
+
+    /// <summary>A basket that does not exist yet is observed by clients as version 0.</summary>
+    protected static BasketMutationResult EmptyBasketResult(long? expectedVersion)
+    {
+        EnsureMissingBasketVersion(expectedVersion);
+        return new BasketMutationResult(Guid.Empty, 0);
+    }
+
+    private static void EnsureMissingBasketVersion(long? expectedVersion)
+    {
+        if (expectedVersion is { } expected && expected != 0)
+            throw new BasketVersionConflictException(expected, 0);
     }
 
     protected DateTimeOffset UtcNow => clock.GetUtcNow();
@@ -71,10 +82,11 @@ internal sealed class AddBasketItemCommandHandler(
         CancellationToken cancellationToken)
     {
         var basket = await LockAndFindAsync(request.UserId, cancellationToken);
-        var isNew = basket is null;
-        basket ??= Create(request.UserId, request.ExpectedVersion);
+        // 先确认商品可售，避免为一次失败的加购创建空购物车。
         var product = await products.FindBySkuAsync(request.Sku, cancellationToken)
             ?? throw new ProductUnavailableException(request.Sku);
+        var isNew = basket is null;
+        basket ??= Create(request.UserId, request.ExpectedVersion);
 
         basket.AddOrIncreaseItem(
             product,
@@ -127,11 +139,7 @@ internal sealed class RemoveBasketItemCommandHandler(
     {
         var basket = await LockAndFindAsync(request.UserId, cancellationToken);
         if (basket is null)
-        {
-            if (request.ExpectedVersion.HasValue && request.ExpectedVersion.Value != 0)
-                throw new BasketVersionConflictException(request.ExpectedVersion.Value, 0);
-            return new BasketMutationResult(Guid.Empty, 0);
-        }
+            return EmptyBasketResult(request.ExpectedVersion);
 
         basket.RemoveItem(request.Sku, request.ExpectedVersion, UtcNow);
         return new BasketMutationResult(basket.Id, basket.Version);
@@ -151,11 +159,7 @@ internal sealed class ClearBasketCommandHandler(
     {
         var basket = await LockAndFindAsync(request.UserId, cancellationToken);
         if (basket is null)
-        {
-            if (request.ExpectedVersion.HasValue && request.ExpectedVersion.Value != 0)
-                throw new BasketVersionConflictException(request.ExpectedVersion.Value, 0);
-            return new BasketMutationResult(Guid.Empty, 0);
-        }
+            return EmptyBasketResult(request.ExpectedVersion);
 
         basket.Clear(request.ExpectedVersion, UtcNow);
         return new BasketMutationResult(basket.Id, basket.Version);
@@ -176,11 +180,7 @@ internal sealed class ReplaceBasketCouponsCommandHandler(
     {
         var basket = await LockAndFindAsync(request.UserId, cancellationToken);
         if (basket is null && request.CouponCodes.Count == 0)
-        {
-            if (request.ExpectedVersion.HasValue && request.ExpectedVersion.Value != 0)
-                throw new BasketVersionConflictException(request.ExpectedVersion.Value, 0);
-            return new BasketMutationResult(Guid.Empty, 0);
-        }
+            return EmptyBasketResult(request.ExpectedVersion);
 
         var isNew = basket is null;
         basket ??= Create(request.UserId, request.ExpectedVersion);

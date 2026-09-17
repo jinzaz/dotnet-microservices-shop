@@ -6,22 +6,6 @@ using MSA.Infrastrucute.Mediator;
 
 namespace MSA.CatalogService.Application;
 
-// Legacy API contracts retained for rolling clients.
-public sealed record CreateProductCommand(
-    Guid CategoryId,
-    string Sku,
-    string Name,
-    string Description,
-    decimal Price,
-    string Currency) : ICommand<Guid>;
-
-public sealed record UpdateProductCommand(
-    Guid Id,
-    string Name,
-    string Description,
-    decimal Price,
-    bool IsActive) : ICommand<bool>;
-
 public sealed record CreateDraftProductCommand(
     Guid CategoryId,
     string Sku,
@@ -75,19 +59,6 @@ public sealed record ListAdminProductsQuery(
     string? LifecycleStatus,
     Guid? CategoryId) : IQuery<PagedResult<ProductDto>>;
 
-public sealed class CreateProductValidator : AbstractValidator<CreateProductCommand>
-{
-    public CreateProductValidator()
-    {
-        RuleFor(command => command.CategoryId).NotEmpty();
-        RuleFor(command => command.Sku).NotEmpty().MaximumLength(80);
-        RuleFor(command => command.Name).NotEmpty().MaximumLength(200);
-        RuleFor(command => command.Description).NotNull();
-        RuleFor(command => command.Price).InclusiveBetween(0, 9_999_999_999_999_999.99m);
-        RuleFor(command => command.Currency).Matches("^[A-Za-z]{3}$");
-    }
-}
-
 public sealed class CreateDraftProductValidator : AbstractValidator<CreateDraftProductCommand>
 {
     public CreateDraftProductValidator()
@@ -96,20 +67,9 @@ public sealed class CreateDraftProductValidator : AbstractValidator<CreateDraftP
         RuleFor(command => command.Sku).NotEmpty().MaximumLength(80);
         RuleFor(command => command.Name).NotEmpty().MaximumLength(200);
         RuleFor(command => command.Description).NotNull();
-        RuleFor(command => command.Price).InclusiveBetween(0, 9_999_999_999_999_999.99m);
-        RuleFor(command => command.Currency).Matches("^[A-Za-z]{3}$");
+        RuleFor(command => command.Price).InclusiveBetween(0, CatalogValidation.MaximumPrice);
+        RuleFor(command => command.Currency).Matches(CatalogValidation.CurrencyPattern);
         RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
-    }
-}
-
-public sealed class UpdateProductValidator : AbstractValidator<UpdateProductCommand>
-{
-    public UpdateProductValidator()
-    {
-        RuleFor(command => command.Id).NotEmpty();
-        RuleFor(command => command.Name).NotEmpty().MaximumLength(200);
-        RuleFor(command => command.Description).NotNull();
-        RuleFor(command => command.Price).InclusiveBetween(0, 9_999_999_999_999_999.99m);
     }
 }
 
@@ -118,64 +78,9 @@ public sealed class ChangeProductPriceValidator : AbstractValidator<ChangeProduc
     public ChangeProductPriceValidator()
     {
         RuleFor(command => command.ProductId).NotEmpty();
-        RuleFor(command => command.Price).InclusiveBetween(0, 9_999_999_999_999_999.99m);
-        RuleFor(command => command.Currency).Matches("^[A-Za-z]{3}$");
+        RuleFor(command => command.Price).InclusiveBetween(0, CatalogValidation.MaximumPrice);
+        RuleFor(command => command.Currency).Matches(CatalogValidation.CurrencyPattern);
         RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
-    }
-}
-
-internal sealed class CreateProductHandler(
-    ICategoryRepository categories,
-    IProductRepository products,
-    ICatalogSnapshotPublisher snapshots,
-    ICatalogAuditWriter audit,
-    TimeProvider clock) : IRequestHandler<CreateProductCommand, Guid>
-{
-    public async Task<Guid> Handle(CreateProductCommand request, CancellationToken cancellationToken)
-    {
-        var now = clock.GetUtcNow();
-        var product = await CreateAsync(
-            request.CategoryId,
-            request.Sku,
-            request.Name,
-            request.Description,
-            request.Price,
-            request.Currency,
-            "legacy-api",
-            now,
-            categories,
-            products,
-            cancellationToken);
-        product.Publish("legacy-api", now);
-        products.Add(product);
-        snapshots.Publish(product);
-        audit.Record("Product", product.Id, "CreatedAndPublished", "legacy-api", now, new { product.Sku });
-        return product.Id;
-    }
-
-    internal static async Task<Product> CreateAsync(
-        Guid categoryId,
-        string sku,
-        string name,
-        string description,
-        decimal price,
-        string currency,
-        string actor,
-        DateTimeOffset now,
-        ICategoryRepository categories,
-        IProductRepository products,
-        CancellationToken cancellationToken)
-    {
-        var category = await categories.FindAsync(categoryId, cancellationToken)
-            ?? throw new KeyNotFoundException("Category was not found.");
-        if (category.Status != CategoryLifecycleStatus.Active)
-            throw new InvalidOperationException("Products can only be assigned to an active category.");
-
-        var normalizedSku = Product.NormalizeSku(sku);
-        if (await products.SkuExistsAsync(normalizedSku, null, cancellationToken))
-            throw new InvalidOperationException($"SKU '{sku}' already exists.");
-
-        return new Product(Guid.NewGuid(), categoryId, sku, name, description, price, currency, actor, now);
     }
 }
 
@@ -188,8 +93,17 @@ internal sealed class CreateDraftProductHandler(
 {
     public async Task<Guid> Handle(CreateDraftProductCommand request, CancellationToken cancellationToken)
     {
+        var category = await categories.GetRequiredAsync(request.CategoryId, cancellationToken);
+        if (category.Status != CategoryLifecycleStatus.Active)
+            throw new InvalidOperationException("Products can only be assigned to an active category.");
+
+        var normalizedSku = Product.NormalizeSku(request.Sku);
+        if (await products.SkuExistsAsync(normalizedSku, null, cancellationToken))
+            throw new InvalidOperationException($"SKU '{request.Sku}' already exists.");
+
         var now = clock.GetUtcNow();
-        var product = await CreateProductHandler.CreateAsync(
+        var product = new Product(
+            Guid.NewGuid(),
             request.CategoryId,
             request.Sku,
             request.Name,
@@ -197,37 +111,11 @@ internal sealed class CreateDraftProductHandler(
             request.Price,
             request.Currency,
             request.Actor,
-            now,
-            categories,
-            products,
-            cancellationToken);
+            now);
         products.Add(product);
         snapshots.Publish(product);
         audit.Record("Product", product.Id, "DraftCreated", request.Actor, now, new { product.Sku });
         return product.Id;
-    }
-}
-
-internal sealed class UpdateProductHandler(
-    IProductRepository products,
-    ICatalogSnapshotPublisher snapshots,
-    ICatalogAuditWriter audit,
-    TimeProvider clock) : IRequestHandler<UpdateProductCommand, bool>
-{
-    public async Task<bool> Handle(UpdateProductCommand request, CancellationToken cancellationToken)
-    {
-        var product = await ProductHandlerHelpers.GetAsync(products, request.Id, cancellationToken);
-        var now = clock.GetUtcNow();
-        product.UpdateDetails(request.Name, request.Description, "legacy-api", now);
-        product.ChangePrice(request.Price, product.Currency, "legacy-api", now);
-        if (request.IsActive && !product.IsActive)
-            product.Publish("legacy-api", now);
-        else if (!request.IsActive && product.IsActive)
-            product.Unpublish("legacy-api", now);
-
-        snapshots.Publish(product);
-        audit.Record("Product", product.Id, "LegacyUpdated", "legacy-api", now);
-        return true;
     }
 }
 
@@ -239,8 +127,8 @@ internal sealed class UpdateProductDetailsHandler(
 {
     public async Task<bool> Handle(UpdateProductDetailsCommand request, CancellationToken cancellationToken)
     {
-        var product = await ProductHandlerHelpers.GetAsync(products, request.ProductId, cancellationToken);
-        ProductHandlerHelpers.EnsureVersion(product.Version, request.ExpectedVersion);
+        var product = await products.GetRequiredAsync(request.ProductId, cancellationToken);
+        product.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         product.UpdateDetails(request.Name, request.Description, request.Actor, now);
         snapshots.Publish(product);
@@ -257,8 +145,8 @@ internal sealed class ChangeProductPriceHandler(
 {
     public async Task<bool> Handle(ChangeProductPriceCommand request, CancellationToken cancellationToken)
     {
-        var product = await ProductHandlerHelpers.GetAsync(products, request.ProductId, cancellationToken);
-        ProductHandlerHelpers.EnsureVersion(product.Version, request.ExpectedVersion);
+        var product = await products.GetRequiredAsync(request.ProductId, cancellationToken);
+        product.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         product.ChangePrice(request.Price, request.Currency, request.Actor, now);
         snapshots.Publish(product);
@@ -276,8 +164,8 @@ internal sealed class PublishProductHandler(
 {
     public async Task<bool> Handle(PublishProductCommand request, CancellationToken cancellationToken)
     {
-        var product = await ProductHandlerHelpers.GetAsync(products, request.ProductId, cancellationToken);
-        ProductHandlerHelpers.EnsureVersion(product.Version, request.ExpectedVersion);
+        var product = await products.GetRequiredAsync(request.ProductId, cancellationToken);
+        product.EnsureVersion(request.ExpectedVersion);
         var category = await categories.FindAsync(product.CategoryId, cancellationToken)
             ?? throw new KeyNotFoundException("Product category was not found.");
         if (category.Status != CategoryLifecycleStatus.Active)
@@ -299,8 +187,8 @@ internal sealed class UnpublishProductHandler(
 {
     public async Task<bool> Handle(UnpublishProductCommand request, CancellationToken cancellationToken)
     {
-        var product = await ProductHandlerHelpers.GetAsync(products, request.ProductId, cancellationToken);
-        ProductHandlerHelpers.EnsureVersion(product.Version, request.ExpectedVersion);
+        var product = await products.GetRequiredAsync(request.ProductId, cancellationToken);
+        product.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         product.Unpublish(request.Actor, now);
         snapshots.Publish(product);
@@ -317,8 +205,8 @@ internal sealed class ArchiveProductHandler(
 {
     public async Task<bool> Handle(ArchiveProductCommand request, CancellationToken cancellationToken)
     {
-        var product = await ProductHandlerHelpers.GetAsync(products, request.ProductId, cancellationToken);
-        ProductHandlerHelpers.EnsureVersion(product.Version, request.ExpectedVersion);
+        var product = await products.GetRequiredAsync(request.ProductId, cancellationToken);
+        product.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         product.Archive(request.Actor, now);
         snapshots.Publish(product);
@@ -367,20 +255,4 @@ internal sealed class ListAdminProductsHandler(ICatalogReadService reads)
             request.LifecycleStatus,
             request.CategoryId,
             cancellationToken);
-}
-
-file static class ProductHandlerHelpers
-{
-    public static async Task<Product> GetAsync(
-        IProductRepository products,
-        Guid productId,
-        CancellationToken cancellationToken) =>
-        await products.FindAsync(productId, cancellationToken)
-        ?? throw new KeyNotFoundException("Product was not found.");
-
-    public static void EnsureVersion(long current, long? expected)
-    {
-        if (expected.HasValue && expected.Value != current)
-            throw new InvalidOperationException($"Product version mismatch. Expected {expected}, current {current}.");
-    }
 }

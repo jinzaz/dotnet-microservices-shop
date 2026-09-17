@@ -5,12 +5,10 @@ using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MSA.Contracts;
-using MSA.EventBus.Abstractions;
 using MSA.EventBusOutbox;
 using MSA.Infrastrucute.Mediator;
 using MSA.InventoryService.Domain;
 using MSA.InventoryService.Infrastructure;
-using MSA.InventoryService.Integration;
 using System.Text.Json;
 
 namespace MSA.InventoryService.Application.Allocations;
@@ -51,7 +49,7 @@ internal sealed class CreateInventoryAllocationHandler(
         CreateInventoryAllocationCommand request,
         CancellationToken cancellationToken)
     {
-        var sku = request.Sku.Trim().ToUpperInvariant();
+        var sku = StockItem.NormalizeSku(request.Sku);
         await transactionLock.AcquireStockItemsAsync([sku], cancellationToken);
         if (await db.InventoryAllocations.AnyAsync(
                 value => value.OfferId == request.OfferId && value.Sku == sku,
@@ -85,7 +83,7 @@ internal sealed class CreateInventoryAllocationHandler(
             "Inventory ring-fenced for a limited offer.",
             now));
 
-        AllocationEventPublisher.Publish(outbox, new InventoryAllocationOpenedIntegrationEvent
+        outbox.AddIntegrationEvent(new InventoryAllocationOpenedIntegrationEvent
         {
             AllocationId = allocation.Id,
             OfferId = allocation.OfferId,
@@ -94,7 +92,7 @@ internal sealed class CreateInventoryAllocationHandler(
             EndsOnUtc = allocation.EndsOnUtc,
             PerUserLimit = allocation.PerUserLimit
         });
-        await cache.RemoveStockAsync(sku, cancellationToken);
+        cache.StockChanged(sku);
         return allocation.Id;
     }
 }
@@ -145,15 +143,15 @@ internal sealed class CloseInventoryAllocationHandler(
                 now));
         }
 
-        AllocationEventPublisher.Publish(outbox, new InventoryAllocationClosedIntegrationEvent
+        outbox.AddIntegrationEvent(new InventoryAllocationClosedIntegrationEvent
         {
             AllocationId = allocation.Id,
             OfferId = allocation.OfferId,
             Sku = allocation.Sku,
             ClosedOnUtc = now
         });
-        await cache.RemoveStockAsync(allocation.Sku, cancellationToken);
-        await cache.RemoveAllocationAsync(allocation.Id, cancellationToken);
+        cache.StockChanged(allocation.Sku);
+        cache.AllocationChanged(allocation.Id);
         return new CloseInventoryAllocationResult(true, true, released);
     }
 }
@@ -199,7 +197,7 @@ internal sealed class GetInventoryAllocationQueryHandler(
         GetInventoryAllocationQuery request,
         CancellationToken cancellationToken)
     {
-        var cacheKey = InventoryAllocationCacheKeys.Availability(request.AllocationId);
+        var cacheKey = InventoryCacheKeys.Allocation(request.AllocationId);
         try
         {
             var cached = await cache.GetStringAsync(cacheKey, cancellationToken);
@@ -271,7 +269,7 @@ internal sealed class ListInventoryAllocationsQueryHandler(
         var query = db.InventoryAllocations.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(request.Sku))
         {
-            var sku = request.Sku.Trim().ToUpperInvariant();
+            var sku = StockItem.NormalizeSku(request.Sku);
             query = query.Where(value => value.Sku.Contains(sku));
         }
         if (request.Status.HasValue)
@@ -314,18 +312,4 @@ public sealed class InventoryAllocationOptions
     public TimeSpan AvailabilityCacheDuration { get; set; } = TimeSpan.FromSeconds(2);
     public TimeSpan ExpiryScanInterval { get; set; } = TimeSpan.FromSeconds(5);
     public int ExpiryBatchSize { get; set; } = 100;
-}
-
-public static class InventoryAllocationCacheKeys
-{
-    public static string Availability(Guid allocationId) =>
-        $"inventory:allocation:{allocationId:N}";
-}
-
-file static class AllocationEventPublisher
-{
-    public static void Publish(IOutboxStore outbox, IntegrationEvent integrationEvent) =>
-        outbox.Add(OutboxMessage.Create(
-            integrationEvent.GetType().AssemblyQualifiedName!,
-            JsonSerializer.Serialize(integrationEvent, integrationEvent.GetType())));
 }

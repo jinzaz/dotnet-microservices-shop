@@ -23,7 +23,7 @@ internal sealed class CreateCouponHandler(
         if (await coupons.CodeDigestExistsAsync(digest, null, cancellationToken))
             throw new InvalidOperationException("Coupon code already exists.");
 
-        var strategy = CreatePromotionHandler.ParseEnum<CouponQuotaStrategy>(
+        var strategy = PromotionDefinitionMapper.ParseEnum<CouponQuotaStrategy>(
             request.QuotaStrategy,
             nameof(request.QuotaStrategy));
         var id = Guid.NewGuid();
@@ -63,8 +63,8 @@ internal sealed class ActivateCouponHandler(
 {
     public async Task<bool> Handle(ActivateCouponCommand request, CancellationToken cancellationToken)
     {
-        var coupon = await CouponHandlerHelpers.GetAsync(coupons, request.CouponId, cancellationToken);
-        CouponHandlerHelpers.EnsureVersion(coupon.Version, request.ExpectedVersion);
+        var coupon = await coupons.GetRequiredAsync(request.CouponId, cancellationToken);
+        coupon.EnsureVersion(request.ExpectedVersion);
         var promotion = await promotions.FindAsync(coupon.PromotionId, cancellationToken)
             ?? throw new KeyNotFoundException("Coupon promotion was not found.");
         if (promotion.TriggerType != PromotionTriggerType.Coupon || promotion.Status != PromotionStatus.Active)
@@ -92,8 +92,8 @@ internal sealed class DisableCouponHandler(
 {
     public async Task<bool> Handle(DisableCouponCommand request, CancellationToken cancellationToken)
     {
-        var coupon = await CouponHandlerHelpers.GetAsync(coupons, request.CouponId, cancellationToken);
-        CouponHandlerHelpers.EnsureVersion(coupon.Version, request.ExpectedVersion);
+        var coupon = await coupons.GetRequiredAsync(request.CouponId, cancellationToken);
+        coupon.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         coupon.Disable(request.Actor, now);
         snapshots.Publish(coupon);
@@ -110,8 +110,8 @@ internal sealed class ExpireCouponHandler(
 {
     public async Task<bool> Handle(ExpireCouponCommand request, CancellationToken cancellationToken)
     {
-        var coupon = await CouponHandlerHelpers.GetAsync(coupons, request.CouponId, cancellationToken);
-        CouponHandlerHelpers.EnsureVersion(coupon.Version, request.ExpectedVersion);
+        var coupon = await coupons.GetRequiredAsync(request.CouponId, cancellationToken);
+        coupon.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         coupon.Expire(request.Actor, now);
         snapshots.Publish(coupon);
@@ -137,20 +137,4 @@ internal sealed class ListCouponsHandler(ICatalogReadService reads)
             request.Status,
             request.PromotionId,
             cancellationToken);
-}
-
-file static class CouponHandlerHelpers
-{
-    public static async Task<Coupon> GetAsync(
-        ICouponRepository coupons,
-        Guid couponId,
-        CancellationToken cancellationToken) =>
-        await coupons.FindAsync(couponId, cancellationToken)
-        ?? throw new KeyNotFoundException("Coupon was not found.");
-
-    public static void EnsureVersion(long current, long? expected)
-    {
-        if (expected.HasValue && expected.Value != current)
-            throw new InvalidOperationException($"Coupon version mismatch. Expected {expected}, current {current}.");
-    }
 }

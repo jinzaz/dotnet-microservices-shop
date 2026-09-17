@@ -47,7 +47,7 @@ internal sealed class AdjustStockCommandHandler(
         AdjustStockCommand request,
         CancellationToken cancellationToken)
     {
-        var sku = request.Sku.Trim().ToUpperInvariant();
+        var sku = StockItem.NormalizeSku(request.Sku);
         var idempotencyKey = request.IdempotencyKey.Trim();
         var reason = request.Reason.Trim();
         var operatorId = request.OperatorId.Trim();
@@ -106,7 +106,7 @@ internal sealed class AdjustStockCommandHandler(
             requestHash);
         db.StockMovements.Add(movement);
 
-        await cache.RemoveStockAsync(sku, cancellationToken);
+        cache.StockChanged(sku);
         return ToResult(movement, replayed: false);
     }
 
@@ -161,7 +161,7 @@ internal sealed class GetStockMovementsQueryHandler(InventoryDbContext db)
         GetStockMovementsQuery request,
         CancellationToken cancellationToken)
     {
-        var sku = request.Sku.Trim().ToUpperInvariant();
+        var sku = StockItem.NormalizeSku(request.Sku);
         var take = Math.Clamp(request.Take, 1, 200);
         return await db.StockMovements
             .AsNoTracking()

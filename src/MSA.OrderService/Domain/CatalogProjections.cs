@@ -6,33 +6,6 @@ public sealed class OrderProductProjection
     {
     }
 
-    // Compatibility constructor for snapshots emitted before products gained variants.
-    public OrderProductProjection(
-        Guid productId,
-        string sku,
-        string name,
-        decimal price,
-        string currency,
-        bool active,
-        Guid? categoryId = null,
-        long sourceRevision = 0,
-        DateTimeOffset? effectiveOnUtc = null)
-        : this(
-            productId,
-            productId,
-            sku,
-            name,
-            name,
-            "{}",
-            price,
-            currency,
-            active,
-            categoryId,
-            sourceRevision,
-            effectiveOnUtc)
-    {
-    }
-
     public OrderProductProjection(
         Guid variantId,
         Guid productId,
@@ -51,7 +24,9 @@ public sealed class OrderProductProjection
             throw new ArgumentException("Product and variant ids are required.");
         VariantId = variantId;
         ProductId = productId;
-        Sku = sku.Trim();
+        ArgumentException.ThrowIfNullOrWhiteSpace(sku);
+        // 订单按规范化 SKU 查找投影，规范化必须由投影自身保证，而不是依赖每个消息处理器。
+        Sku = sku.Trim().ToUpperInvariant();
         ProductName = productName.Trim();
         VariantName = variantName.Trim();
         AttributesJson = string.IsNullOrWhiteSpace(attributesJson) ? "{}" : attributesJson.Trim();
@@ -76,19 +51,6 @@ public sealed class OrderProductProjection
     public long SourceRevision { get; private set; }
     public DateTimeOffset UpdatedOnUtc { get; private set; }
     public string Name => ProductName;
-
-    public void Update(string name, decimal price, string currency, bool active) =>
-        Apply(name, name, "{}", price, currency, active, CategoryId, SourceRevision + 1, DateTimeOffset.UtcNow);
-
-    public bool Apply(
-        string name,
-        decimal price,
-        string currency,
-        bool active,
-        Guid? categoryId,
-        long sourceRevision,
-        DateTimeOffset effectiveOnUtc) =>
-        Apply(name, name, "{}", price, currency, active, categoryId, sourceRevision, effectiveOnUtc);
 
     public bool Apply(
         string productName,

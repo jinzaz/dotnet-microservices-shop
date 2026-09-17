@@ -1,9 +1,8 @@
 using MSA.CatalogService.Application.Abstractions;
 using MSA.CatalogService.Domain;
 using MSA.Contracts;
-using MSA.EventBus.Abstractions;
 using MSA.EventBusOutbox;
-using System.Text.Json;
+using MSA.Infrastrucute.Entities;
 
 namespace MSA.CatalogService.Infrastructure;
 
@@ -11,14 +10,37 @@ internal sealed class OutboxCatalogSnapshotPublisher(IOutboxStore outbox) : ICat
 {
     public void Publish(Product product)
     {
+        if (!HasUnsavedSnapshotChange(product))
+            return;
         foreach (var variant in product.Variants)
-            PublishVariant(product, variant, product.IsActive && variant.IsActive);
+            outbox.AddIntegrationEvent(ToVariantEvent(product, variant, product.IsActive && variant.IsActive));
     }
 
+    // A removed variant no longer raises its own snapshot, so its tombstone is always emitted.
     public void PublishUnavailable(Product product, ProductVariant variant) =>
-        PublishVariant(product, variant, isActive: false);
+        outbox.AddIntegrationEvent(ToVariantEvent(product, variant, isActive: false));
 
-    public void Publish(Promotion promotion) => PublishEvent(new PromotionSnapshotChangedIntegrationEvent
+    public void Publish(Promotion promotion)
+    {
+        if (HasUnsavedSnapshotChange(promotion))
+            outbox.AddIntegrationEvent(ToEvent(promotion));
+    }
+
+    public void Publish(Coupon coupon)
+    {
+        if (HasUnsavedSnapshotChange(coupon))
+            outbox.AddIntegrationEvent(ToEvent(coupon));
+    }
+
+    /// <summary>
+    /// Aggregates raise a snapshot domain event only for effective changes, and events are cleared on save.
+    /// Idempotent no-op commands therefore do not flood projections with duplicate revisions.
+    /// </summary>
+    private static bool HasUnsavedSnapshotChange<TId>(AggregateRoot<TId> aggregate)
+        where TId : notnull =>
+        aggregate.DomainEvents.Count > 0;
+
+    private static PromotionSnapshotChangedIntegrationEvent ToEvent(Promotion promotion) => new()
     {
         PromotionId = promotion.Id,
         Code = promotion.NormalizedCode,
@@ -55,9 +77,9 @@ internal sealed class OutboxCatalogSnapshotPublisher(IOutboxStore outbox) : ICat
                     : target.TargetKey,
                 target.IsExcluded))
             .ToArray()
-    });
+    };
 
-    public void Publish(Coupon coupon) => PublishEvent(new CouponSnapshotChangedIntegrationEvent
+    private static CouponSnapshotChangedIntegrationEvent ToEvent(Coupon coupon) => new()
     {
         CouponId = coupon.Id,
         PromotionId = coupon.PromotionId,
@@ -75,29 +97,26 @@ internal sealed class OutboxCatalogSnapshotPublisher(IOutboxStore outbox) : ICat
             .OrderBy(bucket => bucket.BucketNumber)
             .Select(bucket => new CouponQuotaBucketContract(bucket.BucketNumber, bucket.Capacity))
             .ToArray()
-    });
+    };
 
-    private void PublishVariant(Product product, ProductVariant variant, bool isActive) =>
-        PublishEvent(new ProductVariantChangedIntegrationEvent
-        {
-            ProductId = product.Id,
-            VariantId = variant.Id,
-            CategoryId = product.CategoryId,
-            Sku = variant.NormalizedSku,
-            ProductName = product.Name,
-            VariantName = variant.DisplayName,
-            AttributesJson = variant.AttributesJson,
-            Price = variant.Price,
-            Currency = variant.Currency,
-            IsActive = isActive,
-            IsDefault = variant.IsDefault,
-            LifecycleStatus = product.LifecycleStatus.ToString(),
-            Revision = product.Revision,
-            EffectiveOnUtc = product.EffectiveOnUtc
-        });
-
-    private void PublishEvent(IntegrationEvent integrationEvent) =>
-        outbox.Add(OutboxMessage.Create(
-            integrationEvent.GetType().AssemblyQualifiedName!,
-            JsonSerializer.Serialize(integrationEvent, integrationEvent.GetType())));
+    private static ProductVariantChangedIntegrationEvent ToVariantEvent(
+        Product product,
+        ProductVariant variant,
+        bool isActive) => new()
+    {
+        ProductId = product.Id,
+        VariantId = variant.Id,
+        CategoryId = product.CategoryId,
+        Sku = variant.NormalizedSku,
+        ProductName = product.Name,
+        VariantName = variant.DisplayName,
+        AttributesJson = variant.AttributesJson,
+        Price = variant.Price,
+        Currency = variant.Currency,
+        IsActive = isActive,
+        IsDefault = variant.IsDefault,
+        LifecycleStatus = product.LifecycleStatus.ToString(),
+        Revision = product.Revision,
+        EffectiveOnUtc = product.EffectiveOnUtc
+    };
 }

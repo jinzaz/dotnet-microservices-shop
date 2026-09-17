@@ -10,12 +10,18 @@ public sealed class StockItem : AggregateRoot<Guid>
 
     public StockItem(Guid id, string sku, int onHand)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sku);
         if (onHand < 0)
             throw new ArgumentOutOfRangeException(nameof(onHand));
         Id = id;
-        Sku = sku.Trim().ToUpperInvariant();
+        Sku = NormalizeSku(sku);
         OnHand = onHand;
+    }
+
+    /// <summary>Canonical SKU key shared by stock rows, reservation lines, allocations, locks and cache keys.</summary>
+    public static string NormalizeSku(string sku)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sku);
+        return sku.Trim().ToUpperInvariant();
     }
 
     public string Sku { get; private set; } = string.Empty;
@@ -70,24 +76,9 @@ public sealed class StockItem : AggregateRoot<Guid>
 
 public sealed class InventoryReservation : AggregateRoot<Guid>
 {
-    private static readonly TimeSpan DefaultReservationLifetime = TimeSpan.FromMinutes(20);
     private readonly List<InventoryReservationLine> _lines = [];
 
     private InventoryReservation()
-    {
-    }
-
-    public InventoryReservation(Guid id, Guid orderId, IEnumerable<InventoryReservationLine> lines)
-        : this(id, orderId, null, lines, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.Add(DefaultReservationLifetime))
-    {
-    }
-
-    public InventoryReservation(
-        Guid id,
-        Guid orderId,
-        IEnumerable<InventoryReservationLine> lines,
-        DateTimeOffset createdOnUtc)
-        : this(id, orderId, null, lines, createdOnUtc, createdOnUtc.Add(DefaultReservationLifetime))
     {
     }
 
@@ -142,9 +133,6 @@ public sealed class InventoryReservation : AggregateRoot<Guid>
     public IReadOnlyCollection<InventoryReservationLine> Lines => _lines;
     public bool HasAllocations => _lines.Any(line => line.AllocationId.HasValue);
 
-    public bool TryRelease() =>
-        TryRelease(DateTimeOffset.UtcNow, "Inventory reservation released.");
-
     public bool TryRelease(DateTimeOffset releasedOnUtc, string reason)
     {
         if (Status != ReservationStatus.Reserved)
@@ -163,8 +151,6 @@ public sealed class InventoryReservation : AggregateRoot<Guid>
         Version++;
         return true;
     }
-
-    public bool TryCommit() => TryCommit(DateTimeOffset.UtcNow);
 
     public bool TryCommit(DateTimeOffset committedOnUtc)
     {
@@ -197,14 +183,13 @@ public sealed class InventoryReservationLine
         Guid? allocationId,
         Guid? offerId)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sku);
         if (quantity <= 0)
             throw new ArgumentOutOfRangeException(nameof(quantity));
         if (allocationId.HasValue != offerId.HasValue)
             throw new ArgumentException("AllocationId and OfferId must be provided together.");
         if (allocationId == Guid.Empty || offerId == Guid.Empty)
             throw new ArgumentException("Allocation identifiers cannot be empty GUID values.");
-        Sku = sku.Trim().ToUpperInvariant();
+        Sku = StockItem.NormalizeSku(sku);
         Quantity = quantity;
         AllocationId = allocationId;
         OfferId = offerId;

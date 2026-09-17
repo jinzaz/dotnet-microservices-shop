@@ -15,8 +15,8 @@ internal sealed class CreatePromotionHandler(
         if (await promotions.CodeExistsAsync(normalizedCode, null, cancellationToken))
             throw new InvalidOperationException($"Promotion code '{request.Code}' already exists.");
 
-        var triggerType = ParseEnum<PromotionTriggerType>(request.TriggerType, nameof(request.TriggerType));
-        var stackPolicy = ParseEnum<PromotionStackPolicy>(request.StackPolicy, nameof(request.StackPolicy));
+        var triggerType = PromotionDefinitionMapper.ParseEnum<PromotionTriggerType>(request.TriggerType, nameof(request.TriggerType));
+        var stackPolicy = PromotionDefinitionMapper.ParseEnum<PromotionStackPolicy>(request.StackPolicy, nameof(request.StackPolicy));
         var id = Guid.NewGuid();
         var now = clock.GetUtcNow();
         var promotion = new Promotion(
@@ -31,7 +31,12 @@ internal sealed class CreatePromotionHandler(
             request.ExclusiveGroup,
             request.Actor,
             now);
-        ReplaceDefinition(promotion, request.Rules, request.Benefits, request.Targets, request.Actor, now);
+        promotion.ReplaceDefinition(
+            PromotionDefinitionMapper.ToRules(request.Rules),
+            PromotionDefinitionMapper.ToBenefits(request.Benefits),
+            PromotionDefinitionMapper.ToTargets(request.Targets),
+            request.Actor,
+            now);
         promotions.Add(promotion);
         audit.Record("Promotion", id, "DraftCreated", request.Actor, now, new
         {
@@ -43,50 +48,6 @@ internal sealed class CreatePromotionHandler(
         });
         return id;
     }
-
-    internal static void ReplaceDefinition(
-        Promotion promotion,
-        IReadOnlyList<PromotionRuleInput> rules,
-        IReadOnlyList<PromotionBenefitInput> benefits,
-        IReadOnlyList<PromotionTargetInput> targets,
-        string actor,
-        DateTimeOffset now)
-    {
-        promotion.ReplaceDefinition(
-            rules.Select(rule => new PromotionRuleDefinition(
-                rule.RuleType,
-                rule.SchemaVersion,
-                rule.ConfigurationJson,
-                rule.Sequence)),
-            benefits.Select(benefit => new PromotionBenefitDefinition(
-                benefit.BenefitType,
-                benefit.SchemaVersion,
-                benefit.ConfigurationJson,
-                benefit.Sequence)),
-            targets.Select((target, sequence) => new PromotionTargetDefinition(
-                CanonicalTargetType(target.TargetType),
-                target.TargetKey,
-                target.IsExcluded,
-                Sequence: sequence)),
-            actor,
-            now);
-    }
-
-    internal static T ParseEnum<T>(string value, string parameterName)
-        where T : struct, Enum =>
-        Enum.TryParse<T>(value, ignoreCase: true, out var parsed)
-            ? parsed
-            : throw new ArgumentException($"Unsupported {parameterName} '{value}'.", parameterName);
-
-    private static string CanonicalTargetType(string targetType) =>
-        targetType.ToUpperInvariant() switch
-        {
-            "ALL" => "All",
-            "SKU" => "Sku",
-            "PRODUCT" => "Product",
-            "CATEGORY" => "Category",
-            _ => throw new ArgumentException($"Unsupported target type '{targetType}'.", nameof(targetType))
-        };
 }
 
 internal sealed class ReplacePromotionDefinitionHandler(
@@ -98,10 +59,10 @@ internal sealed class ReplacePromotionDefinitionHandler(
         ReplacePromotionDefinitionCommand request,
         CancellationToken cancellationToken)
     {
-        var promotion = await PromotionHandlerHelpers.GetAsync(promotions, request.PromotionId, cancellationToken);
-        PromotionHandlerHelpers.EnsureVersion(promotion.Version, request.ExpectedVersion);
+        var promotion = await promotions.GetRequiredAsync(request.PromotionId, cancellationToken);
+        promotion.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
-        var stackPolicy = CreatePromotionHandler.ParseEnum<PromotionStackPolicy>(
+        var stackPolicy = PromotionDefinitionMapper.ParseEnum<PromotionStackPolicy>(
             request.StackPolicy,
             nameof(request.StackPolicy));
 
@@ -112,28 +73,9 @@ internal sealed class ReplacePromotionDefinitionHandler(
             request.Priority,
             stackPolicy,
             request.ExclusiveGroup,
-            request.Rules.Select(rule => new PromotionRuleDefinition(
-                rule.RuleType,
-                rule.SchemaVersion,
-                rule.ConfigurationJson,
-                rule.Sequence)),
-            request.Benefits.Select(benefit => new PromotionBenefitDefinition(
-                benefit.BenefitType,
-                benefit.SchemaVersion,
-                benefit.ConfigurationJson,
-                benefit.Sequence)),
-            request.Targets.Select((target, sequence) => new PromotionTargetDefinition(
-                target.TargetType.ToUpperInvariant() switch
-                {
-                    "ALL" => "All",
-                    "SKU" => "Sku",
-                    "PRODUCT" => "Product",
-                    "CATEGORY" => "Category",
-                    _ => throw new ArgumentException($"Unsupported target type '{target.TargetType}'.")
-                },
-                target.TargetKey,
-                target.IsExcluded,
-                Sequence: sequence)),
+            PromotionDefinitionMapper.ToRules(request.Rules),
+            PromotionDefinitionMapper.ToBenefits(request.Benefits),
+            PromotionDefinitionMapper.ToTargets(request.Targets),
             request.Actor,
             now);
         audit.Record("Promotion", promotion.Id, "DraftDefinitionReplaced", request.Actor, now);
@@ -149,8 +91,8 @@ internal sealed class PublishPromotionHandler(
 {
     public async Task<bool> Handle(PublishPromotionCommand request, CancellationToken cancellationToken)
     {
-        var promotion = await PromotionHandlerHelpers.GetAsync(promotions, request.PromotionId, cancellationToken);
-        PromotionHandlerHelpers.EnsureVersion(promotion.Version, request.ExpectedVersion);
+        var promotion = await promotions.GetRequiredAsync(request.PromotionId, cancellationToken);
+        promotion.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         promotion.Publish(request.Actor, now);
         snapshots.Publish(promotion);
@@ -171,8 +113,8 @@ internal sealed class PausePromotionHandler(
 {
     public async Task<bool> Handle(PausePromotionCommand request, CancellationToken cancellationToken)
     {
-        var promotion = await PromotionHandlerHelpers.GetAsync(promotions, request.PromotionId, cancellationToken);
-        PromotionHandlerHelpers.EnsureVersion(promotion.Version, request.ExpectedVersion);
+        var promotion = await promotions.GetRequiredAsync(request.PromotionId, cancellationToken);
+        promotion.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         promotion.Pause(request.Actor, now);
         snapshots.Publish(promotion);
@@ -189,8 +131,8 @@ internal sealed class ResumePromotionHandler(
 {
     public async Task<bool> Handle(ResumePromotionCommand request, CancellationToken cancellationToken)
     {
-        var promotion = await PromotionHandlerHelpers.GetAsync(promotions, request.PromotionId, cancellationToken);
-        PromotionHandlerHelpers.EnsureVersion(promotion.Version, request.ExpectedVersion);
+        var promotion = await promotions.GetRequiredAsync(request.PromotionId, cancellationToken);
+        promotion.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         promotion.Resume(request.Actor, now);
         snapshots.Publish(promotion);
@@ -207,8 +149,8 @@ internal sealed class EndPromotionHandler(
 {
     public async Task<bool> Handle(EndPromotionCommand request, CancellationToken cancellationToken)
     {
-        var promotion = await PromotionHandlerHelpers.GetAsync(promotions, request.PromotionId, cancellationToken);
-        PromotionHandlerHelpers.EnsureVersion(promotion.Version, request.ExpectedVersion);
+        var promotion = await promotions.GetRequiredAsync(request.PromotionId, cancellationToken);
+        promotion.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         promotion.End(request.Actor, now);
         snapshots.Publish(promotion);
@@ -233,18 +175,43 @@ internal sealed class ListPromotionsHandler(ICatalogReadService reads)
         reads.ListPromotionsAsync(request.Skip, request.Take, request.Status, cancellationToken);
 }
 
-file static class PromotionHandlerHelpers
+/// <summary>Maps admin promotion input to domain definitions; shared by create and replace so both apply identical canonicalization.</summary>
+internal static class PromotionDefinitionMapper
 {
-    public static async Task<Promotion> GetAsync(
-        IPromotionRepository promotions,
-        Guid promotionId,
-        CancellationToken cancellationToken) =>
-        await promotions.FindAsync(promotionId, cancellationToken)
-        ?? throw new KeyNotFoundException("Promotion was not found.");
+    public static IEnumerable<PromotionRuleDefinition> ToRules(IEnumerable<PromotionRuleInput> rules) =>
+        rules.Select(rule => new PromotionRuleDefinition(
+            rule.RuleType,
+            rule.SchemaVersion,
+            rule.ConfigurationJson,
+            rule.Sequence));
 
-    public static void EnsureVersion(long current, long? expected)
-    {
-        if (expected.HasValue && expected.Value != current)
-            throw new InvalidOperationException($"Promotion version mismatch. Expected {expected}, current {current}.");
-    }
+    public static IEnumerable<PromotionBenefitDefinition> ToBenefits(IEnumerable<PromotionBenefitInput> benefits) =>
+        benefits.Select(benefit => new PromotionBenefitDefinition(
+            benefit.BenefitType,
+            benefit.SchemaVersion,
+            benefit.ConfigurationJson,
+            benefit.Sequence));
+
+    public static IEnumerable<PromotionTargetDefinition> ToTargets(IEnumerable<PromotionTargetInput> targets) =>
+        targets.Select((target, sequence) => new PromotionTargetDefinition(
+            CanonicalTargetType(target.TargetType),
+            target.TargetKey,
+            target.IsExcluded,
+            Sequence: sequence));
+
+    public static T ParseEnum<T>(string value, string parameterName)
+        where T : struct, Enum =>
+        Enum.TryParse<T>(value, ignoreCase: true, out var parsed)
+            ? parsed
+            : throw new ArgumentException($"Unsupported {parameterName} '{value}'.", parameterName);
+
+    public static string CanonicalTargetType(string targetType) =>
+        targetType.ToUpperInvariant() switch
+        {
+            "ALL" => "All",
+            "SKU" => "Sku",
+            "PRODUCT" => "Product",
+            "CATEGORY" => "Category",
+            _ => throw new ArgumentException($"Unsupported target type '{targetType}'.", nameof(targetType))
+        };
 }

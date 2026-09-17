@@ -30,7 +30,7 @@ public sealed class OrdersController(ISender sender) : ControllerBase
     [EnableRateLimiting("OrderSubmission")]
     public async Task<ActionResult> Create(
         CreateOrderRequest request,
-        [FromHeader(Name = "Idempotency-Key")] string idempotencyKey,
+        [FromHeader(Name = "Idempotency-Key"), Required] string idempotencyKey,
         CancellationToken cancellationToken)
     {
         var userId = User.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
@@ -72,7 +72,7 @@ public sealed class OrdersController(ISender sender) : ControllerBase
     [Authorize(Policy = "order-api")]
     public async Task<ActionResult<OrderDto>> Get(Guid id, CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue("sub") ?? string.Empty;
+        var userId = User.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
         var value = await sender.Send(
             new GetOrderQuery(
                 id,

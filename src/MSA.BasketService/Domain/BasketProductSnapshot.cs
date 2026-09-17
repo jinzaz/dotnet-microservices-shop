@@ -60,16 +60,20 @@ public sealed class BasketProductSnapshot
             return false;
         }
 
-        ProductName = NormalizeName(productName, nameof(productName));
-        VariantName = NormalizeName(variantName, nameof(variantName));
-        AttributesJson = string.IsNullOrWhiteSpace(attributesJson) ? "{}" : attributesJson.Trim();
+        // 先完成全部校验再赋值，非法事件不会留下半更新的投影。
+        var normalizedSku = Basket.NormalizeSku(sku);
+        var normalizedProductName = NormalizeName(productName, nameof(productName));
+        var normalizedVariantName = NormalizeName(variantName, nameof(variantName));
         if (price is < 0 or > 9_999_999_999_999_999.99m)
             throw new ArgumentOutOfRangeException(nameof(price));
         var normalizedCurrency = currency?.Trim().ToUpperInvariant() ?? string.Empty;
         if (normalizedCurrency.Length != 3 || normalizedCurrency.Any(character => character is < 'A' or > 'Z'))
             throw new ArgumentException("Currency must be a three-letter ISO-style code.", nameof(currency));
 
-        Sku = Basket.NormalizeSku(sku);
+        Sku = normalizedSku;
+        ProductName = normalizedProductName;
+        VariantName = normalizedVariantName;
+        AttributesJson = string.IsNullOrWhiteSpace(attributesJson) ? "{}" : attributesJson.Trim();
         Price = decimal.Round(price, 2, MidpointRounding.AwayFromZero);
         Currency = normalizedCurrency;
         IsAvailable = isAvailable;

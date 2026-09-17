@@ -6,9 +6,50 @@ using MSA.EventBusOutbox;
 using MSA.InventoryService.Application;
 using MSA.InventoryService.Domain;
 using MSA.InventoryService.Infrastructure;
-using System.Text.Json;
 
 namespace MSA.InventoryService.Integration;
+
+/// <summary>
+/// Inbox de-duplication, one local transaction and post-commit cache eviction for every inventory message.
+/// </summary>
+internal abstract class InventoryIntegrationEventHandler<TEvent>(
+    InventoryDbContext db,
+    IOutboxStore outbox,
+    InventoryCacheInvalidator cache,
+    string consumerId) : IIntegrationEventHandler<TEvent>
+    where TEvent : IntegrationEvent
+{
+    public async Task HandleAsync(TEvent integrationEvent, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            if (!await db.TryBeginMessageAsync(integrationEvent.Id, consumerId, cancellationToken))
+            {
+                await db.RollbackTransactionAsync(cancellationToken);
+                return;
+            }
+
+            await HandleCoreAsync(integrationEvent, cancellationToken);
+            await db.CommitTransactionAsync(transaction, cancellationToken);
+        }
+        catch
+        {
+            cache.Discard();
+            await db.RollbackTransactionAsync(cancellationToken);
+            throw;
+        }
+
+        await cache.FlushAsync();
+    }
+
+    protected InventoryDbContext Db => db;
+    protected InventoryCacheInvalidator Cache => cache;
+
+    protected abstract Task HandleCoreAsync(TEvent integrationEvent, CancellationToken cancellationToken);
+
+    protected void Publish(IntegrationEvent integrationEvent) => outbox.AddIntegrationEvent(integrationEvent);
+}
 
 internal sealed class OrderSubmittedHandler(
     InventoryDbContext db,
@@ -16,94 +57,67 @@ internal sealed class OrderSubmittedHandler(
     IInventoryTransactionLock transactionLock,
     InventoryCacheInvalidator cache,
     IOptions<InventoryReservationOptions> reservationOptions,
-    TimeProvider clock) : IIntegrationEventHandler<OrderSubmittedIntegrationEvent>
+    TimeProvider clock)
+    : InventoryIntegrationEventHandler<OrderSubmittedIntegrationEvent>(db, outbox, cache, "inventory.order-submitted.v2")
 {
-    private const string ConsumerId = "inventory.order-submitted.v2";
-
-    public async Task HandleAsync(
+    protected override async Task HandleCoreAsync(
         OrderSubmittedIntegrationEvent integrationEvent,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
         var requestHash = InventoryRequestHasher.Compute(integrationEvent);
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        if (!await db.TryBeginMessageAsync(integrationEvent.Id, ConsumerId, cancellationToken))
+        await transactionLock.AcquireOrderReservationAsync(integrationEvent.OrderId, cancellationToken);
+        var existingDecision = await Db.RequestDecisions
+            .AsNoTracking()
+            .SingleOrDefaultAsync(value => value.OrderId == integrationEvent.OrderId, cancellationToken);
+        if (existingDecision is not null)
         {
-            await db.RollbackTransactionAsync(cancellationToken);
+            existingDecision.EnsureMatches(requestHash);
+            ReplayDecision(integrationEvent, existingDecision);
             return;
         }
 
-        string[] changedSkus = [];
-        Guid[] changedAllocationIds = [];
-        try
+        var legacyReservationId = await Db.Reservations
+            .AsNoTracking()
+            .Where(value => value.OrderId == integrationEvent.OrderId)
+            .Select(value => (Guid?)value.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (legacyReservationId.HasValue)
         {
-            await transactionLock.AcquireOrderReservationAsync(integrationEvent.OrderId, cancellationToken);
-            var existingDecision = await db.RequestDecisions
-                .AsNoTracking()
-                .SingleOrDefaultAsync(value => value.OrderId == integrationEvent.OrderId, cancellationToken);
-            if (existingDecision is not null)
-            {
-                existingDecision.EnsureMatches(requestHash);
-                ReplayDecision(integrationEvent, existingDecision);
-                await db.CommitTransactionAsync(transaction, cancellationToken);
-                return;
-            }
-
-            var legacyReservationId = await db.Reservations
-                .AsNoTracking()
-                .Where(value => value.OrderId == integrationEvent.OrderId)
-                .Select(value => (Guid?)value.Id)
-                .SingleOrDefaultAsync(cancellationToken);
-            if (legacyReservationId.HasValue)
-            {
-                var decision = InventoryRequestDecision.Accept(
-                    integrationEvent.OrderId,
-                    requestHash,
-                    legacyReservationId.Value,
-                    clock.GetUtcNow());
-                db.RequestDecisions.Add(decision);
-                ReplayDecision(integrationEvent, decision);
-                await db.CommitTransactionAsync(transaction, cancellationToken);
-                return;
-            }
-
-            var attempt = await ReserveAsync(integrationEvent, cancellationToken);
-            var decidedOnUtc = clock.GetUtcNow();
-            if (attempt.Reservation is not null)
-            {
-                db.RequestDecisions.Add(InventoryRequestDecision.Accept(
-                    integrationEvent.OrderId,
-                    requestHash,
-                    attempt.Reservation.Id,
-                    decidedOnUtc));
-                PublishReserved(integrationEvent, attempt.Reservation.Id);
-            }
-            else
-            {
-                var reason = attempt.RejectionReason
-                    ?? throw new InvalidOperationException("A rejected inventory attempt requires a reason.");
-                db.RequestDecisions.Add(InventoryRequestDecision.Reject(
-                    integrationEvent.OrderId,
-                    requestHash,
-                    reason,
-                    decidedOnUtc));
-                Publish(new InventoryRejectedIntegrationEvent
-                {
-                    OrderId = integrationEvent.OrderId,
-                    Reason = reason
-                });
-            }
-
-            changedSkus = attempt.ChangedSkus;
-            changedAllocationIds = attempt.ChangedAllocationIds;
-            await db.CommitTransactionAsync(transaction, cancellationToken);
-        }
-        catch
-        {
-            await db.RollbackTransactionAsync(cancellationToken);
-            throw;
+            var decision = InventoryRequestDecision.Accept(
+                integrationEvent.OrderId,
+                requestHash,
+                legacyReservationId.Value,
+                clock.GetUtcNow());
+            Db.RequestDecisions.Add(decision);
+            ReplayDecision(integrationEvent, decision);
+            return;
         }
 
-        await InvalidateAsync(changedSkus, changedAllocationIds, cancellationToken);
+        var attempt = await ReserveAsync(integrationEvent, cancellationToken);
+        var decidedOnUtc = clock.GetUtcNow();
+        if (attempt.Reservation is not null)
+        {
+            Db.RequestDecisions.Add(InventoryRequestDecision.Accept(
+                integrationEvent.OrderId,
+                requestHash,
+                attempt.Reservation.Id,
+                decidedOnUtc));
+            PublishReserved(integrationEvent, attempt.Reservation.Id);
+            return;
+        }
+
+        var reason = attempt.RejectionReason
+            ?? throw new InvalidOperationException("A rejected inventory attempt requires a reason.");
+        Db.RequestDecisions.Add(InventoryRequestDecision.Reject(
+            integrationEvent.OrderId,
+            requestHash,
+            reason,
+            decidedOnUtc));
+        Publish(new InventoryRejectedIntegrationEvent
+        {
+            OrderId = integrationEvent.OrderId,
+            Reason = reason
+        });
     }
 
     private async Task<ReservationAttempt> ReserveAsync(
@@ -116,7 +130,7 @@ internal sealed class OrderSubmittedHandler(
         var requested = integrationEvent.Items
             .GroupBy(item => new
             {
-                Sku = item.Sku.Trim().ToUpperInvariant(),
+                Sku = StockItem.NormalizeSku(item.Sku),
                 OfferId = item.OfferId ?? integrationEvent.FlashSaleCampaignId
             })
             .Select(group => new RequestedLine(
@@ -135,7 +149,7 @@ internal sealed class OrderSubmittedHandler(
         await transactionLock.AcquireStockItemsAsync(regularSkus, cancellationToken);
         var stock = regularSkus.Length == 0
             ? new Dictionary<string, StockItem>(StringComparer.Ordinal)
-            : await db.StockItems
+            : await Db.StockItems
                 .Where(value => regularSkus.Contains(value.Sku))
                 .ToDictionaryAsync(value => value.Sku, StringComparer.Ordinal, cancellationToken);
         if (regular.Any(line => !stock.TryGetValue(line.Sku, out var item) || item.Available < line.Quantity))
@@ -145,7 +159,7 @@ internal sealed class OrderSubmittedHandler(
         foreach (var line in offered)
         {
             var offerId = line.OfferId!.Value;
-            var allocationId = await db.InventoryAllocations
+            var allocationId = await Db.InventoryAllocations
                 .AsNoTracking()
                 .Where(value => value.OfferId == offerId && value.Sku == line.Sku)
                 .Select(value => (Guid?)value.Id)
@@ -157,9 +171,9 @@ internal sealed class OrderSubmittedHandler(
                 allocationId.Value,
                 integrationEvent.UserId,
                 cancellationToken);
-            var allocation = await InventoryRowLocks.LockAllocationAsync(db, allocationId.Value, cancellationToken)
+            var allocation = await InventoryRowLocks.LockAllocationAsync(Db, allocationId.Value, cancellationToken)
                 ?? throw new InvalidOperationException("Inventory allocation disappeared while reserving stock.");
-            var buyer = await db.InventoryAllocationBuyers.SingleOrDefaultAsync(value =>
+            var buyer = await Db.InventoryAllocationBuyers.SingleOrDefaultAsync(value =>
                 value.AllocationId == allocation.Id && value.UserId == integrationEvent.UserId,
                 cancellationToken);
             var buyerUsed = buyer is null ? 0 : buyer.ReservedQuantity + buyer.SoldQuantity;
@@ -178,7 +192,7 @@ internal sealed class OrderSubmittedHandler(
         foreach (var line in regular)
         {
             stock[line.Sku].Reserve(line.Quantity);
-            db.StockMovements.Add(StockMovement.Record(
+            Db.StockMovements.Add(StockMovement.Record(
                 stock[line.Sku],
                 StockMovementType.InventoryReserved,
                 0,
@@ -195,7 +209,7 @@ internal sealed class OrderSubmittedHandler(
                 throw new InvalidOperationException("Validated offer allocation could not be reserved.");
             if (existingBuyer is null)
             {
-                db.InventoryAllocationBuyers.Add(new InventoryAllocationBuyer(
+                Db.InventoryAllocationBuyers.Add(new InventoryAllocationBuyer(
                     allocation.Id,
                     integrationEvent.UserId,
                     line.Quantity,
@@ -226,11 +240,13 @@ internal sealed class OrderSubmittedHandler(
             }),
             occurredOnUtc,
             ResolveExpiry(integrationEvent.PaymentDueOnUtc, occurredOnUtc, lifetime));
-        db.Reservations.Add(reservation);
-        return ReservationAttempt.Accepted(
-            reservation,
-            requested.Select(line => line.Sku).Distinct(StringComparer.Ordinal).ToArray(),
-            allocations.Select(value => value.Allocation.Id).Distinct().ToArray());
+        Db.Reservations.Add(reservation);
+
+        foreach (var line in requested)
+            Cache.StockChanged(line.Sku);
+        foreach (var (_, allocation, _) in allocations)
+            Cache.AllocationChanged(allocation.Id);
+        return ReservationAttempt.Accepted(reservation);
     }
 
     private void ReplayDecision(OrderSubmittedIntegrationEvent source, InventoryRequestDecision decision)
@@ -261,22 +277,6 @@ internal sealed class OrderSubmittedHandler(
             PaymentMethod = source.PaymentMethod
         });
 
-    private void Publish(IntegrationEvent integrationEvent) =>
-        outbox.Add(OutboxMessage.Create(
-            integrationEvent.GetType().AssemblyQualifiedName!,
-            JsonSerializer.Serialize(integrationEvent, integrationEvent.GetType())));
-
-    private async Task InvalidateAsync(
-        IEnumerable<string> skus,
-        IEnumerable<Guid> allocationIds,
-        CancellationToken cancellationToken)
-    {
-        foreach (var sku in skus)
-            await cache.RemoveStockAsync(sku, cancellationToken);
-        foreach (var id in allocationIds)
-            await cache.RemoveAllocationAsync(id, cancellationToken);
-    }
-
     private static DateTimeOffset ResolveExpiry(
         DateTimeOffset? requestedExpiry,
         DateTimeOffset now,
@@ -287,20 +287,11 @@ internal sealed class OrderSubmittedHandler(
 
     private sealed record RequestedLine(string Sku, int Quantity, Guid? OfferId);
 
-    private sealed record ReservationAttempt(
-        InventoryReservation? Reservation,
-        string? RejectionReason,
-        string[] ChangedSkus,
-        Guid[] ChangedAllocationIds)
+    private sealed record ReservationAttempt(InventoryReservation? Reservation, string? RejectionReason)
     {
-        public static ReservationAttempt Accepted(
-            InventoryReservation reservation,
-            string[] changedSkus,
-            Guid[] changedAllocationIds) =>
-            new(reservation, null, changedSkus, changedAllocationIds);
+        public static ReservationAttempt Accepted(InventoryReservation reservation) => new(reservation, null);
 
-        public static ReservationAttempt Rejected(string reason) =>
-            new(null, reason, [], []);
+        public static ReservationAttempt Rejected(string reason) => new(null, reason);
     }
 }
 
@@ -309,129 +300,70 @@ internal sealed class ReleaseInventoryHandler(
     IOutboxStore outbox,
     IInventoryTransactionLock transactionLock,
     InventoryCacheInvalidator cache,
-    TimeProvider clock) : IIntegrationEventHandler<ReleaseInventoryIntegrationEvent>
+    TimeProvider clock)
+    : InventoryIntegrationEventHandler<ReleaseInventoryIntegrationEvent>(db, outbox, cache, "inventory.release-requested.v2")
 {
-    private const string ConsumerId = "inventory.release-requested.v2";
-
-    public async Task HandleAsync(
+    protected override async Task HandleCoreAsync(
         ReleaseInventoryIntegrationEvent integrationEvent,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        if (!await db.TryBeginMessageAsync(integrationEvent.Id, ConsumerId, cancellationToken))
+        var reservation = await InventoryRowLocks.LockReservationAsync(
+            Db, integrationEvent.ReservationId, integrationEvent.OrderId, cancellationToken);
+        switch (reservation.Status)
         {
-            await db.RollbackTransactionAsync(cancellationToken);
-            return;
-        }
-
-        string[] skus = [];
-        Guid[] allocationIds = [];
-        try
-        {
-            var reservation = await InventoryRowLocks.LockReservationAsync(
-                db, integrationEvent.ReservationId, integrationEvent.OrderId, cancellationToken);
-            if (reservation.Status == ReservationStatus.Reserved)
-            {
+            case ReservationStatus.Reserved:
                 var now = clock.GetUtcNow();
-                (skus, allocationIds) = await ApplyReleaseAsync(reservation, integrationEvent.Reason, now, cancellationToken);
+                await ApplyReleaseAsync(reservation, integrationEvent.Reason, now, cancellationToken);
                 reservation.TryRelease(now, integrationEvent.Reason);
-                Publish(new InventoryReleasedIntegrationEvent
-                {
-                    OrderId = integrationEvent.OrderId,
-                    ReservationId = integrationEvent.ReservationId
-                });
-            }
-            else if (reservation.Status == ReservationStatus.Released)
-            {
-                Publish(new InventoryReleasedIntegrationEvent
-                {
-                    OrderId = integrationEvent.OrderId,
-                    ReservationId = integrationEvent.ReservationId
-                });
-            }
-            else
-            {
+                break;
+            case ReservationStatus.Released:
+                // 重复释放请求只补发确认，不再改变余额。
+                break;
+            default:
                 throw new InvalidOperationException("Committed inventory cannot be released.");
-            }
-            await db.CommitTransactionAsync(transaction, cancellationToken);
-        }
-        catch
-        {
-            await db.RollbackTransactionAsync(cancellationToken);
-            throw;
         }
 
-        await InvalidateAsync(skus, allocationIds, cancellationToken);
+        Publish(new InventoryReleasedIntegrationEvent
+        {
+            OrderId = integrationEvent.OrderId,
+            ReservationId = integrationEvent.ReservationId
+        });
     }
 
-    private async Task<(string[] Skus, Guid[] AllocationIds)> ApplyReleaseAsync(
+    private async Task ApplyReleaseAsync(
         InventoryReservation reservation,
         string reason,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var skus = reservation.Lines.Select(line => line.Sku).Distinct(StringComparer.Ordinal).ToArray();
-        await transactionLock.AcquireStockItemsAsync(skus, cancellationToken);
-        var stock = await db.StockItems
-            .Where(value => skus.Contains(value.Sku))
-            .ToDictionaryAsync(value => value.Sku, StringComparer.Ordinal, cancellationToken);
-        var allocations = await InventoryRowLocks.LockAllocationsAsync(
-            db,
-            reservation.Lines.Where(line => line.AllocationId.HasValue).Select(line => line.AllocationId!.Value),
-            cancellationToken);
+        var (stock, allocations) = await InventoryReservationBalances.LockAsync(
+            Db, transactionLock, Cache, reservation, cancellationToken);
 
         foreach (var line in reservation.Lines)
         {
-            if (line.AllocationId is not Guid allocationId)
+            if (line.AllocationId is Guid allocationId)
             {
-                stock[line.Sku].Release(line.Quantity);
-                AddMovement(stock[line.Sku], line.Quantity, reservation.Id, reason, now);
-                continue;
+                var allocation = allocations[allocationId];
+                allocation.Release(line.Quantity);
+                var buyer = await InventoryRowLocks.LockBuyerAsync(
+                    Db, allocationId, InventoryReservationBalances.RequireUserId(reservation), cancellationToken);
+                buyer.Release(line.Quantity, now);
+                // 配额仍开放时，释放的数量回到配额池；配额关闭后才归还普通库存。
+                if (allocation.Status != InventoryAllocationStatus.Closed)
+                    continue;
             }
 
-            var allocation = allocations[allocationId];
-            allocation.Release(line.Quantity);
-            var userId = reservation.UserId
-                ?? throw new InvalidOperationException("An allocated reservation is missing its user id.");
-            var buyer = await InventoryRowLocks.LockBuyerAsync(db, allocationId, userId, cancellationToken);
-            buyer.Release(line.Quantity, now);
-            if (allocation.Status == InventoryAllocationStatus.Closed)
-            {
-                stock[line.Sku].Release(line.Quantity);
-                AddMovement(stock[line.Sku], line.Quantity, reservation.Id, reason, now);
-            }
+            stock[line.Sku].Release(line.Quantity);
+            Db.StockMovements.Add(StockMovement.Record(
+                stock[line.Sku],
+                StockMovementType.InventoryReleased,
+                0,
+                -line.Quantity,
+                StockMovementReferenceType.Reservation,
+                reservation.Id,
+                reason,
+                now));
         }
-
-        return (skus, allocations.Keys.ToArray());
-    }
-
-    private void AddMovement(
-        StockItem stock,
-        int quantity,
-        Guid reservationId,
-        string reason,
-        DateTimeOffset now) =>
-        db.StockMovements.Add(StockMovement.Record(
-            stock,
-            StockMovementType.InventoryReleased,
-            0,
-            -quantity,
-            StockMovementReferenceType.Reservation,
-            reservationId,
-            reason,
-            now));
-
-    private void Publish(IntegrationEvent integrationEvent) =>
-        outbox.Add(OutboxMessage.Create(
-            integrationEvent.GetType().AssemblyQualifiedName!,
-            JsonSerializer.Serialize(integrationEvent, integrationEvent.GetType())));
-
-    private async Task InvalidateAsync(string[] skus, Guid[] allocationIds, CancellationToken cancellationToken)
-    {
-        foreach (var sku in skus)
-            await cache.RemoveStockAsync(sku, cancellationToken);
-        foreach (var id in allocationIds)
-            await cache.RemoveAllocationAsync(id, cancellationToken);
     }
 }
 
@@ -440,90 +372,55 @@ internal sealed class CommitInventoryHandler(
     IOutboxStore outbox,
     IInventoryTransactionLock transactionLock,
     InventoryCacheInvalidator cache,
-    TimeProvider clock) : IIntegrationEventHandler<CommitInventoryIntegrationEvent>
+    TimeProvider clock)
+    : InventoryIntegrationEventHandler<CommitInventoryIntegrationEvent>(db, outbox, cache, "inventory.commit-requested.v2")
 {
-    private const string ConsumerId = "inventory.commit-requested.v2";
-
-    public async Task HandleAsync(
+    protected override async Task HandleCoreAsync(
         CommitInventoryIntegrationEvent integrationEvent,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        if (!await db.TryBeginMessageAsync(integrationEvent.Id, ConsumerId, cancellationToken))
+        var reservation = await InventoryRowLocks.LockReservationAsync(
+            Db, integrationEvent.ReservationId, integrationEvent.OrderId, cancellationToken);
+        switch (reservation.Status)
         {
-            await db.RollbackTransactionAsync(cancellationToken);
-            return;
-        }
-
-        string[] skus = [];
-        Guid[] allocationIds = [];
-        try
-        {
-            var reservation = await InventoryRowLocks.LockReservationAsync(
-                db, integrationEvent.ReservationId, integrationEvent.OrderId, cancellationToken);
-            if (reservation.Status == ReservationStatus.Reserved)
-            {
+            case ReservationStatus.Reserved:
                 var now = clock.GetUtcNow();
-                (skus, allocationIds) = await ApplyCommitAsync(reservation, now, cancellationToken);
+                await ApplyCommitAsync(reservation, now, cancellationToken);
                 reservation.TryCommit(now);
-                Publish(new InventoryCommittedIntegrationEvent
-                {
-                    OrderId = integrationEvent.OrderId,
-                    ReservationId = integrationEvent.ReservationId
-                });
-            }
-            else if (reservation.Status == ReservationStatus.Committed)
-            {
-                Publish(new InventoryCommittedIntegrationEvent
-                {
-                    OrderId = integrationEvent.OrderId,
-                    ReservationId = integrationEvent.ReservationId
-                });
-            }
-            else
-            {
+                break;
+            case ReservationStatus.Committed:
+                break;
+            default:
                 throw new InvalidOperationException("Released inventory cannot be committed.");
-            }
-            await db.CommitTransactionAsync(transaction, cancellationToken);
-        }
-        catch
-        {
-            await db.RollbackTransactionAsync(cancellationToken);
-            throw;
         }
 
-        await InvalidateAsync(skus, allocationIds, cancellationToken);
+        Publish(new InventoryCommittedIntegrationEvent
+        {
+            OrderId = integrationEvent.OrderId,
+            ReservationId = integrationEvent.ReservationId
+        });
     }
 
-    private async Task<(string[] Skus, Guid[] AllocationIds)> ApplyCommitAsync(
+    private async Task ApplyCommitAsync(
         InventoryReservation reservation,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var skus = reservation.Lines.Select(line => line.Sku).Distinct(StringComparer.Ordinal).ToArray();
-        await transactionLock.AcquireStockItemsAsync(skus, cancellationToken);
-        var stock = await db.StockItems
-            .Where(value => skus.Contains(value.Sku))
-            .ToDictionaryAsync(value => value.Sku, StringComparer.Ordinal, cancellationToken);
-        var allocations = await InventoryRowLocks.LockAllocationsAsync(
-            db,
-            reservation.Lines.Where(line => line.AllocationId.HasValue).Select(line => line.AllocationId!.Value),
-            cancellationToken);
+        var (stock, allocations) = await InventoryReservationBalances.LockAsync(
+            Db, transactionLock, Cache, reservation, cancellationToken);
 
         foreach (var line in reservation.Lines)
         {
             if (line.AllocationId is Guid allocationId)
             {
-                var allocation = allocations[allocationId];
-                allocation.Commit(line.Quantity);
-                var userId = reservation.UserId
-                    ?? throw new InvalidOperationException("An allocated reservation is missing its user id.");
-                var buyer = await InventoryRowLocks.LockBuyerAsync(db, allocationId, userId, cancellationToken);
+                allocations[allocationId].Commit(line.Quantity);
+                var buyer = await InventoryRowLocks.LockBuyerAsync(
+                    Db, allocationId, InventoryReservationBalances.RequireUserId(reservation), cancellationToken);
                 buyer.Commit(line.Quantity, now);
             }
 
             stock[line.Sku].Commit(line.Quantity);
-            db.StockMovements.Add(StockMovement.Record(
+            Db.StockMovements.Add(StockMovement.Record(
                 stock[line.Sku],
                 StockMovementType.InventoryCommitted,
                 -line.Quantity,
@@ -533,68 +430,37 @@ internal sealed class CommitInventoryHandler(
                 "Reserved inventory committed after payment.",
                 now));
         }
-
-        return (skus, allocations.Keys.ToArray());
-    }
-
-    private void Publish(IntegrationEvent integrationEvent) =>
-        outbox.Add(OutboxMessage.Create(
-            integrationEvent.GetType().AssemblyQualifiedName!,
-            JsonSerializer.Serialize(integrationEvent, integrationEvent.GetType())));
-
-    private async Task InvalidateAsync(string[] skus, Guid[] allocationIds, CancellationToken cancellationToken)
-    {
-        foreach (var sku in skus)
-            await cache.RemoveStockAsync(sku, cancellationToken);
-        foreach (var id in allocationIds)
-            await cache.RemoveAllocationAsync(id, cancellationToken);
     }
 }
 
-internal static class InventoryRowLocks
+/// <summary>Locks every balance a reservation touches, in the same order for release and commit.</summary>
+internal static class InventoryReservationBalances
 {
-    public static async Task<InventoryReservation> LockReservationAsync(
+    public static async Task<(Dictionary<string, StockItem> Stock, Dictionary<Guid, InventoryAllocation> Allocations)> LockAsync(
         InventoryDbContext db,
-        Guid reservationId,
-        Guid orderId,
+        IInventoryTransactionLock transactionLock,
+        InventoryCacheInvalidator cache,
+        InventoryReservation reservation,
         CancellationToken cancellationToken)
     {
-        var reservation = await db.Reservations
-            .FromSqlInterpolated($"SELECT * FROM inventory_reservations WHERE \"Id\" = {reservationId} AND \"OrderId\" = {orderId} FOR UPDATE")
-            .SingleOrDefaultAsync(cancellationToken)
-            ?? throw new InvalidOperationException($"Inventory reservation {reservationId} was not found for order {orderId}.");
-        await db.Entry(reservation).Collection(value => value.Lines).LoadAsync(cancellationToken);
-        return reservation;
+        var skus = reservation.Lines.Select(line => line.Sku).Distinct(StringComparer.Ordinal).ToArray();
+        await transactionLock.AcquireStockItemsAsync(skus, cancellationToken);
+        var stock = await db.StockItems
+            .Where(value => skus.Contains(value.Sku))
+            .ToDictionaryAsync(value => value.Sku, StringComparer.Ordinal, cancellationToken);
+        var allocations = await InventoryRowLocks.LockAllocationsAsync(
+            db,
+            reservation.Lines.Where(line => line.AllocationId.HasValue).Select(line => line.AllocationId!.Value),
+            cancellationToken);
+
+        foreach (var sku in skus)
+            cache.StockChanged(sku);
+        foreach (var allocationId in allocations.Keys)
+            cache.AllocationChanged(allocationId);
+        return (stock, allocations);
     }
 
-    public static Task<InventoryAllocation?> LockAllocationAsync(
-        InventoryDbContext db,
-        Guid allocationId,
-        CancellationToken cancellationToken) =>
-        db.InventoryAllocations
-            .FromSqlInterpolated($"SELECT * FROM inventory_allocations WHERE \"Id\" = {allocationId} FOR UPDATE")
-            .SingleOrDefaultAsync(cancellationToken);
-
-    public static async Task<Dictionary<Guid, InventoryAllocation>> LockAllocationsAsync(
-        InventoryDbContext db,
-        IEnumerable<Guid> allocationIds,
-        CancellationToken cancellationToken)
-    {
-        var values = new Dictionary<Guid, InventoryAllocation>();
-        foreach (var id in allocationIds.Distinct().Order())
-        {
-            values[id] = await LockAllocationAsync(db, id, cancellationToken)
-                ?? throw new InvalidOperationException($"Inventory allocation {id} was not found.");
-        }
-        return values;
-    }
-
-    public static Task<InventoryAllocationBuyer> LockBuyerAsync(
-        InventoryDbContext db,
-        Guid allocationId,
-        string userId,
-        CancellationToken cancellationToken) =>
-        db.InventoryAllocationBuyers
-            .FromSqlInterpolated($"SELECT * FROM inventory_allocation_buyers WHERE \"AllocationId\" = {allocationId} AND \"UserId\" = {userId} FOR UPDATE")
-            .SingleAsync(cancellationToken);
+    public static string RequireUserId(InventoryReservation reservation) =>
+        reservation.UserId
+        ?? throw new InvalidOperationException("An allocated reservation is missing its user id.");
 }

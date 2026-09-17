@@ -3,7 +3,6 @@ using MediatR;
 using MSA.CatalogService.Application.Abstractions;
 using MSA.CatalogService.Domain;
 using MSA.Infrastrucute.Mediator;
-using System.Text.Json;
 
 namespace MSA.CatalogService.Application;
 
@@ -72,25 +71,12 @@ public sealed class CreateProductVariantValidator : AbstractValidator<CreateProd
         RuleFor(command => command.ProductId).NotEmpty();
         RuleFor(command => command.Sku).NotEmpty().MaximumLength(80);
         RuleFor(command => command.DisplayName).NotEmpty().MaximumLength(200);
-        RuleFor(command => command.AttributesJson).Must(BeJsonObject)
+        RuleFor(command => command.AttributesJson).Must(CatalogValidation.IsJsonObjectOrEmpty)
             .WithMessage("AttributesJson must be a JSON object.");
         RuleFor(command => command.Barcode).MaximumLength(80);
-        RuleFor(command => command.Price).InclusiveBetween(0, 9_999_999_999_999_999.99m);
-        RuleFor(command => command.Currency).Matches("^[A-Za-z]{3}$");
+        RuleFor(command => command.Price).InclusiveBetween(0, CatalogValidation.MaximumPrice);
+        RuleFor(command => command.Currency).Matches(CatalogValidation.CurrencyPattern);
         RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
-    }
-
-    private static bool BeJsonObject(string value)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(value) ? "{}" : value);
-            return document.RootElement.ValueKind == JsonValueKind.Object;
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
     }
 }
 
@@ -101,21 +87,11 @@ public sealed class UpdateProductVariantValidator : AbstractValidator<UpdateProd
         RuleFor(command => command.ProductId).NotEmpty();
         RuleFor(command => command.VariantId).NotEmpty();
         RuleFor(command => command.DisplayName).NotEmpty().MaximumLength(200);
-        RuleFor(command => command.AttributesJson).Must(value =>
-        {
-            try
-            {
-                using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(value) ? "{}" : value);
-                return document.RootElement.ValueKind == JsonValueKind.Object;
-            }
-            catch (JsonException)
-            {
-                return false;
-            }
-        }).WithMessage("AttributesJson must be a JSON object.");
+        RuleFor(command => command.AttributesJson).Must(CatalogValidation.IsJsonObjectOrEmpty)
+            .WithMessage("AttributesJson must be a JSON object.");
         RuleFor(command => command.Barcode).MaximumLength(80);
-        RuleFor(command => command.Price).InclusiveBetween(0, 9_999_999_999_999_999.99m);
-        RuleFor(command => command.Currency).Matches("^[A-Za-z]{3}$");
+        RuleFor(command => command.Price).InclusiveBetween(0, CatalogValidation.MaximumPrice);
+        RuleFor(command => command.Currency).Matches(CatalogValidation.CurrencyPattern);
         RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
     }
 }
@@ -164,7 +140,7 @@ internal sealed class CreateProductVariantHandler(
 {
     public async Task<Guid> Handle(CreateProductVariantCommand request, CancellationToken cancellationToken)
     {
-        var product = await ProductAggregateCommands.GetAsync(products, request.ProductId, cancellationToken);
+        var product = await products.GetRequiredAsync(request.ProductId, cancellationToken);
         var normalizedSku = Product.NormalizeSku(request.Sku);
         if (await products.SkuExistsAsync(normalizedSku, null, cancellationToken))
             throw new InvalidOperationException($"SKU '{request.Sku}' already exists.");
@@ -195,8 +171,8 @@ internal sealed class UpdateProductVariantHandler(
 {
     public async Task<bool> Handle(UpdateProductVariantCommand request, CancellationToken cancellationToken)
     {
-        var product = await ProductAggregateCommands.GetAsync(products, request.ProductId, cancellationToken);
-        ProductAggregateCommands.EnsureVersion(product, request.ExpectedVersion);
+        var product = await products.GetRequiredAsync(request.ProductId, cancellationToken);
+        product.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         product.UpdateVariant(
             request.VariantId,
@@ -222,8 +198,8 @@ internal sealed class DeleteProductVariantHandler(
 {
     public async Task<bool> Handle(DeleteProductVariantCommand request, CancellationToken cancellationToken)
     {
-        var product = await ProductAggregateCommands.GetAsync(products, request.ProductId, cancellationToken);
-        ProductAggregateCommands.EnsureVersion(product, request.ExpectedVersion);
+        var product = await products.GetRequiredAsync(request.ProductId, cancellationToken);
+        product.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         var removed = product.RemoveVariant(request.VariantId, request.Actor, now);
         snapshots.PublishUnavailable(product, removed);
@@ -241,8 +217,8 @@ internal sealed class AddProductMediaHandler(
 {
     public async Task<Guid> Handle(AddProductMediaCommand request, CancellationToken cancellationToken)
     {
-        var product = await ProductAggregateCommands.GetAsync(products, request.ProductId, cancellationToken);
-        ProductAggregateCommands.EnsureVersion(product, request.ExpectedVersion);
+        var product = await products.GetRequiredAsync(request.ProductId, cancellationToken);
+        product.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         var media = product.AddMedia(
             Guid.NewGuid(), request.VariantId, request.MediaType, request.Url,
@@ -261,8 +237,8 @@ internal sealed class UpdateProductMediaHandler(
 {
     public async Task<bool> Handle(UpdateProductMediaCommand request, CancellationToken cancellationToken)
     {
-        var product = await ProductAggregateCommands.GetAsync(products, request.ProductId, cancellationToken);
-        ProductAggregateCommands.EnsureVersion(product, request.ExpectedVersion);
+        var product = await products.GetRequiredAsync(request.ProductId, cancellationToken);
+        product.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         product.UpdateMedia(
             request.MediaId, request.VariantId, request.MediaType, request.Url,
@@ -281,28 +257,12 @@ internal sealed class DeleteProductMediaHandler(
 {
     public async Task<bool> Handle(DeleteProductMediaCommand request, CancellationToken cancellationToken)
     {
-        var product = await ProductAggregateCommands.GetAsync(products, request.ProductId, cancellationToken);
-        ProductAggregateCommands.EnsureVersion(product, request.ExpectedVersion);
+        var product = await products.GetRequiredAsync(request.ProductId, cancellationToken);
+        product.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         product.RemoveMedia(request.MediaId, request.Actor, now);
         snapshots.Publish(product);
         audit.Record("Product", product.Id, "MediaRemoved", request.Actor, now, new { request.MediaId });
         return true;
-    }
-}
-
-internal static class ProductAggregateCommands
-{
-    public static async Task<Product> GetAsync(
-        IProductRepository products,
-        Guid productId,
-        CancellationToken cancellationToken) =>
-        await products.FindAsync(productId, cancellationToken)
-        ?? throw new KeyNotFoundException("Product was not found.");
-
-    public static void EnsureVersion(Product product, long? expectedVersion)
-    {
-        if (expectedVersion.HasValue && product.Version != expectedVersion.Value)
-            throw new InvalidOperationException($"Product version mismatch. Expected {expectedVersion}, current {product.Version}.");
     }
 }

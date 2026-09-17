@@ -24,7 +24,6 @@ public sealed class InventoryAllocation : AggregateRoot<Guid>
     {
         if (id == Guid.Empty || offerId == Guid.Empty)
             throw new ArgumentException("Allocation and offer ids are required.");
-        ArgumentException.ThrowIfNullOrWhiteSpace(sku);
         if (totalQuantity <= 0)
             throw new ArgumentOutOfRangeException(nameof(totalQuantity));
         if (startsOnUtc >= endsOnUtc)
@@ -34,7 +33,7 @@ public sealed class InventoryAllocation : AggregateRoot<Guid>
 
         Id = id;
         OfferId = offerId;
-        Sku = sku.Trim().ToUpperInvariant();
+        Sku = StockItem.NormalizeSku(sku);
         TotalQuantity = totalQuantity;
         StartsOnUtc = startsOnUtc.ToUniversalTime();
         EndsOnUtc = endsOnUtc.ToUniversalTime();

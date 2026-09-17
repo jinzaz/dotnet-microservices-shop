@@ -6,17 +6,6 @@ public sealed class Category : AuditedCatalogAggregateRoot<Guid>
     {
     }
 
-    /// <summary>兼容旧版目录 API 的构造入口。</summary>
-    public Category(Guid id, string name)
-        : this(
-            id,
-            $"CAT-{CatalogDomainGuard.Required(id, nameof(id)):N}",
-            name,
-            CatalogDomainGuard.LegacyActor,
-            DateTimeOffset.UtcNow)
-    {
-    }
-
     public Category(
         Guid id,
         string code,
@@ -40,9 +29,6 @@ public sealed class Category : AuditedCatalogAggregateRoot<Guid>
 
     public static string NormalizeCode(string code) =>
         CatalogDomainGuard.Required(code, nameof(code), 60).ToUpperInvariant();
-
-    public void Rename(string name) =>
-        Rename(name, CatalogDomainGuard.LegacyActor, DateTimeOffset.UtcNow);
 
     public void Rename(string name, string actor, DateTimeOffset occurredOnUtc)
     {

@@ -135,14 +135,7 @@ public sealed class Order : AggregateRoot<Guid>
     public IReadOnlyCollection<OrderStatusHistory> StatusHistory => _statusHistory;
     public IReadOnlyCollection<OrderFulfillmentStatusHistory> FulfillmentStatusHistory => _fulfillmentStatusHistory;
 
-    public void EnsureSameRequest(string requestFingerprint)
-    {
-        // 幂等键只能绑定一份请求载荷，防止调用方误复用键而返回另一笔订单。
-        if (!string.Equals(RequestFingerprint, requestFingerprint, StringComparison.Ordinal))
-            throw new InvalidOperationException("The idempotency key is already bound to a different order request.");
-    }
-
-    public void InventoryReserved(Guid reservationId, DateTimeOffset? changedOnUtc = null)
+    public void InventoryReserved(Guid reservationId, DateTimeOffset changedOnUtc)
     {
         if (reservationId == Guid.Empty)
             throw new ArgumentException("Reservation id is required.", nameof(reservationId));
@@ -150,11 +143,8 @@ public sealed class Order : AggregateRoot<Guid>
             throw new InvalidOperationException("Order is not awaiting inventory.");
 
         ReservationId = reservationId;
-        TransitionTo(OrderStatus.AwaitingPayment, changedOnUtc ?? DateTimeOffset.UtcNow, null);
+        TransitionTo(OrderStatus.AwaitingPayment, changedOnUtc, null);
     }
-
-    public void Confirm(Guid paymentId) =>
-        Confirm(paymentId, Amount, Currency, PricingSnapshotHash, DateTimeOffset.UtcNow);
 
     public void Confirm(
         Guid paymentId,
@@ -196,11 +186,9 @@ public sealed class Order : AggregateRoot<Guid>
         }
     }
 
-    public void Cancel(string reason) => TryCancel(reason);
-
     public bool TryCancel(
         string reason,
-        DateTimeOffset? changedOnUtc = null,
+        DateTimeOffset changedOnUtc,
         string actor = "system")
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
@@ -208,13 +196,12 @@ public sealed class Order : AggregateRoot<Guid>
         if (Status is OrderStatus.Confirmed or OrderStatus.Cancelled)
             return false;
 
-        var now = changedOnUtc ?? DateTimeOffset.UtcNow;
         CancellationReason = reason.Trim();
-        CancelledOnUtc = now;
-        TransitionTo(OrderStatus.Cancelled, now, CancellationReason, actor);
+        CancelledOnUtc = changedOnUtc;
+        TransitionTo(OrderStatus.Cancelled, changedOnUtc, CancellationReason, actor);
         TransitionFulfillmentTo(
             OrderFulfillmentStatus.Cancelled,
-            now,
+            changedOnUtc,
             CancellationReason,
             actor,
             null,
@@ -237,17 +224,17 @@ public sealed class Order : AggregateRoot<Guid>
         if (Status != OrderStatus.Confirmed || FulfillmentStatus != OrderFulfillmentStatus.AwaitingShipment)
             throw new InvalidOperationException("Only a confirmed order awaiting shipment can be shipped.");
 
-        CarrierCode = Required(carrierCode, 50, nameof(carrierCode)).ToUpperInvariant();
-        CarrierName = Required(carrierName, 120, nameof(carrierName));
-        TrackingNumber = Required(trackingNumber, 120, nameof(trackingNumber)).ToUpperInvariant();
+        // 全部输入先校验，避免非法请求在抛出异常前留下部分承运信息。
+        var normalizedCarrierCode = Required(carrierCode, 50, nameof(carrierCode)).ToUpperInvariant();
+        var normalizedCarrierName = Required(carrierName, 120, nameof(carrierName));
+        var normalizedTrackingNumber = Required(trackingNumber, 120, nameof(trackingNumber)).ToUpperInvariant();
+        var operation = FulfillmentOperation.Create(idempotencyKey, requestFingerprint, note, actor);
+
+        CarrierCode = normalizedCarrierCode;
+        CarrierName = normalizedCarrierName;
+        TrackingNumber = normalizedTrackingNumber;
         ShippedOnUtc = changedOnUtc;
-        TransitionFulfillmentTo(
-            OrderFulfillmentStatus.Shipped,
-            changedOnUtc,
-            Optional(note, 1000, nameof(note)),
-            Required(actor, 200, nameof(actor)),
-            Required(idempotencyKey, 100, nameof(idempotencyKey)),
-            RequiredFingerprint(requestFingerprint));
+        TransitionFulfillmentTo(OrderFulfillmentStatus.Shipped, changedOnUtc, operation);
         return true;
     }
 
@@ -263,14 +250,9 @@ public sealed class Order : AggregateRoot<Guid>
         if (FulfillmentStatus != OrderFulfillmentStatus.Shipped)
             throw new InvalidOperationException("Only a shipped order can be marked in transit.");
 
+        var operation = FulfillmentOperation.Create(idempotencyKey, requestFingerprint, note, actor);
         InTransitOnUtc = changedOnUtc;
-        TransitionFulfillmentTo(
-            OrderFulfillmentStatus.InTransit,
-            changedOnUtc,
-            Optional(note, 1000, nameof(note)),
-            Required(actor, 200, nameof(actor)),
-            Required(idempotencyKey, 100, nameof(idempotencyKey)),
-            RequiredFingerprint(requestFingerprint));
+        TransitionFulfillmentTo(OrderFulfillmentStatus.InTransit, changedOnUtc, operation);
         return true;
     }
 
@@ -286,14 +268,9 @@ public sealed class Order : AggregateRoot<Guid>
         if (FulfillmentStatus != OrderFulfillmentStatus.InTransit)
             throw new InvalidOperationException("Only an in-transit order can be marked delivered.");
 
+        var operation = FulfillmentOperation.Create(idempotencyKey, requestFingerprint, note, actor);
         DeliveredOnUtc = changedOnUtc;
-        TransitionFulfillmentTo(
-            OrderFulfillmentStatus.Delivered,
-            changedOnUtc,
-            Optional(note, 1000, nameof(note)),
-            Required(actor, 200, nameof(actor)),
-            Required(idempotencyKey, 100, nameof(idempotencyKey)),
-            RequiredFingerprint(requestFingerprint));
+        TransitionFulfillmentTo(OrderFulfillmentStatus.Delivered, changedOnUtc, operation);
         return true;
     }
 
@@ -329,6 +306,37 @@ public sealed class Order : AggregateRoot<Guid>
         if (!string.Equals(existing.RequestFingerprint, normalizedFingerprint, StringComparison.Ordinal))
             throw new InvalidOperationException("The fulfillment idempotency key is bound to a different request.");
         return true;
+    }
+
+    private void TransitionFulfillmentTo(
+        OrderFulfillmentStatus next,
+        DateTimeOffset changedOnUtc,
+        FulfillmentOperation operation) =>
+        TransitionFulfillmentTo(
+            next,
+            changedOnUtc,
+            operation.Note,
+            operation.Actor,
+            operation.IdempotencyKey,
+            operation.RequestFingerprint);
+
+    /// <summary>Normalized operator input for an idempotent fulfillment transition, validated before any state changes.</summary>
+    private sealed record FulfillmentOperation(
+        string IdempotencyKey,
+        string RequestFingerprint,
+        string? Note,
+        string Actor)
+    {
+        public static FulfillmentOperation Create(
+            string idempotencyKey,
+            string requestFingerprint,
+            string? note,
+            string actor) =>
+            new(
+                Required(idempotencyKey, 100, nameof(idempotencyKey)),
+                RequiredFingerprint(requestFingerprint),
+                Optional(note, 1000, nameof(note)),
+                Required(actor, 200, nameof(actor)));
     }
 
     private void TransitionFulfillmentTo(

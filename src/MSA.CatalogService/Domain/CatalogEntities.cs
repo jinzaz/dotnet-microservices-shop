@@ -92,6 +92,14 @@ public abstract class AuditedCatalogAggregateRoot<TId> : AggregateRoot<TId>
             Version++;
         }
     }
+
+    /// <summary>Optimistic concurrency check for admin edits; a missing expectation means last-writer-wins.</summary>
+    public void EnsureVersion(long? expectedVersion)
+    {
+        if (expectedVersion.HasValue && expectedVersion.Value != Version)
+            throw new InvalidOperationException(
+                $"{GetType().Name} version mismatch. Expected {expectedVersion.Value}, current {Version}.");
+    }
 }
 
 public abstract class RevisionedCatalogAggregateRoot<TId> : AuditedCatalogAggregateRoot<TId>
@@ -113,8 +121,6 @@ public abstract class RevisionedCatalogAggregateRoot<TId> : AuditedCatalogAggreg
 
 internal static class CatalogDomainGuard
 {
-    public const string LegacyActor = "legacy-api";
-
     public static Guid Required(Guid value, string parameterName)
     {
         if (value == Guid.Empty)

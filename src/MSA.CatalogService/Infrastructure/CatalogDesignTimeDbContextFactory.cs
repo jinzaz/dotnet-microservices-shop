@@ -12,7 +12,7 @@ public sealed class CatalogDesignTimeDbContextFactory : BaseDesignTimeDbContextF
     {
         services.AddMediatR(config =>
         {
-            config.RegisterServicesFromAssemblyContaining<CreateProductCommand>();
+            config.RegisterServicesFromAssemblyContaining<CreateDraftProductCommand>();
         });
     }
 }

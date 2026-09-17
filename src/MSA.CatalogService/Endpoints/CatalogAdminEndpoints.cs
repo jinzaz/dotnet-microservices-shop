@@ -482,13 +482,6 @@ public sealed record CreateProductRequest(
     decimal Price,
     string Currency = "CNY");
 
-public sealed record UpdateProductRequest(
-    string Name,
-    string Description,
-    decimal Price,
-    bool IsActive);
-
-public sealed record CreateCategoryRequest(string Name);
 public sealed record CreateAdminCategoryRequest(string Code, string Name);
 public sealed record RenameCategoryRequest(string Name, long? ExpectedVersion);
 public sealed record VersionedCatalogRequest(long? ExpectedVersion);

@@ -6,7 +6,6 @@ using MSA.EventBusOutbox;
 using MSA.OrderService.Application.Pricing;
 using MSA.OrderService.Domain;
 using MSA.OrderService.Infrastructure;
-using MSA.OrderService.Integration;
 using MSA.Saga;
 using System.Text.Json;
 
@@ -230,9 +229,7 @@ internal sealed class CreateOrderCommandHandler(
             SourceBasketId = order.SourceBasketId,
             SourceBasketVersion = order.SourceBasketVersion
         };
-        outbox.Add(OutboxMessage.Create(
-            integrationEvent.GetType().AssemblyQualifiedName!,
-            JsonSerializer.Serialize(integrationEvent, integrationEvent.GetType())));
+        outbox.AddIntegrationEvent(integrationEvent);
     }
 }
 

@@ -36,4 +36,7 @@
 		<ProjectReference Include="..\MSA.Repositories\MSA.Repositories.csproj" />
 	</ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="MSA.CommerceTests" />
+  </ItemGroup>
 </Project>

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using MSA.Contracts;
 using MSA.EventBus.Abstractions;
 using MSA.EventBusOutbox;
+using MSA.OrderService.Application;
 using MSA.OrderService.Application.Pricing;
 using MSA.OrderService.Domain;
 using MSA.OrderService.Infrastructure;
@@ -46,66 +47,46 @@ internal abstract class OrderEventHandler<TEvent>(
         TEvent integrationEvent,
         CancellationToken cancellationToken);
 
-    protected void Publish(IntegrationEvent integrationEvent) =>
-        outbox.Add(OutboxMessage.Create(
-            integrationEvent.GetType().AssemblyQualifiedName!,
-            JsonSerializer.Serialize(integrationEvent, integrationEvent.GetType())));
+    protected void Publish(IntegrationEvent integrationEvent) => outbox.AddIntegrationEvent(integrationEvent);
 }
 
 internal sealed class ProductChangedHandler(OrderDbContext db, IOutboxStore outbox)
     : OrderEventHandler<ProductChangedIntegrationEvent>(db, outbox, "ordering.catalog-product.v1")
 {
-    protected override async Task HandleCoreAsync(
+    // Legacy single-SKU event: the product id doubles as its default variant id.
+    protected override Task HandleCoreAsync(
         ProductChangedIntegrationEvent integrationEvent,
-        CancellationToken cancellationToken)
-    {
-        var effectiveOnUtc = integrationEvent.EffectiveOnUtc
-            ?? new DateTimeOffset(DateTime.SpecifyKind(integrationEvent.CreationDate, DateTimeKind.Utc));
-        var product = await Db.ProductProjections
-            .SingleOrDefaultAsync(value => value.VariantId == integrationEvent.ProductId, cancellationToken);
-        if (product is null)
-        {
-            Db.ProductProjections.Add(new OrderProductProjection(
+        CancellationToken cancellationToken) =>
+        ProductProjectionUpsert.ApplyAsync(
+            Db,
+            new OrderProductProjection(
                 integrationEvent.ProductId,
-                integrationEvent.Sku.Trim().ToUpperInvariant(),
+                integrationEvent.ProductId,
+                integrationEvent.Sku,
                 integrationEvent.Name,
+                integrationEvent.Name,
+                "{}",
                 integrationEvent.Price,
                 integrationEvent.Currency,
                 integrationEvent.IsActive,
                 integrationEvent.CategoryId,
                 integrationEvent.Revision,
-                effectiveOnUtc));
-            return;
-        }
-
-        product.Apply(
-            integrationEvent.Name,
-            integrationEvent.Price,
-            integrationEvent.Currency,
-            integrationEvent.IsActive,
-            integrationEvent.CategoryId,
-            integrationEvent.Revision,
-            effectiveOnUtc);
-    }
+                ProductProjectionUpsert.EffectiveOn(integrationEvent.EffectiveOnUtc, integrationEvent.CreationDate)),
+            cancellationToken);
 }
 
 internal sealed class ProductVariantChangedHandler(OrderDbContext db, IOutboxStore outbox)
     : OrderEventHandler<ProductVariantChangedIntegrationEvent>(db, outbox, "ordering.catalog-product-variant.v1")
 {
-    protected override async Task HandleCoreAsync(
+    protected override Task HandleCoreAsync(
         ProductVariantChangedIntegrationEvent integrationEvent,
-        CancellationToken cancellationToken)
-    {
-        var effectiveOnUtc = integrationEvent.EffectiveOnUtc
-            ?? new DateTimeOffset(DateTime.SpecifyKind(integrationEvent.CreationDate, DateTimeKind.Utc));
-        var product = await Db.ProductProjections
-            .SingleOrDefaultAsync(value => value.VariantId == integrationEvent.VariantId, cancellationToken);
-        if (product is null)
-        {
-            Db.ProductProjections.Add(new OrderProductProjection(
+        CancellationToken cancellationToken) =>
+        ProductProjectionUpsert.ApplyAsync(
+            Db,
+            new OrderProductProjection(
                 integrationEvent.VariantId,
                 integrationEvent.ProductId,
-                integrationEvent.Sku.Trim().ToUpperInvariant(),
+                integrationEvent.Sku,
                 integrationEvent.ProductName,
                 integrationEvent.VariantName,
                 integrationEvent.AttributesJson,
@@ -114,20 +95,39 @@ internal sealed class ProductVariantChangedHandler(OrderDbContext db, IOutboxSto
                 integrationEvent.IsActive,
                 integrationEvent.CategoryId,
                 integrationEvent.Revision,
-                effectiveOnUtc));
+                ProductProjectionUpsert.EffectiveOn(integrationEvent.EffectiveOnUtc, integrationEvent.CreationDate)),
+            cancellationToken);
+}
+
+internal static class ProductProjectionUpsert
+{
+    public static DateTimeOffset EffectiveOn(DateTimeOffset? effectiveOnUtc, DateTime creationDate) =>
+        effectiveOnUtc ?? new DateTimeOffset(DateTime.SpecifyKind(creationDate, DateTimeKind.Utc));
+
+    /// <summary>Adds the incoming snapshot or advances the local copy; stale revisions are ignored by the projection.</summary>
+    public static async Task ApplyAsync(
+        OrderDbContext db,
+        OrderProductProjection incoming,
+        CancellationToken cancellationToken)
+    {
+        var existing = await db.ProductProjections
+            .SingleOrDefaultAsync(value => value.VariantId == incoming.VariantId, cancellationToken);
+        if (existing is null)
+        {
+            db.ProductProjections.Add(incoming);
             return;
         }
 
-        product.Apply(
-            integrationEvent.ProductName,
-            integrationEvent.VariantName,
-            integrationEvent.AttributesJson,
-            integrationEvent.Price,
-            integrationEvent.Currency,
-            integrationEvent.IsActive,
-            integrationEvent.CategoryId,
-            integrationEvent.Revision,
-            effectiveOnUtc);
+        existing.Apply(
+            incoming.ProductName,
+            incoming.VariantName,
+            incoming.AttributesJson,
+            incoming.Price,
+            incoming.Currency,
+            incoming.IsActive,
+            incoming.CategoryId,
+            incoming.SourceRevision,
+            incoming.UpdatedOnUtc);
     }
 }
 
@@ -354,7 +354,8 @@ internal sealed class InventoryAllocationClosedHandler(OrderDbContext db, IOutbo
 internal sealed class InventoryReservedHandler(
     OrderDbContext db,
     IOutboxStore outbox,
-    ISagaStore sagas)
+    ISagaStore sagas,
+    TimeProvider clock)
     : OrderEventHandler<InventoryReservedIntegrationEvent>(db, outbox, "ordering.inventory-reserved.v1")
 {
     protected override async Task HandleCoreAsync(
@@ -375,7 +376,7 @@ internal sealed class InventoryReservedHandler(
         if (order.Status != OrderStatus.Submitted)
             return;
 
-        var now = DateTimeOffset.UtcNow;
+        var now = clock.GetUtcNow();
         order.InventoryReserved(integrationEvent.ReservationId, now);
         var saga = await sagas.FindAsync(order.Id, cancellationToken)
             ?? throw new InvalidOperationException("Order fulfillment saga is missing.");
@@ -406,7 +407,8 @@ internal sealed class InventoryRejectedHandler(
     OrderDbContext db,
     IOutboxStore outbox,
     ISagaStore sagas,
-    ICouponRedemptionStore couponRedemptions)
+    ICouponRedemptionStore couponRedemptions,
+    TimeProvider clock)
     : OrderEventHandler<InventoryRejectedIntegrationEvent>(db, outbox, "ordering.inventory-rejected.v1")
 {
     protected override async Task HandleCoreAsync(
@@ -414,7 +416,7 @@ internal sealed class InventoryRejectedHandler(
         CancellationToken cancellationToken)
     {
         var order = await OrderRowLock.LockAsync(Db, integrationEvent.OrderId, cancellationToken);
-        var now = DateTimeOffset.UtcNow;
+        var now = clock.GetUtcNow();
         if (!order.TryCancel(integrationEvent.Reason, now))
             return;
 
@@ -547,7 +549,8 @@ internal sealed class PaymentSucceededHandler(
 internal sealed class InventoryCommittedHandler(
     OrderDbContext db,
     IOutboxStore outbox,
-    ISagaStore sagas)
+    ISagaStore sagas,
+    TimeProvider clock)
     : OrderEventHandler<InventoryCommittedIntegrationEvent>(db, outbox, "ordering.inventory-committed.v1")
 {
     protected override async Task HandleCoreAsync(
@@ -559,7 +562,7 @@ internal sealed class InventoryCommittedHandler(
             throw new InvalidOperationException("Inventory commit acknowledgement does not match the order reservation.");
         var saga = await sagas.FindAsync(order.Id, cancellationToken);
         if (saga?.Status == SagaStatus.Running)
-            saga.Complete(DateTimeOffset.UtcNow);
+            saga.Complete(clock.GetUtcNow());
     }
 }
 
@@ -567,7 +570,8 @@ internal sealed class PaymentFailedHandler(
     OrderDbContext db,
     IOutboxStore outbox,
     ISagaStore sagas,
-    ICouponRedemptionStore couponRedemptions)
+    ICouponRedemptionStore couponRedemptions,
+    TimeProvider clock)
     : OrderEventHandler<PaymentFailedIntegrationEvent>(db, outbox, "ordering.payment-failed.v1")
 {
     protected override async Task HandleCoreAsync(
@@ -575,7 +579,7 @@ internal sealed class PaymentFailedHandler(
         CancellationToken cancellationToken)
     {
         var order = await OrderRowLock.LockAsync(Db, integrationEvent.OrderId, cancellationToken);
-        var now = DateTimeOffset.UtcNow;
+        var now = clock.GetUtcNow();
         if (!order.TryCancel(integrationEvent.Reason, now))
             return;
 
@@ -625,7 +629,8 @@ internal sealed class PaymentFailedHandler(
 internal sealed class InventoryReleasedHandler(
     OrderDbContext db,
     IOutboxStore outbox,
-    ISagaStore sagas)
+    ISagaStore sagas,
+    TimeProvider clock)
     : OrderEventHandler<InventoryReleasedIntegrationEvent>(db, outbox, "ordering.inventory-released.v1")
 {
     protected override async Task HandleCoreAsync(
@@ -635,14 +640,15 @@ internal sealed class InventoryReleasedHandler(
         var order = await OrderRowLock.LockAsync(Db, integrationEvent.OrderId, cancellationToken);
         if (order.ReservationId != integrationEvent.ReservationId)
             throw new InvalidOperationException("Inventory release acknowledgement does not match the order reservation.");
-        await OrderCompensation.MarkAsync(order.Id, inventory: true, payment: false, sagas, cancellationToken);
+        await OrderCompensation.MarkAsync(order.Id, inventory: true, payment: false, sagas, clock.GetUtcNow(), cancellationToken);
     }
 }
 
 internal sealed class PaymentCancelledHandler(
     OrderDbContext db,
     IOutboxStore outbox,
-    ISagaStore sagas)
+    ISagaStore sagas,
+    TimeProvider clock)
     : OrderEventHandler<PaymentCancelledIntegrationEvent>(db, outbox, "ordering.payment-cancelled.v1")
 {
     protected override async Task HandleCoreAsync(
@@ -650,14 +656,15 @@ internal sealed class PaymentCancelledHandler(
         CancellationToken cancellationToken)
     {
         _ = await OrderRowLock.LockAsync(Db, integrationEvent.OrderId, cancellationToken);
-        await OrderCompensation.MarkAsync(integrationEvent.OrderId, inventory: false, payment: true, sagas, cancellationToken);
+        await OrderCompensation.MarkAsync(integrationEvent.OrderId, inventory: false, payment: true, sagas, clock.GetUtcNow(), cancellationToken);
     }
 }
 
 internal sealed class PaymentRefundedHandler(
     OrderDbContext db,
     IOutboxStore outbox,
-    ISagaStore sagas)
+    ISagaStore sagas,
+    TimeProvider clock)
     : OrderEventHandler<PaymentRefundedIntegrationEvent>(db, outbox, "ordering.payment-refunded.v1")
 {
     protected override async Task HandleCoreAsync(
@@ -672,14 +679,15 @@ internal sealed class PaymentRefundedHandler(
         {
             throw new InvalidOperationException("Payment refund acknowledgement does not match the order compensation request.");
         }
-        await OrderCompensation.MarkAsync(integrationEvent.OrderId, inventory: false, payment: true, sagas, cancellationToken);
+        await OrderCompensation.MarkAsync(integrationEvent.OrderId, inventory: false, payment: true, sagas, clock.GetUtcNow(), cancellationToken);
     }
 }
 
 internal sealed class PaymentRefundFailedHandler(
     OrderDbContext db,
     IOutboxStore outbox,
-    ISagaStore sagas)
+    ISagaStore sagas,
+    TimeProvider clock)
     : OrderEventHandler<PaymentRefundFailedIntegrationEvent>(db, outbox, "ordering.payment-refund-failed.v1")
 {
     protected override async Task HandleCoreAsync(
@@ -694,7 +702,7 @@ internal sealed class PaymentRefundFailedHandler(
         {
             throw new InvalidOperationException("Payment refund failure does not match the order compensation request.");
         }
-        saga?.Fail($"Payment refund requires manual intervention: {integrationEvent.Reason}", DateTimeOffset.UtcNow);
+        saga?.Fail($"Payment refund requires manual intervention: {integrationEvent.Reason}", clock.GetUtcNow());
     }
 }
 
@@ -817,48 +825,7 @@ internal sealed class OrderSagaTimeoutHandler(
         }
     }
 
-    private void Publish(IntegrationEvent integrationEvent) =>
-        outbox.Add(OutboxMessage.Create(
-            integrationEvent.GetType().AssemblyQualifiedName!,
-            JsonSerializer.Serialize(integrationEvent, integrationEvent.GetType())));
-}
-
-internal sealed record OrderFulfillmentSagaData(
-    int SchemaVersion,
-    string UserId,
-    string PaymentMethod,
-    Guid PricingSnapshotId,
-    string PricingSnapshotHash,
-    DateTimeOffset PaymentDueOnUtc,
-    Guid? ReservationId = null,
-    Guid? PaymentId = null,
-    Guid? RefundRequestId = null,
-    bool RequiresInventoryCompensation = false,
-    bool InventoryCompensated = false,
-    bool RequiresPaymentCompensation = false,
-    bool PaymentCompensated = false,
-    string? FailureReason = null)
-{
-    public const string SagaType = "OrderFulfillment";
-    public const string AwaitingInventory = "AwaitingInventory";
-    public const string AwaitingPayment = "AwaitingPayment";
-    public const string AwaitingInventoryCommit = "AwaitingInventoryCommit";
-    public const string Compensating = "Compensating";
-    public const string CompensatingInventory = "CompensatingInventory";
-    public const string CompensatingRefund = "CompensatingRefund";
-
-    public static OrderFulfillmentSagaData Start(Order order) =>
-        new(
-            1,
-            order.UserId,
-            order.PaymentMethod,
-            order.PricingSnapshotId,
-            order.PricingSnapshotHash,
-            order.PaymentDueOnUtc);
-
-    public static OrderFulfillmentSagaData Parse(string json) =>
-        JsonSerializer.Deserialize<OrderFulfillmentSagaData>(json)
-        ?? throw new InvalidOperationException("Order fulfillment saga data is invalid.");
+    private void Publish(IntegrationEvent integrationEvent) => outbox.AddIntegrationEvent(integrationEvent);
 }
 
 internal static class OrderRowLock
@@ -879,20 +846,19 @@ internal static class OrderCompensation
         bool inventory,
         bool payment,
         ISagaStore sagas,
+        DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         var saga = await sagas.FindAsync(orderId, cancellationToken);
         if (saga?.Status != SagaStatus.Compensating)
             return;
-        var now = DateTimeOffset.UtcNow;
         var current = OrderFulfillmentSagaData.Parse(saga.Data);
         var data = current with
         {
             InventoryCompensated = inventory || current.InventoryCompensated,
             PaymentCompensated = payment || current.PaymentCompensated
         };
-        if ((!data.RequiresInventoryCompensation || data.InventoryCompensated)
-            && (!data.RequiresPaymentCompensation || data.PaymentCompensated))
+        if (data.IsCompensationComplete)
         {
             saga.Compensate(now);
             return;

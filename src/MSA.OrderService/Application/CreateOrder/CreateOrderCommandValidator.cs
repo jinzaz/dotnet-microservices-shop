@@ -10,7 +10,7 @@ public sealed class CreateOrderCommandValidator : AbstractValidator<CreateOrderC
         RuleFor(command => command.IdempotencyKey).NotEmpty().MaximumLength(100);
         RuleFor(command => command.Items).NotEmpty().Must(items => items.Count <= 100);
         RuleFor(command => command.Items)
-            .Must(items => items.Select(item => item.Sku.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() == items.Count)
+            .Must(items => items.Select(item => item.Sku?.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() == items.Count)
             .WithMessage("Duplicate SKU lines are not supported.");
         RuleForEach(command => command.Items).ChildRules(item =>
         {

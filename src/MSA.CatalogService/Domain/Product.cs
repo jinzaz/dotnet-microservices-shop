@@ -12,30 +12,9 @@ public sealed class Product : RevisionedCatalogAggregateRoot<Guid>
     }
 
     /// <summary>
-    /// Compatibility constructor for the original single-SKU API. The initial variant deliberately
-    /// reuses the product id so existing downstream product references remain valid after migration.
+    /// The default variant deliberately reuses the product id so downstream product references created
+    /// before variants existed remain valid.
     /// </summary>
-    public Product(
-        Guid id,
-        Guid categoryId,
-        string sku,
-        string name,
-        string description,
-        decimal price,
-        string currency)
-        : this(
-            id,
-            categoryId,
-            sku,
-            name,
-            description,
-            price,
-            currency,
-            CatalogDomainGuard.LegacyActor,
-            DateTimeOffset.UtcNow)
-    {
-    }
-
     public Product(
         Guid id,
         Guid categoryId,
@@ -333,18 +312,6 @@ public sealed class Product : RevisionedCatalogAggregateRoot<Guid>
         IsActive = false;
         ArchivedOnUtc = CatalogDomainGuard.Utc(occurredOnUtc);
         CompleteChange(actor, occurredOnUtc, "Archived");
-    }
-
-    public void Update(string name, string description, decimal price, bool active)
-    {
-        EnsureEditable();
-        var now = DateTimeOffset.UtcNow;
-        UpdateDetails(name, description, CatalogDomainGuard.LegacyActor, now);
-        ChangePrice(price, DefaultVariant.Currency, CatalogDomainGuard.LegacyActor, now);
-        if (active && !IsActive)
-            Publish(CatalogDomainGuard.LegacyActor, now);
-        else if (!active && IsActive)
-            Unpublish(CatalogDomainGuard.LegacyActor, now);
     }
 
     private ProductVariant GetVariant(Guid variantId) =>

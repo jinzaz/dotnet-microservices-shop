@@ -81,3 +81,35 @@ public interface ICatalogAuditWriter
         DateTimeOffset occurredOnUtc,
         object? details = null);
 }
+
+/// <summary>Uniform "load or 404" semantics shared by every catalog command handler.</summary>
+public static class CatalogRepositoryExtensions
+{
+    public static async Task<Category> GetRequiredAsync(
+        this ICategoryRepository categories,
+        Guid id,
+        CancellationToken cancellationToken) =>
+        await categories.FindAsync(id, cancellationToken)
+        ?? throw new KeyNotFoundException("Category was not found.");
+
+    public static async Task<Product> GetRequiredAsync(
+        this IProductRepository products,
+        Guid id,
+        CancellationToken cancellationToken) =>
+        await products.FindAsync(id, cancellationToken)
+        ?? throw new KeyNotFoundException("Product was not found.");
+
+    public static async Task<Promotion> GetRequiredAsync(
+        this IPromotionRepository promotions,
+        Guid id,
+        CancellationToken cancellationToken) =>
+        await promotions.FindAsync(id, cancellationToken)
+        ?? throw new KeyNotFoundException("Promotion was not found.");
+
+    public static async Task<Coupon> GetRequiredAsync(
+        this ICouponRepository coupons,
+        Guid id,
+        CancellationToken cancellationToken) =>
+        await coupons.FindAsync(id, cancellationToken)
+        ?? throw new KeyNotFoundException("Coupon was not found.");
+}

@@ -33,6 +33,8 @@ builder.Services.AddMediatR(configuration =>
 builder.Services.AddScoped<IValidator<AddStockCommand>, AddStockValidator>();
 builder.Services.AddScoped<IValidator<AdjustStockCommand>, AdjustStockCommandValidator>();
 builder.Services.AddScoped<IValidator<CreateInventoryAllocationCommand>, CreateInventoryAllocationValidator>();
+// Must wrap TransactionBehavior: read-model eviction is only safe after the command commits.
+builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(InventoryCacheInvalidationBehavior<,>));
 builder.Services.AddMsaApplicationPipeline();
 
 builder.Services.AddOptions<InventoryReservationOptions>()

@@ -1,4 +1,5 @@
 using MSA.Contracts;
+using MSA.InventoryService.Domain;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -15,12 +16,13 @@ internal static class InventoryRequestHasher
             return ComputeVariantAware(integrationEvent);
 
         // 商品行顺序不影响业务语义；所有会影响库存预占或后续支付的值都必须参与摘要。
+        // 先规范化再排序：否则仅大小写/空白不同的等价请求会因排序不同得到不同摘要。
         var canonicalItems = integrationEvent.Items
-            .OrderBy(item => item.Sku, StringComparer.Ordinal)
+            .OrderBy(item => StockItem.NormalizeSku(item.Sku), StringComparer.Ordinal)
             .ThenBy(item => item.UnitPrice)
             .ThenBy(item => item.Quantity)
             .Select(item => new CanonicalOrderItem(
-                item.Sku.Trim().ToUpperInvariant(),
+                StockItem.NormalizeSku(item.Sku),
                 item.Quantity,
                 item.UnitPrice.ToString("G29", CultureInfo.InvariantCulture)))
             .ToArray();
@@ -39,13 +41,13 @@ internal static class InventoryRequestHasher
     private static string ComputeVariantAware(OrderSubmittedIntegrationEvent integrationEvent)
     {
         var items = integrationEvent.Items
-            .OrderBy(item => item.Sku, StringComparer.Ordinal)
+            .OrderBy(item => StockItem.NormalizeSku(item.Sku), StringComparer.Ordinal)
             .ThenBy(item => item.OfferId)
             .ThenBy(item => item.UnitPrice)
             .ThenBy(item => item.Quantity)
             .Select(item => new
             {
-                Sku = item.Sku.Trim().ToUpperInvariant(),
+                Sku = StockItem.NormalizeSku(item.Sku),
                 item.Quantity,
                 UnitPrice = item.UnitPrice.ToString("G29", CultureInfo.InvariantCulture),
                 item.ProductId,

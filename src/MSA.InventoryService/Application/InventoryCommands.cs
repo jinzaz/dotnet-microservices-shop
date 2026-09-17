@@ -29,7 +29,7 @@ internal sealed class AddStockHandler(
 {
     public async Task<Guid> Handle(AddStockCommand request, CancellationToken cancellationToken)
     {
-        var sku = request.Sku.Trim().ToUpperInvariant();
+        var sku = StockItem.NormalizeSku(request.Sku);
         await transactionLock.AcquireStockItemsAsync([sku], cancellationToken);
 
         var item = await db.StockItems.SingleOrDefaultAsync(value => value.Sku == sku, cancellationToken);
@@ -53,7 +53,7 @@ internal sealed class AddStockHandler(
             "Stock added through the compatibility endpoint.",
             clock.GetUtcNow()));
 
-        await cache.RemoveStockAsync(sku, cancellationToken);
+        cache.StockChanged(sku);
         return item.Id;
     }
 }
@@ -72,8 +72,8 @@ internal sealed class GetInventoryAvailabilityHandler(
         GetInventoryAvailabilityQuery request,
         CancellationToken cancellationToken)
     {
-        var sku = request.Sku.Trim().ToUpperInvariant();
-        var key = $"inventory:availability:{sku}";
+        var sku = StockItem.NormalizeSku(request.Sku);
+        var key = InventoryCacheKeys.Stock(sku);
         try
         {
             var cached = await cache.GetStringAsync(key, cancellationToken);

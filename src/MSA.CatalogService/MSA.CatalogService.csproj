@@ -8,4 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="..\MSA.Contracts\MSA.Contracts.csproj" /><ProjectReference Include="..\MSA.EventBusOutbox\MSA.EventBusOutbox.csproj" /><ProjectReference Include="..\MSA.EventBusRabbitMQ\MSA.EventBusRabbitMQ.csproj" /><ProjectReference Include="..\MSA.Infrastrucute\MSA.Infrastrucute.csproj" /><ProjectReference Include="..\MSA.Saga\MSA.Saga.csproj" /><ProjectReference Include="..\MSA.Repositories\MSA.Repositories.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="MSA.CommerceTests" />
+  </ItemGroup>
 </Project>

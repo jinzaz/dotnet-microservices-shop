@@ -6,8 +6,6 @@ using MSA.Infrastrucute.Mediator;
 
 namespace MSA.CatalogService.Application;
 
-public sealed record CreateCategoryCommand(string Name) : ICommand<Guid>;
-
 public sealed record CreateCategoryAdminCommand(string Code, string Name, string Actor) : ICommand<Guid>;
 
 public sealed record RenameCategoryCommand(
@@ -29,11 +27,6 @@ public sealed record ArchiveCategoryCommand(
 public sealed record ListCategoriesQuery(int Skip, int Take, string? Status)
     : IQuery<PagedResult<CategoryDto>>;
 
-public sealed class CreateCategoryValidator : AbstractValidator<CreateCategoryCommand>
-{
-    public CreateCategoryValidator() => RuleFor(command => command.Name).NotEmpty().MaximumLength(120);
-}
-
 public sealed class CreateCategoryAdminValidator : AbstractValidator<CreateCategoryAdminCommand>
 {
     public CreateCategoryAdminValidator()
@@ -41,23 +34,6 @@ public sealed class CreateCategoryAdminValidator : AbstractValidator<CreateCateg
         RuleFor(command => command.Code).NotEmpty().MaximumLength(60);
         RuleFor(command => command.Name).NotEmpty().MaximumLength(120);
         RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
-    }
-}
-
-internal sealed class CreateCategoryHandler(
-    ICategoryRepository categories,
-    ICatalogAuditWriter audit,
-    TimeProvider clock) : IRequestHandler<CreateCategoryCommand, Guid>
-{
-    public Task<Guid> Handle(CreateCategoryCommand request, CancellationToken cancellationToken)
-    {
-        var id = Guid.NewGuid();
-        var now = clock.GetUtcNow();
-        var category = new Category(id, $"CAT-{id:N}", request.Name, "legacy-api", now);
-        category.Activate("legacy-api", now);
-        categories.Add(category);
-        audit.Record("Category", id, "CreatedAndActivated", "legacy-api", now);
-        return Task.FromResult(id);
     }
 }
 
@@ -87,8 +63,8 @@ internal sealed class RenameCategoryHandler(
 {
     public async Task<bool> Handle(RenameCategoryCommand request, CancellationToken cancellationToken)
     {
-        var category = await CategoryHandlerHelpers.GetAsync(categories, request.CategoryId, cancellationToken);
-        CategoryHandlerHelpers.EnsureVersion(category.Version, request.ExpectedVersion);
+        var category = await categories.GetRequiredAsync(request.CategoryId, cancellationToken);
+        category.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         category.Rename(request.Name, request.Actor, now);
         audit.Record("Category", category.Id, "Renamed", request.Actor, now, new { request.Name });
@@ -103,8 +79,8 @@ internal sealed class ActivateCategoryHandler(
 {
     public async Task<bool> Handle(ActivateCategoryCommand request, CancellationToken cancellationToken)
     {
-        var category = await CategoryHandlerHelpers.GetAsync(categories, request.CategoryId, cancellationToken);
-        CategoryHandlerHelpers.EnsureVersion(category.Version, request.ExpectedVersion);
+        var category = await categories.GetRequiredAsync(request.CategoryId, cancellationToken);
+        category.EnsureVersion(request.ExpectedVersion);
         var now = clock.GetUtcNow();
         category.Activate(request.Actor, now);
         audit.Record("Category", category.Id, "Activated", request.Actor, now);
@@ -119,8 +95,8 @@ internal sealed class ArchiveCategoryHandler(
 {
     public async Task<bool> Handle(ArchiveCategoryCommand request, CancellationToken cancellationToken)
     {
-        var category = await CategoryHandlerHelpers.GetAsync(categories, request.CategoryId, cancellationToken);
-        CategoryHandlerHelpers.EnsureVersion(category.Version, request.ExpectedVersion);
+        var category = await categories.GetRequiredAsync(request.CategoryId, cancellationToken);
+        category.EnsureVersion(request.ExpectedVersion);
         if (await categories.HasPublishedProductsAsync(category.Id, cancellationToken))
             throw new InvalidOperationException("A category containing published products cannot be archived.");
 
@@ -136,20 +112,4 @@ internal sealed class ListCategoriesHandler(ICatalogReadService reads)
 {
     public Task<PagedResult<CategoryDto>> Handle(ListCategoriesQuery request, CancellationToken cancellationToken) =>
         reads.ListCategoriesAsync(request.Skip, request.Take, request.Status, cancellationToken);
-}
-
-file static class CategoryHandlerHelpers
-{
-    public static async Task<Category> GetAsync(
-        ICategoryRepository categories,
-        Guid categoryId,
-        CancellationToken cancellationToken) =>
-        await categories.FindAsync(categoryId, cancellationToken)
-        ?? throw new KeyNotFoundException("Category was not found.");
-
-    public static void EnsureVersion(long current, long? expected)
-    {
-        if (expected.HasValue && expected.Value != current)
-            throw new InvalidOperationException($"Category version mismatch. Expected {expected}, current {current}.");
-    }
 }

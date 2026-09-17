@@ -5,7 +5,7 @@ using MSA.CatalogService.Domain;
 
 namespace MSA.CatalogService.Infrastructure;
 
-internal sealed class CatalogStore(CatalogDbContext db) :
+internal sealed class CatalogStore(CatalogDbContext db, TimeProvider clock) :
     ICategoryRepository,
     IProductRepository,
     IPromotionRepository,
@@ -104,7 +104,7 @@ internal sealed class CatalogStore(CatalogDbContext db) :
         bool publicOnly,
         CancellationToken cancellationToken)
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = clock.GetUtcNow();
         var query = db.Products.AsNoTracking().Where(product => product.Id == id);
         if (publicOnly)
         {
@@ -134,7 +134,7 @@ internal sealed class CatalogStore(CatalogDbContext db) :
     {
         skip = Math.Max(0, skip);
         take = Math.Clamp(take, 1, 200);
-        var now = DateTimeOffset.UtcNow;
+        var now = clock.GetUtcNow();
         var query = db.Products.AsNoTracking();
         if (publicOnly)
         {
