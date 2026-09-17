@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Icon } from '../../shared/ui/Icon';
 import { formatMoney } from '../../shared/utils/format';
+import { priceLabel } from './product-view';
 import type { DisplayProduct } from './types';
 
 type ProductPreviewDialogProps = {
@@ -39,7 +40,7 @@ export function ProductPreviewDialog({ product, onClose }: ProductPreviewDialogP
       <div className="product-preview__content">
         <span>{product.categoryLabel}</span>
         <h2>{product.name}</h2>
-        <strong>{formatMoney(product.price, product.currency)}</strong>
+        <strong>{formatMoney(priceLabel(product).amount, product.currency)}{priceLabel(product).from ? ' 起' : ''}</strong>
         <p>{product.description}</p>
         <Link className="button button--primary button--regular" to={`/products/${product.id}`}>查看商品详情</Link>
         <button className="product-preview__continue" type="button" onClick={onClose}>继续浏览</button>

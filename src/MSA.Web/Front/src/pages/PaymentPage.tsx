@@ -105,8 +105,11 @@ export default function PaymentPage() {
   const countdown = usePaymentCountdown(payment?.expiresOnUtc ?? order?.paymentDueOnUtc);
   const succeeded = payment?.status === 'Succeeded' || (!payment && order?.status === 'Confirmed');
   const expiredByClock = countdown.seconds === 0 && payment?.status === 'Pending';
-  const terminal = paymentStatusCopy(expiredByClock ? 'Expired' : payment?.status);
+  const terminal = order?.fulfillmentStatus === 'Cancelled'
+    ? { title: '订单已取消', detail: order.cancellationReason ?? '该订单已关闭，无需继续支付。' }
+    : paymentStatusCopy(expiredByClock ? 'Expired' : payment?.status);
   const ordersPath = `/orders${demoMode ? '?demo=1' : ''}`;
+  const detailPath = demoMode ? ordersPath : `/orders/${orderId}`;
 
   const selectProvider = (channel: PaymentChannel) => {
     setFeedback('');
@@ -193,11 +196,11 @@ export default function PaymentPage() {
                   <div><dt>支付时间</dt><dd>{formatDateTime(order.updatedOnUtc)}</dd></div>
                 </dl>
                 <div className="payment-success-actions">
-                  <Link className="button button--primary button--regular" to={ordersPath}>查看订单详情</Link>
+                  <Link className="button button--primary button--regular" to={detailPath}>查看订单详情</Link>
                   <Link className="button button--secondary button--regular" to="/">继续购物</Link>
                 </div>
               </section>
-              <PaymentOrderSummary order={order} succeeded />
+              <PaymentOrderSummary order={order} succeeded detailPath={detailPath} />
             </div>
             <section className="payment-next-steps">
               <h2>接下来</h2>
@@ -216,10 +219,10 @@ export default function PaymentPage() {
               <p>{terminal.detail}</p>
               <div>
                 <Button type="button" loading={checking} onClick={() => void refreshPayment()}>刷新支付状态</Button>
-                <Link className="button button--secondary button--regular" to={ordersPath}>查看我的订单</Link>
+                <Link className="button button--secondary button--regular" to={detailPath}>查看订单详情</Link>
               </div>
             </section>
-            <PaymentOrderSummary order={order} succeeded={false} />
+            <PaymentOrderSummary order={order} succeeded={false} detailPath={detailPath} />
           </div>
         ) : (
           <>
@@ -252,12 +255,12 @@ export default function PaymentPage() {
                     : '等待支付中，请在有效期内完成支付')}
                 </p>
               </section>
-              <PaymentOrderSummary order={order} succeeded={false} />
+              <PaymentOrderSummary order={order} succeeded={false} detailPath={detailPath} />
             </div>
             <section className="payment-help-strip">
               <Icon name="help-circle" />
               <strong>支付遇到问题？</strong>
-              <span>二维码失效可刷新，款项异常请在订单页查看状态。</span>
+              <span>二维码失效可刷新；不想买了可以在<Link to={detailPath}>订单详情</Link>中取消订单。</span>
             </section>
           </>
         )}

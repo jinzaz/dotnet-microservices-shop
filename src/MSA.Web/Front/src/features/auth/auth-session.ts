@@ -2,11 +2,18 @@ import { toApiError } from '../../shared/api/api-error';
 import { bffUrl } from '../../shared/config/api';
 
 type CsrfResponse = { token?: string };
-type UserSessionResponse = { isAuthenticated?: boolean };
+export type BffSession = {
+  isAuthenticated: boolean;
+  subject: string | null;
+  name: string | null;
+  email: string | null;
+};
+
+const anonymousSession: BffSession = { isAuthenticated: false, subject: null, name: null, email: null };
 
 let csrfTokenPromise: Promise<string> | null = null;
 
-export async function hasBffSession(): Promise<boolean> {
+export async function getBffSession(): Promise<BffSession> {
   let response: Response;
   try {
     response = await fetch(bffUrl('/bff/user'), {
@@ -17,13 +24,15 @@ export async function hasBffSession(): Promise<boolean> {
     throw new Error('暂时无法连接登录服务，请确认 MSA.BFF.Web 已启动。');
   }
 
-  if (response.status === 401) return false;
+  if (response.status === 401) return anonymousSession;
   if (!response.ok) {
     throw await toApiError(response, '登录状态读取失败，请稍后重试。');
   }
 
-  const session = (await response.json()) as UserSessionResponse;
-  return session.isAuthenticated === true;
+  const session = (await response.json()) as Partial<BffSession>;
+  return session.isAuthenticated === true
+    ? { isAuthenticated: true, subject: session.subject ?? null, name: session.name ?? null, email: session.email ?? null }
+    : anonymousSession;
 }
 
 export function beginLogin(returnUrl = '/account'): void {

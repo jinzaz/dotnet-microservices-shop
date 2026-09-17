@@ -1,14 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/auth/AuthProvider';
-import { addBasketItem } from '../basket/basket-api';
-import { addCartLine } from '../basket/basket-store';
-import { claimCoupon } from '../coupons/coupons-api';
+import { MAX_LINE_QUANTITY, useBasketActions } from '../basket/basket-store';
 import { getErrorMessage } from '../../shared/api/api-error';
 import { isDemoMode } from '../../shared/config/api';
 import { Button } from '../../shared/ui/Button';
 import { Icon } from '../../shared/ui/Icon';
+import { useToast } from '../../shared/ui/Toast';
 import { formatMoney } from '../../shared/utils/format';
 import { getInventoryAvailability } from './inventory-api';
 import type { ProductDetail, ProductSku } from './product-detail-types';
@@ -22,18 +21,24 @@ function attributeGroups(skus: ProductSku[]) {
   }));
 }
 
-export function ProductPurchasePanel({ product }: { product: ProductDetail }) {
+function stockLabel(available: number | undefined, isAuthenticated: boolean): string {
+  if (available === 0) return '暂时缺货';
+  if (available !== undefined) return available <= 10 ? `仅剩 ${available} 件，欲购从速` : '现货充足';
+  return isAuthenticated ? '有货，库存以结算为准' : '登录后可查看实时库存';
+}
+
+export function ProductPurchasePanel({ product, onSkuChange }: { product: ProductDetail; onSkuChange?: (sku: ProductSku) => void }) {
   const initialSku = product.skus[0];
   const [selectedSkuCode, setSelectedSkuCode] = useState(initialSku?.sku ?? product.sku);
   const [quantity, setQuantity] = useState(1);
-  const [adding, setAdding] = useState(false);
-  const [claiming, setClaiming] = useState(false);
-  const [couponClaimed, setCouponClaimed] = useState(false);
-  const [notice, setNotice] = useState('');
+  const [pending, setPending] = useState<'add' | 'buy' | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const toast = useToast();
   const { isAuthenticated } = useAuth();
+  const basket = useBasketActions();
   const demoMode = isDemoMode(location.search);
+  const demoSuffix = demoMode ? '?demo=1' : '';
   const selectedSku = product.skus.find((sku) => sku.sku === selectedSkuCode) ?? initialSku;
   const groups = useMemo(() => attributeGroups(product.skus), [product.skus]);
   const inventoryQuery = useQuery({
@@ -44,60 +49,58 @@ export function ProductPurchasePanel({ product }: { product: ProductDetail }) {
     retry: 0,
   });
   const available = inventoryQuery.data?.available ?? selectedSku?.availableQuantity;
+  const maxQuantity = Math.max(1, Math.min(MAX_LINE_QUANTITY, available ?? MAX_LINE_QUANTITY));
   const coupon = product.coupons[0];
+
+  // Attribute values that cannot combine with the rest of the current selection are shown disabled.
+  const isValueSelectable = (name: string, value: string) => {
+    if (!selectedSku) return false;
+    return product.skus.some((sku) => sku.attributes[name] === value
+      && Object.entries(selectedSku.attributes).every(([attribute, selected]) => attribute === name || sku.attributes[attribute] === selected));
+  };
+
+  const selectSku = (sku: ProductSku) => {
+    setSelectedSkuCode(sku.sku);
+    setQuantity(1);
+    onSkuChange?.(sku);
+  };
 
   const chooseAttribute = (name: string, value: string) => {
     if (!selectedSku) return;
     const desired = { ...selectedSku.attributes, [name]: value };
-    const nextSku = product.skus.find((sku) =>
+    const exact = product.skus.find((sku) =>
       Object.entries(desired).every(([attribute, selectedValue]) => sku.attributes[attribute] === selectedValue));
-    if (nextSku) setSelectedSkuCode(nextSku.sku);
+    // Fall back to the first SKU carrying the clicked value so a click never feels ignored.
+    const next = exact ?? product.skus.find((sku) => sku.attributes[name] === value);
+    if (next) selectSku(next);
   };
 
   const addToBasket = async (buyNow: boolean) => {
     if (!selectedSku) return;
-    setAdding(true);
-    setNotice('');
-    addCartLine({
-      productId: product.id,
-      sku: selectedSku.sku,
-      name: product.name,
-      image: product.images[0] ?? product.image,
-      unitPrice: selectedSku.price,
-      currency: selectedSku.currency,
-      quantity,
-      attributes: selectedSku.attributes,
-    });
-
-    let synced = false;
-    if (isAuthenticated && !demoMode) {
-      try {
-        await addBasketItem(selectedSku.sku, quantity);
-        synced = true;
-      } catch {
-        // Keep the local draft usable while the Basket service is unavailable.
-      }
-    }
-    setNotice(synced ? '已加入购物袋，并同步到购物车服务。' : '已加入购物袋，可继续前往确认订单。');
-    setAdding(false);
-    if (buyNow) navigate(`/checkout${demoMode ? '?demo=1' : ''}`);
-  };
-
-  const handleClaimCoupon = async () => {
-    if (!coupon || couponClaimed) return;
-    setClaiming(true);
-    setNotice('');
+    setPending(buyNow ? 'buy' : 'add');
     try {
-      if (!demoMode && !product.fallbackContracts.includes('用户可领优惠券')) {
-        await claimCoupon(coupon.id);
+      await basket.add({
+        productId: product.id,
+        sku: selectedSku.sku,
+        name: product.name,
+        variantName: selectedSku.displayName,
+        image: selectedSku.image ?? product.images[0] ?? product.image,
+        unitPrice: selectedSku.price,
+        currency: selectedSku.currency,
+        quantity,
+        attributes: selectedSku.attributes,
+      });
+      if (buyNow) {
+        navigate(isAuthenticated || demoMode ? `/checkout${demoSuffix}` : `/login?redirect=${encodeURIComponent('/checkout')}`);
+      } else {
+        toast(`已加入购物袋 · ${product.name} × ${quantity}`, {
+          action: { label: '去结算', onClick: () => navigate(`/cart${demoSuffix}`) },
+        });
       }
-      setCouponClaimed(true);
-      setNotice('优惠券已领取，结算时可选择使用。');
     } catch (error) {
-      setCouponClaimed(true);
-      setNotice(`领券接口待接入；当前页面已模拟领取。${getErrorMessage(error)}`);
+      toast(getErrorMessage(error, '加入购物袋失败，请稍后重试。'), { tone: 'error' });
     } finally {
-      setClaiming(false);
+      setPending(null);
     }
   };
 
@@ -107,20 +110,19 @@ export function ProductPurchasePanel({ product }: { product: ProductDetail }) {
     <section className="product-purchase" aria-label="商品购买选项">
       <h1>{product.name}</h1>
       <p className="product-purchase__description">{product.description}</p>
-      <div className="product-rating-line">
-        <RatingStars rating={product.reviews.averageRating} />
-        <span>{product.reviews.averageRating.toFixed(1)} · {product.reviews.total} 条评价</span>
-      </div>
+      {product.reviews.total > 0 ? (
+        <a className="product-rating-line" href="#reviews">
+          <RatingStars rating={product.reviews.averageRating} />
+          <span>{product.reviews.averageRating.toFixed(1)} · {product.reviews.total} 条评价</span>
+        </a>
+      ) : null}
       <strong className="product-price">{formatMoney(selectedSku.price, selectedSku.currency)}</strong>
 
       {coupon ? (
         <div className="product-coupon">
-          <strong>优惠券</strong>
-          <span>{coupon.conditionLabel.replace('可用', '')}{coupon.valueLabel === '¥40' ? '减40' : coupon.valueLabel}</span>
-          <button type="button" onClick={() => void handleClaimCoupon()} disabled={claiming || couponClaimed}>
-            {claiming ? '领取中…' : couponClaimed ? '已领取' : '领取'}
-            <Icon name="chevron-right" />
-          </button>
+          <strong>优惠</strong>
+          <span>{coupon.title}</span>
+          <Link to={`/coupons${demoSuffix}`}>查看<Icon name="chevron-right" /></Link>
         </div>
       ) : null}
 
@@ -129,40 +131,50 @@ export function ProductPurchasePanel({ product }: { product: ProductDetail }) {
           <fieldset key={group.name}>
             <legend>{group.name}</legend>
             <div>
-              {group.values.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={selectedSku.attributes[group.name] === value ? 'is-active' : undefined}
-                  aria-pressed={selectedSku.attributes[group.name] === value}
-                  onClick={() => chooseAttribute(group.name, value)}
-                >
-                  {value}
-                </button>
-              ))}
+              {group.values.map((value) => {
+                const active = selectedSku.attributes[group.name] === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`${active ? 'is-active' : ''} ${!active && !isValueSelectable(group.name, value) ? 'is-unavailable' : ''}`.trim() || undefined}
+                    aria-pressed={active}
+                    onClick={() => chooseAttribute(group.name, value)}
+                  >
+                    {value}
+                  </button>
+                );
+              })}
             </div>
           </fieldset>
         ))}
       </div>
 
-      <div className="product-stock"><span>库存</span><strong>{available === 0 ? '暂时缺货' : available ? `现货 · 剩余 ${available} 件` : '有货，库存以结算为准'}</strong></div>
+      <div className={`product-stock${available === 0 ? ' is-out' : ''}`}>
+        <span>库存</span>
+        <strong>{inventoryQuery.isFetching && available === undefined ? '正在查询库存…' : stockLabel(available, isAuthenticated || demoMode)}</strong>
+      </div>
       <div className="quantity-row">
         <span>数量</span>
         <div className="quantity-stepper">
           <button type="button" onClick={() => setQuantity((current) => Math.max(1, current - 1))} aria-label="减少数量" disabled={quantity <= 1}><Icon name="minus" /></button>
           <output aria-live="polite">{quantity}</output>
-          <button type="button" onClick={() => setQuantity((current) => Math.min(99, current + 1))} aria-label="增加数量"><Icon name="plus" /></button>
+          <button type="button" onClick={() => setQuantity((current) => Math.min(maxQuantity, current + 1))} aria-label="增加数量" disabled={quantity >= maxQuantity}><Icon name="plus" /></button>
         </div>
+        {quantity >= maxQuantity && available ? <small className="quantity-hint">已达可购上限</small> : null}
       </div>
       <div className="product-purchase__actions">
-        <Button type="button" loading={adding} disabled={available === 0} onClick={() => void addToBasket(false)}>加入购物袋</Button>
-        <Button type="button" variant="secondary" disabled={adding || available === 0} onClick={() => void addToBasket(true)}>立即购买</Button>
+        <Button type="button" loading={pending === 'add'} disabled={available === 0 || pending !== null} onClick={() => void addToBasket(false)}>
+          <Icon name="bag" />加入购物袋
+        </Button>
+        <Button type="button" variant="secondary" loading={pending === 'buy'} disabled={available === 0 || pending !== null} onClick={() => void addToBasket(true)}>
+          立即购买
+        </Button>
       </div>
-      {notice ? <p className="product-action-notice" role="status">{notice}</p> : null}
 
       <div className="product-assurances">
         <div><Icon name="truck" /><span><strong>多仓发货</strong>快速送达</span></div>
-        <div><Icon name="shield" /><span><strong>7 天无理由退换</strong>安心选购</span></div>
+        <div><Icon name="shield" /><span><strong>7 天售后保障</strong>签收后可申请退换</span></div>
         <div><Icon name="headset" /><span><strong>在线客服</strong>9:00–21:00</span></div>
       </div>
     </section>

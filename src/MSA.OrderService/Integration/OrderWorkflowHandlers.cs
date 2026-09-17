@@ -3,6 +3,7 @@ using MSA.Contracts;
 using MSA.EventBus.Abstractions;
 using MSA.EventBusOutbox;
 using MSA.OrderService.Application;
+using MSA.OrderService.Application.CancelOrder;
 using MSA.OrderService.Application.Pricing;
 using MSA.OrderService.Domain;
 using MSA.OrderService.Infrastructure;
@@ -709,7 +710,7 @@ internal sealed class PaymentRefundFailedHandler(
 internal sealed class OrderSagaTimeoutHandler(
     OrderDbContext db,
     IOutboxStore outbox,
-    ICouponRedemptionStore couponRedemptions,
+    OrderCancellationWorkflow cancellation,
     TimeProvider clock) : ISagaTimeoutHandler
 {
     public string SagaType => OrderFulfillmentSagaData.SagaType;
@@ -718,12 +719,11 @@ internal sealed class OrderSagaTimeoutHandler(
     {
         var order = await OrderRowLock.LockAsync(db, saga.CorrelationId, cancellationToken);
         var now = clock.GetUtcNow();
-        var data = OrderFulfillmentSagaData.Parse(saga.Data);
 
         if (saga.State == OrderFulfillmentSagaData.AwaitingInventoryCommit
             && order.ReservationId is Guid commitReservationId)
         {
-            Publish(new CommitInventoryIntegrationEvent
+            outbox.AddIntegrationEvent(new CommitInventoryIntegrationEvent
             {
                 OrderId = order.Id,
                 ReservationId = commitReservationId
@@ -734,98 +734,13 @@ internal sealed class OrderSagaTimeoutHandler(
 
         if (saga.Status == SagaStatus.Compensating)
         {
-            RepublishOutstandingCompensations(order, data, saga.State);
+            cancellation.RepublishOutstandingCompensations(order, OrderFulfillmentSagaData.Parse(saga.Data), saga.State);
             saga.ScheduleTimeout(now.AddMinutes(5), now);
             return;
         }
 
-        const string reason = "Order workflow timed out.";
-        var paymentMayExist = order.Status == OrderStatus.AwaitingPayment || data.PaymentId.HasValue;
-        if (!order.TryCancel(reason, now))
-            return;
-        await couponRedemptions.ReleaseAsync(order.Id, now, cancellationToken);
-
-        var requiresInventory = order.ReservationId.HasValue;
-        var requiresPayment = paymentMayExist;
-        data = data with
-        {
-            ReservationId = order.ReservationId,
-            RequiresInventoryCompensation = requiresInventory,
-            InventoryCompensated = !requiresInventory,
-            RequiresPaymentCompensation = requiresPayment,
-            PaymentCompensated = !requiresPayment,
-            FailureReason = reason
-        };
-
-        if (requiresInventory || requiresPayment)
-        {
-            saga.BeginCompensation(
-                OrderFulfillmentSagaData.Compensating,
-                JsonSerializer.Serialize(data),
-                now);
-            saga.ScheduleTimeout(now.AddMinutes(5), now);
-            RepublishOutstandingCompensations(order, data, saga.State);
-        }
-        else
-        {
-            saga.Fail(reason, now);
-        }
-
-        Publish(new OrderCancelledIntegrationEvent
-        {
-            OrderId = order.Id,
-            UserId = order.UserId,
-            Reason = reason
-        });
+        await cancellation.CancelAsync(order, saga, "Order workflow timed out.", "system", now, cancellationToken);
     }
-
-    private void RepublishOutstandingCompensations(
-        Order order,
-        OrderFulfillmentSagaData data,
-        string compensationState)
-    {
-        if (data.RequiresInventoryCompensation
-            && !data.InventoryCompensated
-            && order.ReservationId is Guid reservationId)
-        {
-            Publish(new ReleaseInventoryIntegrationEvent
-            {
-                OrderId = order.Id,
-                ReservationId = reservationId,
-                Reason = data.FailureReason ?? "Order compensation."
-            });
-        }
-        if (data.RequiresPaymentCompensation && !data.PaymentCompensated)
-        {
-            if (compensationState == OrderFulfillmentSagaData.CompensatingRefund)
-            {
-                if (data.PaymentId is not Guid paymentId
-                    || data.RefundRequestId is not Guid refundRequestId)
-                {
-                    throw new InvalidOperationException("Refund compensation is missing its stable payment identifiers.");
-                }
-                Publish(new RefundPaymentRequestedIntegrationEvent
-                {
-                    RefundRequestId = refundRequestId,
-                    OrderId = order.Id,
-                    PaymentId = paymentId,
-                    Amount = order.Amount,
-                    Currency = order.Currency,
-                    Reason = data.FailureReason ?? "Late payment compensation."
-                });
-            }
-            else
-            {
-                Publish(new CancelPaymentRequestedIntegrationEvent
-                {
-                    OrderId = order.Id,
-                    Reason = data.FailureReason ?? "Order compensation."
-                });
-            }
-        }
-    }
-
-    private void Publish(IntegrationEvent integrationEvent) => outbox.AddIntegrationEvent(integrationEvent);
 }
 
 internal static class OrderRowLock

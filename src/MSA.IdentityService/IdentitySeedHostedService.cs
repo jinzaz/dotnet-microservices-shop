@@ -19,6 +19,10 @@ internal sealed class IdentitySeedHostedService(
         var scopes = scope.ServiceProvider.GetRequiredService<IOpenIddictScopeManager>();
         foreach (var (name, displayName, resource) in new[]
         {
+            (IdentityServiceConstants.Scopes.Auth, "Auth API", IdentityServiceConstants.Resources.Auth),
+            (IdentityServiceConstants.Scopes.AuthAdminRead, "Auth Admin Read", IdentityServiceConstants.Resources.Auth),
+            (IdentityServiceConstants.Scopes.AuthAdminWrite, "Auth Admin Write", IdentityServiceConstants.Resources.Auth),
+
             (IdentityServiceConstants.Scopes.User, "User API", IdentityServiceConstants.Resources.User),
             (IdentityServiceConstants.Scopes.UserAdminRead, "User Admin Read", IdentityServiceConstants.Resources.User),
             (IdentityServiceConstants.Scopes.UserAdminWrite, "User Admin Write", IdentityServiceConstants.Resources.User),

@@ -1,4 +1,4 @@
-import type { OrderListItem } from './types';
+import type { OrderDetails, OrderLine, OrderListItem } from './types';
 
 export const demoOrders: OrderListItem[] = [
   {
@@ -77,3 +77,60 @@ export const demoOrders: OrderListItem[] = [
     updatedOnUtc: '2026-08-15T01:28:00Z',
   },
 ];
+
+/** Builds a full order for the development preview; delivered orders stay inside the after-sales window. */
+export function createDemoOrderDetails(orderId: string): OrderDetails | undefined {
+  const summary = demoOrders.find((order) => order.id === orderId);
+  if (!summary) return undefined;
+  const now = Date.now();
+  const delivered = summary.fulfillmentStatus === 'Delivered';
+  const line = (sku: string, productName: string, variantName: string, quantity: number, unitPrice: number): OrderLine => ({
+    sku,
+    productName,
+    variantName,
+    variantAttributesJson: '{}',
+    quantity,
+    listUnitPrice: unitPrice,
+    unitPrice,
+    lineSubtotal: unitPrice * quantity,
+    discountAmount: 0,
+    lineAmount: unitPrice * quantity,
+  });
+  const lines = summary.amount > 300
+    ? [line('MSA-HOME-001', '手冲咖啡套装', '600ml / 胡桃木', 1, summary.amount - 90), line('MSA-LIFE-001', '软毛竹柄牙刷套装', '2 支装', 2, 45)]
+    : [line('MSA-DIGITAL-001', '磁吸无线充电支架', '深空灰', 1, summary.amount)];
+
+  return {
+    id: summary.id,
+    orderNumber: summary.orderNumber,
+    subtotalAmount: summary.amount,
+    discountAmount: 0,
+    amount: summary.amount,
+    currency: summary.currency,
+    paymentMethod: 'Alipay',
+    status: summary.orderStatus,
+    fulfillmentStatus: summary.fulfillmentStatus,
+    paymentDueOnUtc: new Date(now + 15 * 60_000).toISOString(),
+    lines,
+    createdOnUtc: summary.createdOnUtc,
+    updatedOnUtc: summary.updatedOnUtc,
+    carrierName: summary.carrierName,
+    trackingNumber: summary.trackingNumber,
+    cancellationReason: summary.fulfillmentStatus === 'Cancelled' ? '超时未支付，订单已自动取消' : null,
+    deliveredOnUtc: delivered ? new Date(now - 2 * 24 * 60 * 60_000).toISOString() : null,
+    shippingAddress: {
+      addressId: null,
+      recipientName: summary.recipientName,
+      phoneNumber: summary.phoneNumber,
+      countryCode: 'CN',
+      province: '上海市',
+      city: '上海市',
+      district: '徐汇区',
+      streetLine1: '漕溪北路 88 号 12 楼',
+      streetLine2: null,
+      postalCode: '200030',
+    },
+    discounts: [],
+    fulfillmentHistory: [],
+  };
+}

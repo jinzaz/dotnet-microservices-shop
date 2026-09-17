@@ -56,3 +56,8 @@ export function getErrorMessage(error: unknown, fallback = '操作没有完成�
   if (error instanceof Error && error.message) return error.message;
   return fallback;
 }
+
+/** True when the endpoint is not deployed yet (reserved contracts such as after-sales) or the service is down. */
+export function isServiceUnavailable(error: unknown): boolean {
+  return error instanceof ApiError && [404, 405, 501, 502, 503].includes(error.status);
+}

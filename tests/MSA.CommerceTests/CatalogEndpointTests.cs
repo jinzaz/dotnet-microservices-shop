@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -21,13 +22,17 @@ public sealed class CatalogEndpointTests
         {
             var path = route.RoutePattern.RawText!.Trim('/');
             var method = route.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods.Single();
-            var policy = path.StartsWith("catalog/admin/", StringComparison.Ordinal)
-                ? method == "GET" ? "catalog.admin.read" : "catalog.admin.write"
-                : "catalog-api";
-            EndpointProbe.AssertPolicy(route, policy);
+            if (!path.StartsWith("catalog/admin/", StringComparison.Ordinal))
+            {
+                Assert.AreEqual("GET", method, path);
+                Assert.IsNotNull(route.Metadata.GetMetadata<IAllowAnonymous>(), path);
+                continue;
+            }
+
+            EndpointProbe.AssertPolicy(route, method == "GET" ? "catalog.admin.read" : "catalog.admin.write");
         }
 
-        EndpointProbe.AssertPolicy(probe.Find("GET", "catalog/products"), "catalog-api");
+        Assert.IsNotNull(probe.Find("GET", "catalog/categories").Metadata.GetMetadata<IAllowAnonymous>());
         EndpointProbe.AssertPolicy(probe.Find("GET", "catalog/admin/products/{id:guid}"), "catalog.admin.read");
         EndpointProbe.AssertPolicy(probe.Find("POST", "catalog/admin/products/{id:guid}/variants"), "catalog.admin.write");
         EndpointProbe.AssertPolicy(probe.Find("DELETE", "catalog/admin/products/{id:guid}/variants/{variantId:guid}"), "catalog.admin.write");
@@ -40,15 +45,18 @@ public sealed class CatalogEndpointTests
         var product = new ProductDto(Guid.NewGuid(), Guid.NewGuid(), "SKU-1", "Product", "Description",
             12m, "CNY", true, DateTimeOffset.UtcNow);
         probe.Sender.Setup(sender => sender.Send(It.IsAny<ListProductsQuery>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<ProductDto>)[product]);
+            .ReturnsAsync(new PagedResult<ProductDto>([product], 4, 7, 12));
+        var categoryId = Guid.NewGuid();
 
-        var response = await probe.InvokeAsync("GET", "catalog/products", query: "?skip=4&take=7");
+        var response = await probe.InvokeAsync("GET", "catalog/products", query: $"?skip=4&take=7&search=mug&categoryId={categoryId}");
 
         Assert.AreEqual(StatusCodes.Status200OK, response.Response.StatusCode);
         using var json = await System.Text.Json.JsonDocument.ParseAsync(response.Response.Body);
-        Assert.AreEqual("SKU-1", json.RootElement[0].GetProperty("sku").GetString());
+        Assert.AreEqual("SKU-1", json.RootElement.GetProperty("items")[0].GetProperty("sku").GetString());
+        Assert.AreEqual(12, json.RootElement.GetProperty("total").GetInt32());
         probe.Sender.Verify(sender => sender.Send(
-            It.Is<ListProductsQuery>(query => query.Skip == 4 && query.Take == 7),
+            It.Is<ListProductsQuery>(query => query.Skip == 4 && query.Take == 7
+                && query.Search == "mug" && query.CategoryId == categoryId),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 

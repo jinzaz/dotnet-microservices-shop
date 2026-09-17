@@ -17,9 +17,13 @@ public static class AuthorizationExtensions
 
         return services.AddAuthorization(options =>
         {
+            // The policy is named after the API resource (e.g. "catalog-api"), while the identity
+            // service issues the consumer scope without the suffix (e.g. "catalog").
+            var consumerScope = ConsumerScopeOf(apiScope);
             options.AddPolicy(apiScope, policy => policy
                 .RequireAuthenticatedUser()
-                .RequireAssertion(context => context.User.HasMsaScope(apiScope)));
+                .RequireAssertion(context =>
+                    context.User.HasMsaScope(apiScope) || context.User.HasMsaScope(consumerScope)));
             options.AddPolicy(adminReadScope, policy => policy
                 .RequireAuthenticatedUser()
                 .RequireAssertion(context => context.User.HasMsaScope(adminReadScope)));
@@ -29,6 +33,11 @@ public static class AuthorizationExtensions
 
         });
     }
+
+    private static string ConsumerScopeOf(string apiScope) =>
+        apiScope.EndsWith("-api", StringComparison.Ordinal) || apiScope.EndsWith(".api", StringComparison.Ordinal)
+            ? apiScope[..^4]
+            : apiScope;
 
     public static bool HasMsaScope(this ClaimsPrincipal principal, string scope) =>
         principal.FindAll("scope")

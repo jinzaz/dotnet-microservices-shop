@@ -12,6 +12,11 @@ internal static class IdentityServiceConstants
     #region Scopes
     internal static class Scopes
     {
+        internal const string Auth = "auth";
+
+        internal const string AuthAdminRead = "auth.admin.read";
+        internal const string AuthAdminWrite = "auth.admin.write";
+
         internal const string User = "user";
         internal const string UserAdminRead = "user.admin.read";
         internal const string UserAdminWrite = "user.admin.write";
@@ -51,6 +56,7 @@ internal static class IdentityServiceConstants
     #region Resources
     internal class Resources
     {
+        internal const string Auth = "auth-api";
         internal const string User = "user-api";
         internal const string Catalog = "catalog-api";
         internal const string Inventory = "inventory-api";

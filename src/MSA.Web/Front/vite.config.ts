@@ -17,10 +17,15 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': bffProxy,
+      '/bff': bffProxy,
     },
   },
   preview: {
     port: 4173,
     strictPort: true,
+    proxy: {
+      '/api': bffProxy,
+      '/bff': bffProxy,
+    },
   },
 });

@@ -1,3 +1,34 @@
+export type Paged<T> = {
+  items: T[];
+  skip: number;
+  take: number;
+  total: number;
+};
+
+export type ProductVariant = {
+  id: string;
+  productId: string;
+  sku: string;
+  displayName: string;
+  attributesJson: string;
+  price: number;
+  currency: string;
+  isActive: boolean;
+  isDefault: boolean;
+};
+
+export type ProductMedia = {
+  id: string;
+  productId: string;
+  variantId: string | null;
+  mediaType: string;
+  url: string;
+  thumbnailUrl: string | null;
+  altText: string | null;
+  sortOrder: number;
+};
+
+/** Mirrors Catalog ProductDto; list and detail share the same shape. */
 export type CatalogProduct = {
   id: string;
   categoryId: string;
@@ -9,6 +40,16 @@ export type CatalogProduct = {
   isActive: boolean;
   updatedOnUtc: string;
   lifecycleStatus?: string;
+  variants?: ProductVariant[] | null;
+  media?: ProductMedia[] | null;
+  minPrice?: number | null;
+  maxPrice?: number | null;
+};
+
+export type CatalogCategory = {
+  id: string;
+  code: string;
+  name: string;
 };
 
 export type DisplayProduct = CatalogProduct & {

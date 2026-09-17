@@ -1,11 +1,11 @@
-import { listProductCoupons } from '../coupons/coupons-api';
 import { demoCoupons } from '../coupons/demo-coupons';
 import { demoProductReviews } from '../reviews/demo-reviews';
-import { listProductReviews } from '../reviews/reviews-api';
-import { getProduct, listProductSkus } from './catalog-api';
-import { editorialProducts, productImages } from './editorial-products';
+import type { ProductReviewResult } from '../reviews/types';
+import { getProduct, listCategories } from './catalog-api';
+import { editorialProducts } from './editorial-products';
 import type { ProductDetail, ProductSku } from './product-detail-types';
-import type { CatalogProduct, DisplayProduct } from './types';
+import { productImagesOf, productSkusOf, toDisplayProduct } from './product-view';
+import type { DisplayProduct } from './types';
 
 const detailImages: Record<string, string[]> = {
   'editorial-pour-over': [
@@ -19,73 +19,43 @@ const detailImages: Record<string, string[]> = {
   'editorial-toothbrush': ['/images/product-toothbrush.jpg'],
 };
 
+// The review service is not deployed yet; products show an empty state until it is.
+export const emptyReviews: ProductReviewResult = {
+  items: [],
+  total: 0,
+  averageRating: 0,
+  ratingDistribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+};
+
 function getEditorialSkus(product: DisplayProduct): ProductSku[] {
   if (product.id === 'editorial-pour-over') {
     return [
       { sku: product.sku, price: 299, currency: product.currency, attributes: { 容量: '600ml', 滤杯: '胡桃木' }, availableQuantity: 18 },
       { sku: `${product.sku}-OAK`, price: 299, currency: product.currency, attributes: { 容量: '600ml', 滤杯: '原木' }, availableQuantity: 12 },
       { sku: `${product.sku}-800-W`, price: 339, currency: product.currency, attributes: { 容量: '800ml', 滤杯: '胡桃木' }, availableQuantity: 7 },
-      { sku: `${product.sku}-800-O`, price: 329, currency: product.currency, attributes: { 容量: '800ml', 滤杯: '原木' }, availableQuantity: 9 },
-    ];
-  }
-  if (product.id === 'editorial-charger') {
-    return [
-      { sku: product.sku, price: product.price, currency: product.currency, attributes: { 颜色: '深空灰' }, availableQuantity: 24 },
-      { sku: `${product.sku}-S`, price: product.price, currency: product.currency, attributes: { 颜色: '银白' }, availableQuantity: 16 },
-    ];
-  }
-  if (product.id === 'editorial-backpack') {
-    return [
-      { sku: product.sku, price: product.price, currency: product.currency, attributes: { 颜色: '沙岩白' }, availableQuantity: 11 },
-      { sku: `${product.sku}-B`, price: product.price, currency: product.currency, attributes: { 颜色: '雾蓝' }, availableQuantity: 8 },
+      { sku: `${product.sku}-800-O`, price: 329, currency: product.currency, attributes: { 容量: '800ml', 滤杯: '原木' }, availableQuantity: 0 },
     ];
   }
   return [
-    { sku: product.sku, price: product.price, currency: product.currency, attributes: { 规格: '2 支装' }, availableQuantity: 36 },
-    { sku: `${product.sku}-4`, price: 69, currency: product.currency, attributes: { 规格: '4 支装' }, availableQuantity: 22 },
+    { sku: product.sku, price: product.price, currency: product.currency, attributes: { 规格: '标准款' }, availableQuantity: 24 },
+    { sku: `${product.sku}-PLUS`, price: product.price + 30, currency: product.currency, attributes: { 规格: '升级款' }, availableQuantity: 9 },
   ];
 }
 
-function fallbackSku(product: CatalogProduct): ProductSku[] {
-  return [{
-    sku: product.sku,
-    price: product.price,
-    currency: product.currency,
-    attributes: { 规格: '标准款' },
-  }];
-}
-
 function buildEditorialDetail(product: DisplayProduct): ProductDetail {
-  const isPourOver = product.id === 'editorial-pour-over';
   return {
     ...product,
     images: detailImages[product.id] ?? [product.image],
-    longDescription: isPourOver
-      ? '套装包含玻璃分享壶、通透滤杯、木环、细口壶与量勺。高硼硅玻璃耐热通透，搭配温润木环与细致工艺，带来稳定顺畅的冲煮体验。'
-      : `${product.description} 经过日常使用场景筛选，兼顾耐用、易维护与舒适体验。`,
-    specifications: isPourOver
-      ? [
-          { label: '主要材质', value: '高硼硅玻璃、北美黑胡桃木、304 不锈钢' },
-          { label: '容量选择', value: '600ml / 800ml' },
-          { label: '适用范围', value: '1–4 人份手冲咖啡' },
-          { label: '清洁方式', value: '玻璃件可水洗，木环请干布擦拭' },
-        ]
-      : [
-          { label: '商品分类', value: product.categoryLabel },
-          { label: '商品编号', value: product.sku },
-          { label: '售后服务', value: '7 天无理由退换' },
-        ],
+    longDescription: `${product.description} 经过日常使用场景筛选，兼顾耐用、易维护与舒适体验。`,
+    specifications: [
+      { label: '商品分类', value: product.categoryLabel },
+      { label: '商品编号', value: product.sku },
+      { label: '售后服务', value: '签收后 7 天内可申请退换' },
+    ],
     skus: getEditorialSkus(product),
     coupons: demoCoupons.filter((coupon) => coupon.status === 'available').slice(0, 1),
     reviews: demoProductReviews,
-    fallbackContracts: ['商品 SKU 列表', '用户可领优惠券', '商品评价'],
   };
-}
-
-function productImageFor(id: string): string {
-  let hash = 0;
-  for (const character of id) hash = (hash + character.charCodeAt(0)) % productImages.length;
-  return productImages[hash] ?? productImages[0];
 }
 
 export function findEditorialProduct(productId: string): DisplayProduct | undefined {
@@ -96,36 +66,28 @@ export async function getProductDetail(productId: string): Promise<ProductDetail
   const editorialProduct = findEditorialProduct(productId);
   if (editorialProduct) return buildEditorialDetail(editorialProduct);
 
-  const product = await getProduct(productId);
-  const [skusResult, couponsResult, reviewsResult] = await Promise.allSettled([
-    listProductSkus(product.id),
-    listProductCoupons(product.id),
-    listProductReviews(product.id),
+  const [product, categories] = await Promise.all([
+    getProduct(productId),
+    listCategories().catch(() => []),
   ]);
-  const image = productImageFor(product.id);
-  const fallbackContracts: string[] = [];
-  if (skusResult.status === 'rejected') fallbackContracts.push('商品 SKU 列表');
-  if (couponsResult.status === 'rejected') fallbackContracts.push('用户可领优惠券');
-  if (reviewsResult.status === 'rejected') fallbackContracts.push('商品评价');
+  const display = toDisplayProduct(product, categories);
+  const skus = productSkusOf(product);
+  const priceRange = skus.length > 1
+    ? `${Math.min(...skus.map((sku) => sku.price))} – ${Math.max(...skus.map((sku) => sku.price))} ${product.currency}`
+    : null;
 
   return {
-    ...product,
-    categoryLabel: '精选商品',
-    image,
-    images: [image],
-    longDescription: product.description,
+    ...display,
+    images: productImagesOf(product),
+    longDescription: product.description || '商家暂未填写详细描述。',
     specifications: [
-      { label: '商品编号', value: product.sku },
-      { label: '商品状态', value: product.lifecycleStatus ?? (product.isActive ? '在售' : '暂停售卖') },
-      { label: '售后服务', value: '7 天无理由退换' },
+      { label: '商品分类', value: display.categoryLabel },
+      { label: '可选规格', value: `${skus.length} 款` },
+      ...(priceRange ? [{ label: '价格区间', value: priceRange }] : []),
+      { label: '售后服务', value: '签收后 7 天内可申请退换' },
     ],
-    skus: skusResult.status === 'fulfilled' && skusResult.value.length
-      ? skusResult.value
-      : fallbackSku(product),
-    coupons: couponsResult.status === 'fulfilled'
-      ? couponsResult.value
-      : demoCoupons.filter((coupon) => coupon.status === 'available').slice(0, 1),
-    reviews: reviewsResult.status === 'fulfilled' ? reviewsResult.value : demoProductReviews,
-    fallbackContracts,
+    skus,
+    coupons: [],
+    reviews: emptyReviews,
   };
 }

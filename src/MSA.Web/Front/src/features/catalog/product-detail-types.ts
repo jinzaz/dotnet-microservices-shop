@@ -4,6 +4,9 @@ import type { DisplayProduct } from './types';
 
 export type ProductSku = {
   sku: string;
+  variantId?: string;
+  displayName?: string;
+  image?: string;
   price: number;
   currency: string;
   attributes: Record<string, string>;
@@ -22,5 +25,4 @@ export type ProductDetail = DisplayProduct & {
   skus: ProductSku[];
   coupons: CustomerCoupon[];
   reviews: ProductReviewResult;
-  fallbackContracts: string[];
 };

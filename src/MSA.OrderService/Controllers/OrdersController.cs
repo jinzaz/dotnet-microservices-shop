@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using MSA.OrderService.Application.CancelOrder;
 using MSA.OrderService.Application.CreateOrder;
 using MSA.OrderService.Application.GetOrder;
 using MSA.OrderService.Application.GetOrders;
@@ -24,6 +25,8 @@ public sealed class OrdersController(ISender sender) : ControllerBase
         IReadOnlyList<string>? CouponCodes = null,
         Guid? SourceBasketId = null,
         long? SourceBasketVersion = null);
+
+    public sealed record CancelOrderRequest([property: MaxLength(200)] string? Reason = null);
 
     [HttpPost]
     [Authorize(Policy = "order-api")]
@@ -80,5 +83,17 @@ public sealed class OrdersController(ISender sender) : ControllerBase
                 false),
             cancellationToken);
         return value is null ? NotFound() : Ok(value);
+    }
+
+    /// <summary>Cancels an order that has not been paid yet; repeated calls are idempotent.</summary>
+    [HttpPost("{id:guid}/cancel")]
+    [Authorize(Policy = "order-api")]
+    public Task<CancelOrderResult> Cancel(
+        Guid id,
+        CancelOrderRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
+        return sender.Send(new CancelOrderCommand(id, userId, request?.Reason), cancellationToken);
     }
 }

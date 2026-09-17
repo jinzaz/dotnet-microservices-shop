@@ -5,7 +5,7 @@ import { getProductDetail } from '../features/catalog/product-detail-data';
 import type { ProductDetail } from '../features/catalog/product-detail-types';
 import { ProductGallery } from '../features/catalog/ProductGallery';
 import { ProductPurchasePanel } from '../features/catalog/ProductPurchasePanel';
-import { getErrorMessage } from '../shared/api/api-error';
+import { ApiError, getErrorMessage } from '../shared/api/api-error';
 import { CommerceShell } from '../shared/layout/CommerceShell';
 import { ServicePromises } from '../shared/layout/ServicePromises';
 import { Button } from '../shared/ui/Button';
@@ -17,16 +17,13 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
       <div className="product-detail-page">
         <nav className="product-breadcrumb" aria-label="面包屑">
           <Link to="/">首页</Link><Icon name="chevron-right" />
-          <Link to="/#featured">{product.categoryLabel}</Link><Icon name="chevron-right" />
+          <Link to={product.categoryId ? `/products?category=${encodeURIComponent(product.categoryId)}` : '/products'}>{product.categoryLabel}</Link><Icon name="chevron-right" />
           <span aria-current="page">{product.name}</span>
         </nav>
         <div className="product-detail-layout">
           <ProductGallery images={product.images} productName={product.name} />
           <ProductPurchasePanel product={product} />
         </div>
-        {product.fallbackContracts.length ? (
-          <p className="product-contract-note">当前使用前端演示数据补齐：{product.fallbackContracts.join('、')}。接口地址已预留，后端接入后无需调整页面结构。</p>
-        ) : null}
         <ProductDetailSections product={product} />
       </div>
       <ServicePromises />
@@ -41,7 +38,7 @@ export default function ProductDetailPage() {
     queryFn: () => getProductDetail(productId),
     enabled: Boolean(productId),
     staleTime: 60_000,
-    retry: 1,
+    retry: (failureCount, error) => !(error instanceof ApiError && error.status === 404) && failureCount < 1,
   });
 
   return (
@@ -52,10 +49,10 @@ export default function ProductDetailPage() {
       {productQuery.isError ? (
         <div className="page-state page-state--error">
           <Icon name="package" />
-          <h1>商品暂时无法打开</h1>
+          <h1>{productQuery.error instanceof ApiError && productQuery.error.status === 404 ? '商品已下架或不存在' : '商品暂时无法打开'}</h1>
           <p>{getErrorMessage(productQuery.error)}</p>
           <Button type="button" onClick={() => void productQuery.refetch()}>重新加载</Button>
-          <Link className="text-link" to="/#featured">返回首页精选 <Icon name="arrow-right" /></Link>
+          <Link className="text-link" to="/products">浏览全部商品 <Icon name="arrow-right" /></Link>
         </div>
       ) : null}
       {productQuery.data ? <ProductDetailView key={productQuery.data.id} product={productQuery.data} /> : null}

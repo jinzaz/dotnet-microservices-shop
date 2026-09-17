@@ -8,6 +8,7 @@ using MSA.EventBusOutbox.Extensions;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
 using MSA.OrderService.Application;
+using MSA.OrderService.Application.CancelOrder;
 using MSA.OrderService.Application.CreateOrder;
 using MSA.OrderService.Application.ManageFulfillment;
 using MSA.OrderService.Application.Pricing;
@@ -110,6 +111,7 @@ builder.Services.AddIntegrationEventHandler<InventoryReleasedIntegrationEvent, I
 builder.Services.AddIntegrationEventHandler<PaymentCancelledIntegrationEvent, PaymentCancelledHandler>();
 builder.Services.AddIntegrationEventHandler<PaymentRefundedIntegrationEvent, PaymentRefundedHandler>();
 builder.Services.AddIntegrationEventHandler<PaymentRefundFailedIntegrationEvent, PaymentRefundFailedHandler>();
+builder.Services.AddScoped<OrderCancellationWorkflow>();
 builder.Services.AddScoped<ISagaTimeoutHandler, OrderSagaTimeoutHandler>();
 
 

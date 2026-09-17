@@ -1,20 +1,18 @@
-import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { clearCart, ensureCartLine, updateCartLineQuantity, useBasket } from '../features/basket/basket-store';
+import { basketQueryKey, clearCart, ensureCartLine, useBasket } from '../features/basket/basket-store';
 import type { CartLine } from '../features/basket/types';
 import { createOrder, type PaymentMethod } from '../features/checkout/order-api';
-import { listMyCoupons } from '../features/coupons/coupons-api';
-import { demoCoupons } from '../features/coupons/demo-coupons';
 import { demoAccountSnapshot } from '../features/profile/demo-account';
-import { getPoints, listAddresses } from '../features/profile/profile-api';
+import { listAddresses } from '../features/profile/profile-api';
 import type { UserAddress } from '../features/profile/types';
-import { getErrorMessage } from '../shared/api/api-error';
+import { ApiError, getErrorMessage } from '../shared/api/api-error';
 import { isDemoMode } from '../shared/config/api';
 import { CommerceShell } from '../shared/layout/CommerceShell';
 import { Button } from '../shared/ui/Button';
 import { Icon } from '../shared/ui/Icon';
-import { formatMoney, formatPoints } from '../shared/utils/format';
+import { formatMoney } from '../shared/utils/format';
 
 const demoCheckoutLine: CartLine = {
   productId: 'editorial-pour-over',
@@ -36,121 +34,99 @@ function fullAddress(address: UserAddress): string {
   return `${address.province} ${address.city} ${address.district} ${address.street}`;
 }
 
-function createDemoOrderId(): string {
-  return `DEMO-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+function checkoutErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.status === 429) return '提交过于频繁，请稍候再试。';
+  if (error instanceof ApiError && error.status === 409) return `${getErrorMessage(error)} 请返回购物袋确认商品和库存后重试。`;
+  return getErrorMessage(error);
 }
 
 export default function CheckoutPage() {
   const demoMode = isDemoMode();
   const navigate = useNavigate();
-  const { lines } = useBasket();
+  const queryClient = useQueryClient();
+  const basket = useBasket();
   const [selectedAddressId, setSelectedAddressId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Alipay');
-  const [selectedCouponCode, setSelectedCouponCode] = useState('MSA40X299');
-  const [usePoints, setUsePoints] = useState(true);
-  const [acceptedTerms, setAcceptedTerms] = useState(true);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  // One key per checkout attempt: retries after a network failure must not create a second order.
   const idempotencyKey = useRef(crypto.randomUUID());
   const addressQuery = useQuery({
-    queryKey: ['identity', 'checkout-addresses'],
+    queryKey: ['user', 'addresses'],
     queryFn: listAddresses,
     enabled: !demoMode,
-    staleTime: 30_000,
-  });
-  const pointsQuery = useQuery({
-    queryKey: ['identity', 'checkout-points'],
-    queryFn: getPoints,
-    enabled: !demoMode,
-    staleTime: 30_000,
-  });
-  const couponsQuery = useQuery({
-    queryKey: ['catalog', 'checkout-coupons'],
-    queryFn: () => listMyCoupons('available'),
-    enabled: !demoMode,
-    staleTime: 30_000,
-    retry: 0,
+    // Always refetch on mount: the shopper may have just added an address on the account page.
+    staleTime: 0,
   });
 
   useEffect(() => {
-    if (demoMode && lines.length === 0) ensureCartLine(demoCheckoutLine);
-  }, [demoMode, lines.length]);
+    if (demoMode && basket.lines.length === 0) ensureCartLine(demoCheckoutLine);
+  }, [demoMode, basket.lines.length]);
 
-  const checkoutLines = lines.length ? lines : demoMode ? [demoCheckoutLine] : [];
+  const lines = basket.lines;
   const addresses = demoMode ? demoAccountSnapshot.addresses : addressQuery.data ?? [];
-  const coupons = demoMode || couponsQuery.isError
-    ? demoCoupons.filter((coupon) => coupon.status === 'available')
-    : couponsQuery.data ?? [];
   const defaultAddressId = addresses.find((address) => address.isDefault)?.id ?? addresses[0]?.id ?? '';
   const effectiveAddressId = selectedAddressId || defaultAddressId;
   const selectedAddress = addresses.find((address) => address.id === effectiveAddressId);
-  const selectedCoupon = coupons.find((coupon) => coupon.code === selectedCouponCode);
-  const pointsBalance = demoMode ? demoAccountSnapshot.points.balance : pointsQuery.data?.balance ?? 0;
-  const subtotal = useMemo(
-    () => checkoutLines.reduce((total, line) => total + line.unitPrice * line.quantity, 0),
-    [checkoutLines],
-  );
-  const couponDiscount = selectedCoupon && selectedCoupon.code === 'MSA40X299' && subtotal >= 299
-    ? 40
-    : selectedCoupon?.valueLabel === '9折' ? Math.round(subtotal * 0.1 * 100) / 100 : 0;
-  const pointsDiscount = usePoints ? Math.min(pointsBalance / 100, Math.max(0, subtotal - couponDiscount)) : 0;
-  const total = Math.max(0, subtotal - couponDiscount - pointsDiscount);
+  const unavailable = lines.filter((line) => line.isAvailable === false);
 
   const submit = async () => {
-    if (!selectedAddress) {
-      setSubmitError('请选择收货地址。');
-      return;
-    }
-    if (!checkoutLines.length) {
-      setSubmitError('购物袋中还没有商品。');
-      return;
-    }
-    if (!acceptedTerms) {
-      setSubmitError('请先阅读并同意用户服务协议与隐私政策。');
-      return;
-    }
+    if (!selectedAddress) return setSubmitError('请选择收货地址。');
+    if (!lines.length) return setSubmitError('购物袋中还没有商品。');
+    if (unavailable.length) return setSubmitError('购物袋中有暂不可售的商品，请返回购物袋移除。');
+    if (!acceptedTerms) return setSubmitError('请先阅读并同意用户服务协议与隐私政策。');
 
     setSubmitting(true);
     setSubmitError('');
     try {
-      let orderId: string;
       if (demoMode) {
         await new Promise((resolve) => window.setTimeout(resolve, 450));
-        orderId = createDemoOrderId();
-      } else {
-        const response = await createOrder({
-          items: checkoutLines.map((line) => ({ sku: line.sku, quantity: line.quantity })),
-          paymentMethod,
-          shippingAddress: {
-            addressId: selectedAddress.id,
-            recipientName: selectedAddress.recipientName,
-            phoneNumber: selectedAddress.phoneNumber,
-            countryCode: selectedAddress.countryCode,
-            province: selectedAddress.province,
-            city: selectedAddress.city,
-            district: selectedAddress.district,
-            streetLine1: selectedAddress.street,
-            streetLine2: null,
-            postalCode: selectedAddress.postalCode,
-          },
-          couponCodes: selectedCoupon ? [selectedCoupon.code] : [],
-        }, idempotencyKey.current);
-        orderId = response.orderId;
+        clearCart();
+        navigate(`/payment/DEMO-${Date.now()}?demo=1&channel=${paymentMethod}`);
+        return;
       }
-      clearCart();
-      navigate(`/payment/${orderId}${demoMode ? `?demo=1&channel=${paymentMethod}` : ''}`);
+      const response = await createOrder({
+        items: lines.map((line) => ({ sku: line.sku, quantity: line.quantity })),
+        paymentMethod,
+        shippingAddress: {
+          addressId: selectedAddress.id,
+          recipientName: selectedAddress.recipientName,
+          phoneNumber: selectedAddress.phoneNumber,
+          countryCode: selectedAddress.countryCode,
+          province: selectedAddress.province,
+          city: selectedAddress.city,
+          district: selectedAddress.district,
+          streetLine1: selectedAddress.street,
+          streetLine2: null,
+          postalCode: selectedAddress.postalCode,
+        },
+        couponCodes: basket.couponCodes,
+        // Lets BasketService clear exactly this basket version once the order is accepted.
+        sourceBasketId: basket.basket?.basketId ?? undefined,
+        sourceBasketVersion: basket.basket?.basketId ? basket.basket.version : undefined,
+      }, idempotencyKey.current);
+      void queryClient.invalidateQueries({ queryKey: ['ordering', 'orders'] });
+      // The basket is cleared asynchronously; refresh it after the event has had time to arrive.
+      window.setTimeout(() => void queryClient.invalidateQueries({ queryKey: basketQueryKey }), 3_000);
+      navigate(`/payment/${response.orderId}`, { replace: true });
     } catch (error) {
-      setSubmitError(getErrorMessage(error));
-      idempotencyKey.current = crypto.randomUUID();
+      setSubmitError(checkoutErrorMessage(error));
+      // Validation failures are final for this key; a fresh key lets the corrected request through.
+      if (error instanceof ApiError && error.status < 500) idempotencyKey.current = crypto.randomUUID();
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (!checkoutLines.length) {
+  if (basket.isLoading) {
+    return <CommerceShell><div className="page-state" role="status"><span className="page-spinner" />正在准备结算…</div></CommerceShell>;
+  }
+
+  if (!lines.length) {
     return (
       <CommerceShell>
-        <div className="page-state checkout-empty"><Icon name="bag" /><h1>购物袋还是空的</h1><p>先去挑选一件喜欢的商品，再回来确认订单。</p><Link className="button button--primary button--regular" to="/#featured">浏览精选</Link></div>
+        <div className="page-state checkout-empty"><Icon name="bag" /><h1>购物袋还是空的</h1><p>先去挑选一件喜欢的商品，再回来确认订单。</p><Link className="button button--primary button--regular" to="/products">浏览商品</Link></div>
       </CommerceShell>
     );
   }
@@ -158,14 +134,18 @@ export default function CheckoutPage() {
   return (
     <CommerceShell>
       <div className="checkout-page">
-        <Link className="orders-back" to="/#featured"><Icon name="arrow-right" />返回购物袋</Link>
+        <Link className="orders-back" to={`/cart${demoMode ? '?demo=1' : ''}`}><Icon name="arrow-right" />返回购物袋</Link>
         <h1>确认订单</h1>
-        {demoMode ? <p className="demo-notice">开发预览数据 · 提交订单会进入本地成功状态</p> : null}
+        {demoMode ? <p className="demo-notice">开发预览数据 · 提交订单会进入本地支付预览</p> : null}
         <div className="checkout-layout">
           <div className="checkout-sections">
             <section className="checkout-section">
               <div className="checkout-section__title"><span>1</span><h2>收货地址</h2></div>
-              {addressQuery.isError && !demoMode ? <p className="form-message form-message--error">地址加载失败：{getErrorMessage(addressQuery.error)}</p> : null}
+              {addressQuery.isPending && !demoMode ? <p className="checkout-contract-note">正在加载地址…</p> : null}
+              {addressQuery.isError && !demoMode ? (
+                <p className="form-message form-message--error">地址加载失败：{getErrorMessage(addressQuery.error)} <button type="button" className="link-button" onClick={() => void addressQuery.refetch()}>重试</button></p>
+              ) : null}
+              {addressQuery.isSuccess && !addresses.length ? <p className="checkout-contract-note">还没有收货地址，请先新增一个地址。</p> : null}
               <div className="checkout-addresses">
                 {addresses.map((address) => (
                   <label key={address.id} className={effectiveAddressId === address.id ? 'is-selected' : undefined}>
@@ -178,12 +158,12 @@ export default function CheckoutPage() {
                   </label>
                 ))}
               </div>
-              <Link className="outline-action" to={`/account${demoMode ? '?demo=1' : ''}#addresses`}><Icon name="plus" />新增地址</Link>
+              <Link className="outline-action" to={`/account${demoMode ? '?demo=1' : ''}#addresses`}><Icon name="plus" />管理 / 新增地址</Link>
             </section>
 
             <section className="checkout-section">
               <div className="checkout-section__title"><span>2</span><h2>配送方式</h2></div>
-              <div className="delivery-choice"><span className="selection-dot is-selected" /><strong>标准配送</strong><span>预计 3–5 个工作日送达</span><b>¥0.00</b></div>
+              <div className="delivery-choice"><span className="selection-dot is-selected" /><strong>标准配送</strong><span>付款后 48 小时内发货</span><b>{formatMoney(0)}</b></div>
             </section>
 
             <section className="checkout-section">
@@ -199,52 +179,44 @@ export default function CheckoutPage() {
             </section>
 
             <section className="checkout-section">
-              <div className="checkout-section__title"><span>4</span><h2>优惠与积分</h2></div>
-              <label className="checkout-coupon-select">
-                <span>优惠券</span>
-                <select value={selectedCouponCode} onChange={(event) => setSelectedCouponCode(event.target.value)}>
-                  <option value="">不使用优惠券</option>
-                  {coupons.map((coupon) => <option key={coupon.id} value={coupon.code}>{coupon.title}</option>)}
-                </select>
-                <strong>{couponDiscount ? `-${formatMoney(couponDiscount)}` : '未抵扣'}</strong>
-              </label>
-              <label className="points-choice">
-                <input type="checkbox" checked={usePoints} onChange={(event) => setUsePoints(event.target.checked)} />
-                <span><Icon name="check" /></span>
-                使用 {formatPoints(pointsBalance)} 积分抵扣 {formatMoney(pointsDiscount)}
-              </label>
-              {couponsQuery.isError && !demoMode ? <small className="checkout-contract-note">用户券包接口待接入，当前优惠为前端预览数据；订单金额以 Ordering 服务确认为准。</small> : null}
+              <div className="checkout-section__title"><span>4</span><h2>优惠</h2></div>
+              {basket.couponCodes.length ? (
+                <ul className="coupon-chips coupon-chips--static">
+                  {basket.couponCodes.map((code) => <li key={code}><Icon name="ticket" />{code}</li>)}
+                </ul>
+              ) : <p className="checkout-contract-note">未使用优惠码。</p>}
+              <Link className="outline-action" to={`/cart${demoMode ? '?demo=1' : ''}`}><Icon name="edit" />在购物袋中修改优惠码</Link>
+              <small className="checkout-contract-note">满减、折扣等活动会在提交订单时自动计算，实付金额以支付页为准。</small>
             </section>
           </div>
 
           <aside className="order-summary">
             <h2>订单摘要</h2>
             <div className="summary-products">
-              {checkoutLines.map((line) => (
+              {lines.map((line) => (
                 <article key={line.sku}>
                   <img src={line.image} alt="" width="112" height="112" />
-                  <div><strong>{line.name}</strong><span>{Object.values(line.attributes).join(' / ')}</span><b>{formatMoney(line.unitPrice, line.currency)}</b></div>
-                  <div className="summary-quantity">
-                    <button type="button" aria-label={`减少${line.name}数量`} onClick={() => updateCartLineQuantity(line.sku, Math.max(1, line.quantity - 1))}><Icon name="minus" /></button>
-                    <span>{line.quantity}</span>
-                    <button type="button" aria-label={`增加${line.name}数量`} onClick={() => updateCartLineQuantity(line.sku, Math.min(99, line.quantity + 1))}><Icon name="plus" /></button>
+                  <div>
+                    <strong>{line.name}</strong>
+                    <span>{Object.values(line.attributes).join(' / ') || line.variantName}</span>
+                    <b>{formatMoney(line.unitPrice, line.currency)} × {line.quantity}</b>
+                    {line.isAvailable === false ? <em className="tag tag--muted">暂不可售</em> : null}
                   </div>
                 </article>
               ))}
             </div>
             <dl className="summary-totals">
-              <div><dt>商品金额</dt><dd>{formatMoney(subtotal)}</dd></div>
-              <div><dt>运费</dt><dd>{formatMoney(0)}</dd></div>
-              <div><dt>优惠券</dt><dd className="is-discount">-{formatMoney(couponDiscount)}</dd></div>
-              <div><dt>积分抵扣</dt><dd className="is-discount">-{formatMoney(pointsDiscount)}</dd></div>
-              <div className="summary-total"><dt>应付总额</dt><dd>{formatMoney(total)}</dd></div>
+              <div><dt>商品金额</dt><dd>{formatMoney(basket.subtotal, basket.currency)}</dd></div>
+              <div><dt>运费</dt><dd>{formatMoney(0, basket.currency)}</dd></div>
+              <div><dt>活动与优惠</dt><dd>提交后计算</dd></div>
+              <div className="summary-total"><dt>预估应付</dt><dd>{formatMoney(basket.subtotal, basket.currency)}</dd></div>
             </dl>
             {submitError ? <p className="form-message form-message--error" role="alert">{submitError}</p> : null}
-            <Button type="button" className="submit-order" loading={submitting} disabled={!selectedAddress} onClick={() => void submit()}>提交订单</Button>
+            <Button type="button" className="submit-order" loading={submitting} disabled={!selectedAddress || unavailable.length > 0} onClick={() => void submit()}>提交订单</Button>
             <label className="summary-terms">
               <input type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} />
               <span><Icon name="check" /></span>
-              我已阅读并同意《用户服务协议》和《隐私政策》
+              我已阅读并同意《用户服务协议》《隐私政策》和《售后服务规则》
             </label>
           </aside>
         </div>
@@ -252,10 +224,10 @@ export default function CheckoutPage() {
       <section className="checkout-progress" aria-label="订单流程">
         <h2>下单后你将获得</h2>
         <div>
-          <span><Icon name="receipt" /><strong>订单确认</strong><small>提交后尽快确认订单</small></span>
-          <span><Icon name="package" /><strong>商品发货</strong><small>物流信息将及时通知</small></span>
-          <span><Icon name="truck" /><strong>到货收货</strong><small>请注意查收包裹</small></span>
-          <span><Icon name="circle-check" /><strong>售后无忧</strong><small>7 天无理由退换</small></span>
+          <span><Icon name="receipt" /><strong>订单确认</strong><small>提交后锁定库存与优惠</small></span>
+          <span><Icon name="package" /><strong>商品发货</strong><small>物流信息实时更新</small></span>
+          <span><Icon name="truck" /><strong>到货签收</strong><small>请注意查收包裹</small></span>
+          <span><Icon name="circle-check" /><strong>售后无忧</strong><small>签收后 7 天内可申请退换</small></span>
         </div>
       </section>
     </CommerceShell>

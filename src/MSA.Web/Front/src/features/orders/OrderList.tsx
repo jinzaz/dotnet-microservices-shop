@@ -1,16 +1,8 @@
 import { Link } from 'react-router-dom';
 import { Icon } from '../../shared/ui/Icon';
 import { formatDateTime, formatMoney } from '../../shared/utils/format';
-import type { OrderFulfillmentStatus, OrderListItem } from './types';
-
-const statusPresentation: Record<OrderFulfillmentStatus, { label: string; tone: string }> = {
-  PendingPayment: { label: '待付款', tone: 'warning' },
-  AwaitingShipment: { label: '待发货', tone: 'info' },
-  Shipped: { label: '已发货', tone: 'info' },
-  InTransit: { label: '运输中', tone: 'info' },
-  Delivered: { label: '已完成', tone: 'success' },
-  Cancelled: { label: '已取消', tone: 'muted' },
-};
+import { presentStatus } from './order-presentation';
+import type { OrderListItem } from './types';
 
 function deliverySummary(order: OrderListItem): string {
   if (order.trackingNumber) {
@@ -26,12 +18,15 @@ function deliverySummary(order: OrderListItem): string {
 }
 
 export function OrderList({ orders, demoMode = false }: { orders: OrderListItem[]; demoMode?: boolean }) {
+  const suffix = demoMode ? '?demo=1' : '';
+
   if (!orders.length) {
     return (
       <div className="orders-empty">
         <Icon name="clipboard" />
         <h2>暂无相关订单</h2>
         <p>当前分类下还没有订单记录。</p>
+        <Link className="button button--secondary button--small" to={`/products${suffix}`}>去逛逛</Link>
       </div>
     );
   }
@@ -39,14 +34,14 @@ export function OrderList({ orders, demoMode = false }: { orders: OrderListItem[
   return (
     <div className="order-list">
       {orders.map((order) => {
-        const status = statusPresentation[order.fulfillmentStatus]
-          ?? { label: order.fulfillmentStatus, tone: 'muted' };
+        const status = presentStatus(order.fulfillmentStatus);
+        const detailPath = `/orders/${order.id}${suffix}`;
         return (
           <article className="order-row" key={order.id}>
             <header className="order-row__header">
               <div>
                 <time dateTime={order.createdOnUtc}>{formatDateTime(order.createdOnUtc)}</time>
-                <span>订单号 {order.orderNumber}</span>
+                <Link to={detailPath}>订单号 {order.orderNumber}</Link>
               </div>
               <span className={`order-status order-status--${status.tone}`}>{status.label}</span>
             </header>
@@ -66,9 +61,14 @@ export function OrderList({ orders, demoMode = false }: { orders: OrderListItem[
               <div className="order-amount">
                 <span>订单总额</span>
                 <strong>{formatMoney(order.amount, order.currency)}</strong>
-                {order.fulfillmentStatus === 'PendingPayment' ? (
-                  <Link className="order-payment-link" to={`/payment/${order.id}${demoMode ? '?demo=1' : ''}`}>去支付</Link>
-                ) : null}
+                <div className="order-row__actions">
+                  {order.fulfillmentStatus === 'PendingPayment' ? (
+                    <Link className="button button--primary button--small" to={`/payment/${order.id}${suffix}`}>去支付</Link>
+                  ) : null}
+                  <Link className="button button--secondary button--small" to={detailPath}>
+                    {order.fulfillmentStatus === 'Delivered' ? '详情 / 售后' : '查看详情'}
+                  </Link>
+                </div>
               </div>
             </div>
           </article>
@@ -77,5 +77,3 @@ export function OrderList({ orders, demoMode = false }: { orders: OrderListItem[
     </div>
   );
 }
-
-export { statusPresentation };

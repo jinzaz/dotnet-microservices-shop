@@ -12,6 +12,7 @@ using MSA.Infrastrucute.Extensions;
 using OpenIddict.Validation.AspNetCore;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 var postgresql = builder.Configuration.GetConnectionString("Postgresql");
@@ -62,6 +63,9 @@ builder.Services.AddRabbitMQEventBus(options =>
 builder.Services.AddOutbox<CatalogDbContext>();
 builder.Services.AddExceptionHandler<CatalogApiExceptionHandler>();
 builder.Services.AddProblemDetails();
+// BM 以名称传枚举（如 ProductMediaRequest.MediaType = "Image"），默认序列化只接受数字。
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddHealthChecks();
 
 builder.Services.AddOpenIddict().AddValidation(options =>

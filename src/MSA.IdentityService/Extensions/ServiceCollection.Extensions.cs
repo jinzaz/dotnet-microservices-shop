@@ -144,6 +144,8 @@ internal static class ServiceCollection
                     OpenIddictConstants.Scopes.Email,
                     OpenIddictConstants.Scopes.Roles,
                     OpenIddictConstants.Scopes.OfflineAccess,
+                    IdentityServiceConstants.Scopes.AuthAdminRead,
+                    IdentityServiceConstants.Scopes.AuthAdminWrite,
                     IdentityServiceConstants.Scopes.Catalog,
                     IdentityServiceConstants.Scopes.Inventory,
                     IdentityServiceConstants.Scopes.User,

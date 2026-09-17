@@ -131,7 +131,7 @@ public sealed class UsersController(
         return result.Succeeded ? NoContent() : BadRequest(result.Errors);
     }
 
-    [Authorize(Policy = "user.admin.read")]
+    [Authorize(Policy = "auth.admin.read")]
     [HttpGet("admin")]
     public async Task<IActionResult> List(
         string? search = null,
@@ -167,7 +167,7 @@ public sealed class UsersController(
             .ToListAsync(cancellationToken));
     }
 
-    [Authorize(Policy = "user.admin.read")]
+    [Authorize(Policy = "auth.admin.read")]
     [HttpGet("admin/roles")]
     public Task<string[]> ListRoles(CancellationToken cancellationToken) => roles.Roles
         .AsNoTracking()
@@ -176,7 +176,7 @@ public sealed class UsersController(
         .Select(role => role.Name!)
         .ToArrayAsync(cancellationToken);
 
-    [Authorize(Policy = "user.admin.read")]
+    [Authorize(Policy = "auth.admin.read")]
     [HttpGet("admin/{id}")]
     public async Task<IActionResult> Get(string id)
     {
@@ -199,7 +199,7 @@ public sealed class UsersController(
         });
     }
 
-    [Authorize(Policy = "user.admin.write")]
+    [Authorize(Policy = "auth.admin.write")]
     [HttpPost("admin/{id}/roles/{role}")]
     public async Task<IActionResult> AddRole(string id, string role)
     {
@@ -213,7 +213,7 @@ public sealed class UsersController(
         return result.Succeeded ? NoContent() : BadRequest(result.Errors);
     }
 
-    [Authorize(Policy = "user.admin.write")]
+    [Authorize(Policy = "auth.admin.write")]
     [HttpDelete("admin/{id}/roles/{role}")]
     public async Task<IActionResult> RemoveRole(string id, string role)
     {
@@ -227,7 +227,7 @@ public sealed class UsersController(
         return result.Succeeded ? NoContent() : BadRequest(result.Errors);
     }
 
-    [Authorize(Policy = "user.admin.write")]
+    [Authorize(Policy = "auth.admin.write")]
     [HttpPost("admin/{id}/activation")]
     public async Task<IActionResult> SetActivation(string id, SetActivationRequest request)
     {

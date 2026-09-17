@@ -50,7 +50,11 @@ public sealed record GetProductQuery(Guid Id) : IQuery<ProductDto?>;
 
 public sealed record GetAdminProductQuery(Guid Id) : IQuery<ProductDto?>;
 
-public sealed record ListProductsQuery(int Skip, int Take) : IQuery<IReadOnlyList<ProductDto>>;
+public sealed record ListProductsQuery(
+    int Skip,
+    int Take,
+    string? Search = null,
+    Guid? CategoryId = null) : IQuery<PagedResult<ProductDto>>;
 
 public sealed record ListAdminProductsQuery(
     int Skip,
@@ -230,17 +234,17 @@ internal sealed class GetAdminProductHandler(ICatalogReadService reads)
 }
 
 internal sealed class ListProductsHandler(ICatalogReadService reads)
-    : IRequestHandler<ListProductsQuery, IReadOnlyList<ProductDto>>
+    : IRequestHandler<ListProductsQuery, PagedResult<ProductDto>>
 {
-    public async Task<IReadOnlyList<ProductDto>> Handle(ListProductsQuery request, CancellationToken cancellationToken) =>
-        (await reads.ListProductsAsync(
+    public Task<PagedResult<ProductDto>> Handle(ListProductsQuery request, CancellationToken cancellationToken) =>
+        reads.ListProductsAsync(
             request.Skip,
             request.Take,
             publicOnly: true,
-            search: null,
+            request.Search,
             lifecycleStatus: null,
-            categoryId: null,
-            cancellationToken)).Items;
+            request.CategoryId,
+            cancellationToken);
 }
 
 internal sealed class ListAdminProductsHandler(ICatalogReadService reads)

@@ -60,6 +60,10 @@ export function AccountSidebar({
           <Icon name="clipboard" />
           我的订单
         </Link>
+        <Link to={ordersPath.replace('/orders', '/after-sales')}>
+          <Icon name="refresh" />
+          退换 / 售后
+        </Link>
       </nav>
       <button className="account-logout" type="button" onClick={onLogout}>
         <Icon name="logout" />

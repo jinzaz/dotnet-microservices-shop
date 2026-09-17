@@ -56,6 +56,9 @@ public sealed record CategoryDto(
     string UpdatedBy,
     long Version);
 
+/// <summary>Storefront view of an active category; omits operator audit fields.</summary>
+public sealed record PublicCategoryDto(Guid Id, string Code, string Name);
+
 public sealed record PromotionRuleDto(
     Guid Id,
     string RuleType,

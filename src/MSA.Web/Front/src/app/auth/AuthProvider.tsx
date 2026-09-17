@@ -7,13 +7,15 @@ import {
 } from 'react';
 import {
   beginLogin,
-  hasBffSession,
+  getBffSession,
   signOut,
+  type BffSession,
 } from '../../features/auth/auth-session';
 
 type AuthContextValue = {
   isAuthenticated: boolean;
   isLoading: boolean;
+  user: BffSession | null;
   login: (returnUrl?: string) => void;
   logout: (returnUrl?: string) => Promise<void>;
 };
@@ -23,16 +25,16 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const sessionQuery = useQuery({
     queryKey: ['bff', 'user-session'],
-    queryFn: hasBffSession,
+    queryFn: getBffSession,
     retry: false,
     staleTime: 30_000,
   });
-  const isAuthenticated = sessionQuery.data === true;
+  const user = sessionQuery.data?.isAuthenticated ? sessionQuery.data : null;
   const isLoading = sessionQuery.isPending;
 
   const value = useMemo(
-    () => ({ isAuthenticated, isLoading, login: beginLogin, logout: signOut }),
-    [isAuthenticated, isLoading],
+    () => ({ isAuthenticated: user !== null, isLoading, user, login: beginLogin, logout: signOut }),
+    [user, isLoading],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

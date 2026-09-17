@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/auth/AuthProvider';
 import { useBasket } from '../../features/basket/basket-store';
@@ -6,10 +6,10 @@ import { isDemoMode } from '../config/api';
 import { Icon } from '../ui/Icon';
 
 const navigation = [
-  { label: '首页', to: '/' },
-  { label: '精选商品', to: '/#featured' },
-  { label: '新品', to: '/#new' },
-  { label: '我的账户', to: '/account' },
+  { label: '首页', to: '/', match: (pathname: string) => pathname === '/' },
+  { label: '全部商品', to: '/products', match: (pathname: string) => pathname.startsWith('/products') },
+  { label: '我的订单', to: '/orders', match: (pathname: string) => pathname.startsWith('/orders') || pathname.startsWith('/after-sales') || pathname.startsWith('/payment') },
+  { label: '我的账户', to: '/account', match: (pathname: string) => ['/account', '/coupons'].some((path) => pathname.startsWith(path)) },
 ] as const;
 
 export function SiteHeader() {
@@ -18,48 +18,45 @@ export function SiteHeader() {
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user, login } = useAuth();
   const { itemCount } = useBasket();
   const demoMode = isDemoMode(location.search);
   const hasAccountAccess = isAuthenticated || demoMode;
-  const accountPath = demoMode ? '/account?demo=1' : '/account';
-  const checkoutPath = demoMode ? '/checkout?demo=1' : '/checkout';
+  const suffix = demoMode ? '?demo=1' : '';
+
+  // Close transient menus whenever the route changes.
+  useEffect(() => {
+    setMenuOpen(false);
+    setSearchOpen(false);
+  }, [location.pathname]);
 
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const query = search.trim();
-    navigate(query ? `/?q=${encodeURIComponent(query)}#featured` : '/#featured');
+    const params = new URLSearchParams();
+    if (query) params.set('q', query);
+    if (demoMode) params.set('demo', '1');
+    navigate(`/products${params.size ? `?${params}` : ''}`);
     setSearchOpen(false);
-    setMenuOpen(false);
   };
 
   return (
     <header className="site-header">
       <div className="site-header__inner">
-        <Link className="brand" to="/" aria-label="MSA Store 首页">MSA Store</Link>
+        <Link className="brand" to={`/${suffix}`} aria-label="MSA Store 首页">MSA Store</Link>
 
         <nav className={`primary-nav ${menuOpen ? 'is-open' : ''}`} aria-label="主导航">
-          {navigation.map((item) => {
-            const itemHash = item.to.includes('#') ? item.to.slice(item.to.indexOf('#')) : '';
-            const isActive = item.to === '/'
-              ? location.pathname === '/' && !location.hash
-              : itemHash
-                ? location.pathname === '/' && location.hash === itemHash
-                : item.to === '/account'
-                  ? ['/account', '/coupons', '/orders'].some((path) => location.pathname.startsWith(path))
-                  : location.pathname.startsWith(item.to);
-
-            return (
-              <Link
-                key={item.label}
-                to={item.to === '/account' ? accountPath : item.to}
-                onClick={() => setMenuOpen(false)}
-                className={isActive ? 'is-active' : undefined}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
+          {navigation.map((item) => (
+            <Link
+              key={item.label}
+              to={`${item.to}${suffix}`}
+              onClick={() => setMenuOpen(false)}
+              className={item.match(location.pathname) ? 'is-active' : undefined}
+              aria-current={item.match(location.pathname) ? 'page' : undefined}
+            >
+              {item.label}
+            </Link>
+          ))}
         </nav>
 
         <div className="site-header__actions">
@@ -73,14 +70,21 @@ export function SiteHeader() {
             <Icon name="search" />
             <span>搜索</span>
           </button>
-          <Link className="header-action" to={hasAccountAccess ? accountPath : '/login'}>
-            <Icon name="user" />
-            <span>{hasAccountAccess ? '我的账户' : '登录'}</span>
-          </Link>
-          <Link className="header-action header-cart" to={checkoutPath} aria-label={`购物袋，共 ${itemCount} 件商品`}>
+          {hasAccountAccess ? (
+            <Link className="header-action" to={`/account${suffix}`} title={user?.email ?? undefined}>
+              <Icon name="user" />
+              <span>{user?.name ? user.name.slice(0, 8) : '我的账户'}</span>
+            </Link>
+          ) : (
+            <button className="header-action" type="button" onClick={() => login(`${location.pathname}${location.search}`)}>
+              <Icon name="user" />
+              <span>登录</span>
+            </button>
+          )}
+          <Link className="header-action header-cart" to={`/cart${suffix}`} aria-label={`购物袋，共 ${itemCount} 件商品`}>
             <Icon name="bag" />
             <span>购物袋</span>
-            {itemCount ? <strong className="cart-count">{itemCount > 99 ? '99+' : itemCount}</strong> : null}
+            {itemCount ? <strong className="cart-count" key={itemCount}>{itemCount > 99 ? '99+' : itemCount}</strong> : null}
           </Link>
           <button
             className="menu-toggle"
@@ -103,7 +107,9 @@ export function SiteHeader() {
               id="global-search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="搜索商品名称或关键词"
+              onKeyDown={(event) => { if (event.key === 'Escape') setSearchOpen(false); }}
+              placeholder="搜索商品名称或 SKU"
+              maxLength={80}
               autoFocus
             />
             <button type="submit">搜索</button>

@@ -46,7 +46,12 @@ export function ProductDetailSections({ product }: { product: ProductDetail }) {
           </dl>
         </div>
       </section>
-      <ProductReviews result={product.reviews} />
+      {product.reviews.total > 0 ? <ProductReviews result={product.reviews} /> : (
+        <section className="product-reviews product-reviews--empty" id="reviews">
+          <h2>用户评价</h2>
+          <p>还没有评价。购买并签收后，你可以在订单中分享使用体验。</p>
+        </section>
+      )}
     </div>
   );
 }

@@ -1,11 +1,14 @@
 using System.Text.Json;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
+using MSA.EventBusOutbox;
 using MSA.OrderService.Application;
+using MSA.OrderService.Application.CancelOrder;
 using MSA.OrderService.Application.CreateOrder;
 using MSA.OrderService.Application.ManageFulfillment;
 using MSA.OrderService.Application.Pricing;
 using MSA.OrderService.Domain;
+using MSA.Saga;
 
 namespace MSA.CommerceTests;
 
@@ -207,6 +210,41 @@ public sealed class OrderApplicationTests
         Assert.AreEqual("SKU-1", projection.Sku);
     }
 
+    [TestMethod]
+    public async Task CancelOrder_AwaitingPayment_StartsCompensationAndRejectsOtherUsersAndPaidOrders()
+    {
+        var order = NewOrder();
+        order.InventoryReserved(Guid.NewGuid(), Now.AddMinutes(1));
+        var saga = SagaState.Start(order.Id, OrderFulfillmentSagaData.SagaType, OrderFulfillmentSagaData.AwaitingPayment,
+            JsonSerializer.Serialize(OrderFulfillmentSagaData.Start(order)), Now);
+        var paid = ConfirmedOrder();
+        var orders = new Mock<IOrderRepository>();
+        orders.Setup(value => value.GetWithFulfillmentHistoryAsync(order.Id, It.IsAny<CancellationToken>())).ReturnsAsync(order);
+        orders.Setup(value => value.GetWithFulfillmentHistoryAsync(paid.Id, It.IsAny<CancellationToken>())).ReturnsAsync(paid);
+        var sagas = new Mock<ISagaStore>();
+        sagas.Setup(value => value.FindAsync(order.Id, It.IsAny<CancellationToken>())).ReturnsAsync(saga);
+        var outbox = new Mock<IOutboxStore>();
+        var coupons = new Mock<ICouponRedemptionStore>();
+        var handler = new CancelOrderCommandHandler(orders.Object, sagas.Object,
+            new OrderCancellationWorkflow(outbox.Object, coupons.Object), new TestClock(Now.AddMinutes(5)));
+
+        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+            handler.Handle(new CancelOrderCommand(order.Id, "someone-else", null), CancellationToken.None));
+        var result = await handler.Handle(new CancelOrderCommand(order.Id, "buyer-1", " changed my mind "), CancellationToken.None);
+        var replay = await handler.Handle(new CancelOrderCommand(order.Id, "buyer-1", null), CancellationToken.None);
+
+        Assert.IsTrue(result.Changed);
+        Assert.IsFalse(replay.Changed);
+        Assert.AreEqual("Cancelled", result.Status);
+        Assert.AreEqual("changed my mind", order.CancellationReason);
+        Assert.AreEqual(SagaStatus.Compensating, saga.Status);
+        coupons.Verify(value => value.ReleaseAsync(order.Id, Now.AddMinutes(5), It.IsAny<CancellationToken>()), Times.Once);
+        // Release inventory, cancel the pending payment, announce the cancellation.
+        outbox.Verify(value => value.Add(It.IsAny<OutboxMessage>()), Times.Exactly(3));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            handler.Handle(new CancelOrderCommand(paid.Id, "buyer-1", null), CancellationToken.None));
+    }
+
     private static PricingItem Item(decimal price, int quantity) =>
         new(new OrderProductProjection(Guid.NewGuid(), Guid.NewGuid(), $"SKU-{Guid.NewGuid():N}", "Product", "Variant",
             "{}", price, "CNY", true, null, 1, Now), quantity);
@@ -218,12 +256,15 @@ public sealed class OrderApplicationTests
     private static ShippingAddressSnapshot Address() =>
         new(null, "Buyer", "13800000000", "CN", "Province", "City", "District", "Street", null, null);
 
-    private static Order ConfirmedOrder()
-    {
-        var order = new Order(
+    private static Order NewOrder() =>
+        new(
             Guid.NewGuid(), "buyer-1", "order-key", new string('F', 64), "Alipay", Address(),
             [new OrderLine(Guid.NewGuid(), Guid.NewGuid(), null, "SKU-1", "Product", "Variant", "{}", 1, 10m, 10m)],
             [], "CNY", null, null, Guid.NewGuid(), PriceHash, Now.AddMinutes(20), Now);
+
+    private static Order ConfirmedOrder()
+    {
+        var order = NewOrder();
         order.InventoryReserved(Guid.NewGuid(), Now.AddMinutes(1));
         order.Confirm(Guid.NewGuid(), 10m, "CNY", PriceHash, Now.AddMinutes(2));
         return order;
