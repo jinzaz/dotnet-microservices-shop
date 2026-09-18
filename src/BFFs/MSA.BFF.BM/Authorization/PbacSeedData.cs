@@ -151,7 +151,12 @@ internal static class PbacSeedData
             ("inventory.allocations.query", HttpMethods.Get, "/api/inventory/admin/allocations"),
             ("order.fulfillment.query", HttpMethods.Get, "/api/order/admin/orders/summary"),
             ("payment.transactions.query", HttpMethods.Get, "/api/payment/admin/payments/summary"),
-            ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupons/{id}/expire")
+            ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupons/{id}/expire"),
+            ("catalog.promotions.edit", HttpMethods.Post, "/api/catalog/admin/promotions/{id}/revise"),
+            ("catalog.promotions.edit", HttpMethods.Post, "/api/catalog/admin/promotions/{id}/archive"),
+            ("catalog.coupons.create", HttpMethods.Post, "/api/catalog/admin/coupons/batch"),
+            // Usage counters live in Ordering but belong to the coupon screen, so they share its query permission.
+            ("catalog.coupons.query", HttpMethods.Get, "/api/order/admin/coupons/usage")
         ];
 
         return definitions

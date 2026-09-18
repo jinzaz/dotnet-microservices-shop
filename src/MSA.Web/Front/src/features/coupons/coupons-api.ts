@@ -1,31 +1,14 @@
 import { apiRequest } from '../../shared/api/http';
 import { serviceRoutes } from '../../shared/config/api';
-import type { CouponStatus, CustomerCoupon, RedeemCouponResponse } from './types';
+import type { WalletCoupon } from './types';
 
-export const couponApiPaths = {
-  myCoupons: `${serviceRoutes.catalog}/coupons/me`,
-  redeem: `${serviceRoutes.catalog}/coupons/me/redeem`,
-  claim: (couponId: string) => `${serviceRoutes.catalog}/coupons/${couponId}/claim`,
-  availableForProduct: (productId: string) =>
-    `${serviceRoutes.catalog}/coupons/available?productId=${encodeURIComponent(productId)}`,
-} as const;
-
-export function listMyCoupons(status?: CouponStatus): Promise<CustomerCoupon[]> {
-  const parameters = status ? `?status=${encodeURIComponent(status)}` : '';
-  return apiRequest<CustomerCoupon[]>(`${couponApiPaths.myCoupons}${parameters}`);
+export function listMyCoupons(): Promise<WalletCoupon[]> {
+  return apiRequest<WalletCoupon[]>(`${serviceRoutes.ordering}/coupons/mine`);
 }
 
-export function listProductCoupons(productId: string): Promise<CustomerCoupon[]> {
-  return apiRequest<CustomerCoupon[]>(couponApiPaths.availableForProduct(productId));
-}
+export const myCouponsQueryKey = ['ordering', 'my-coupons'] as const;
 
-export function redeemCoupon(code: string): Promise<RedeemCouponResponse> {
-  return apiRequest<RedeemCouponResponse>(couponApiPaths.redeem, {
-    method: 'POST',
-    body: { code },
-  });
-}
-
-export function claimCoupon(couponId: string): Promise<CustomerCoupon> {
-  return apiRequest<CustomerCoupon>(couponApiPaths.claim(couponId), { method: 'POST' });
+/** Wallet coupons that can be applied right now and still have uses left. */
+export function usableCoupons(coupons: WalletCoupon[] | undefined): WalletCoupon[] {
+  return (coupons ?? []).filter((coupon) => coupon.isAssigned && coupon.status === 'Available');
 }

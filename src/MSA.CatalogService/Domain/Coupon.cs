@@ -66,6 +66,21 @@ public sealed class Coupon : RevisionedCatalogAggregateRoot<Guid>
     public static string NormalizeCode(string code) =>
         NormalizeAndValidateCode(code);
 
+    // Omits 0/O and 1/I so printed or read-aloud codes are not mistyped.
+    private const string GeneratedCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+    /// <summary>Creates a random, human-typeable code; callers must still check digest uniqueness.</summary>
+    public static string GenerateCode(string? prefix = null, int randomLength = 10)
+    {
+        if (randomLength is < 6 or > 32)
+            throw new ArgumentOutOfRangeException(nameof(randomLength), "Generated code length must be between 6 and 32.");
+        var normalizedPrefix = string.IsNullOrWhiteSpace(prefix) ? string.Empty : prefix.Trim().ToUpperInvariant();
+        if (normalizedPrefix.Length > 20 || normalizedPrefix.Any(character => !char.IsAsciiLetterOrDigit(character) && character != '-'))
+            throw new ArgumentException("Code prefix must be at most 20 letters, digits or hyphens.", nameof(prefix));
+        var random = new string(RandomNumberGenerator.GetItems<char>(GeneratedCodeAlphabet, randomLength));
+        return NormalizeCode(normalizedPrefix + random);
+    }
+
     public static string ComputeCodeDigest(string code)
     {
         var normalized = NormalizeCode(code);

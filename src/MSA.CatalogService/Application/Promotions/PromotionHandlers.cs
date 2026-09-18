@@ -123,6 +123,73 @@ internal sealed class PausePromotionHandler(
     }
 }
 
+internal sealed class RevisePromotionHandler(
+    IPromotionRepository promotions,
+    ICatalogSnapshotPublisher snapshots,
+    ICatalogAuditWriter audit,
+    TimeProvider clock) : IRequestHandler<RevisePromotionCommand, bool>
+{
+    public async Task<bool> Handle(RevisePromotionCommand request, CancellationToken cancellationToken)
+    {
+        var promotion = await promotions.GetRequiredAsync(request.PromotionId, cancellationToken);
+        promotion.EnsureVersion(request.ExpectedVersion);
+        var now = clock.GetUtcNow();
+        promotion.BeginDraftRevision(request.Actor, now);
+        // The draft snapshot tells Ordering to stop applying the old definition immediately.
+        snapshots.Publish(promotion);
+        audit.Record("Promotion", promotion.Id, "DraftRevisionStarted", request.Actor, now);
+        return true;
+    }
+}
+
+internal sealed class ArchivePromotionHandler(
+    IPromotionRepository promotions,
+    ICatalogSnapshotPublisher snapshots,
+    ICatalogAuditWriter audit,
+    TimeProvider clock) : IRequestHandler<ArchivePromotionCommand, bool>
+{
+    public async Task<bool> Handle(ArchivePromotionCommand request, CancellationToken cancellationToken)
+    {
+        var promotion = await promotions.GetRequiredAsync(request.PromotionId, cancellationToken);
+        promotion.EnsureVersion(request.ExpectedVersion);
+        var now = clock.GetUtcNow();
+        promotion.Archive(request.Actor, now);
+        snapshots.Publish(promotion);
+        audit.Record("Promotion", promotion.Id, "Archived", request.Actor, now);
+        return true;
+    }
+}
+
+internal sealed class ListStorefrontPromotionsHandler(ICatalogReadService reads, TimeProvider clock)
+    : IRequestHandler<ListStorefrontPromotionsQuery, IReadOnlyList<StorefrontPromotionDto>>
+{
+    public async Task<IReadOnlyList<StorefrontPromotionDto>> Handle(
+        ListStorefrontPromotionsQuery request,
+        CancellationToken cancellationToken)
+    {
+        var now = clock.GetUtcNow();
+        var active = await reads.ListPromotionsAsync(0, 200, nameof(PromotionStatus.Active), cancellationToken);
+        return active.Items
+            .Where(promotion =>
+                string.Equals(promotion.TriggerType, nameof(PromotionTriggerType.Automatic), StringComparison.Ordinal)
+                && promotion.StartsOnUtc <= now
+                && now < promotion.EndsOnUtc)
+            .OrderByDescending(promotion => promotion.Priority)
+            .ThenBy(promotion => promotion.EndsOnUtc)
+            .Select(promotion => new StorefrontPromotionDto(
+                promotion.Id,
+                promotion.Name,
+                promotion.StartsOnUtc,
+                promotion.EndsOnUtc,
+                promotion.Priority,
+                promotion.StackPolicy,
+                promotion.Rules.Select(rule => new StorefrontPromotionRuleDto(rule.RuleType, rule.SchemaVersion, rule.ConfigurationJson)).ToArray(),
+                promotion.Benefits.Select(benefit => new StorefrontPromotionBenefitDto(benefit.BenefitType, benefit.SchemaVersion, benefit.ConfigurationJson)).ToArray(),
+                promotion.Targets.Select(target => new StorefrontPromotionTargetDto(target.TargetType, target.TargetKey, target.IsExcluded)).ToArray()))
+            .ToArray();
+    }
+}
+
 internal sealed class ResumePromotionHandler(
     IPromotionRepository promotions,
     ICatalogSnapshotPublisher snapshots,

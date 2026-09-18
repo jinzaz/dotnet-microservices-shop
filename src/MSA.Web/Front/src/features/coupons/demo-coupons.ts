@@ -1,63 +1,34 @@
-import type { CustomerCoupon } from './types';
+import type { WalletCoupon } from './types';
 
-export const demoCoupons: CustomerCoupon[] = [
+const fixed = (amount: number) => [{ benefitType: 'FixedAmountOff', schemaVersion: 1, configurationJson: JSON.stringify({ amount }) }];
+const percent = (percentage: number, maximumDiscount?: number) => [{
+  benefitType: 'PercentageOff',
+  schemaVersion: 1,
+  configurationJson: JSON.stringify(maximumDiscount ? { percentage, maximumDiscount } : { percentage }),
+}];
+const minimum = (amount: number) => [{ ruleType: 'MinimumOrderAmount', schemaVersion: 1, configurationJson: JSON.stringify({ amount }) }];
+const everything = [{ targetType: 'All', targetKey: null, isExcluded: false }];
+
+/** Development preview wallet (?demo=1); real data comes from Ordering. */
+export const demoCoupons: WalletCoupon[] = [
   {
-    id: 'coupon-40',
-    title: '满 299 减 40 优惠券',
-    valueLabel: '¥40',
-    conditionLabel: '满 299 可用',
-    scopeLabel: '全场商品（特定商品除外）',
-    code: 'MSA40X299',
-    status: 'available',
-    validFromUtc: '2026-09-01T00:00:00+08:00',
-    validUntilUtc: '2026-10-31T23:59:59+08:00',
-    productId: 'editorial-pour-over',
+    couponId: 'demo-coupon-40', promotionId: 'demo-promo-40', promotionName: '新人礼 · 满 299 减 40', maskedCode: '****X299',
+    isAssigned: true, status: 'Available', validFromUtc: '2026-09-01T00:00:00Z', validUntilUtc: '2026-10-31T15:59:59Z',
+    usedCount: 0, perUserLimit: 1, lastUsedOnUtc: null, rules: minimum(299), benefits: fixed(40), targets: everything,
   },
   {
-    id: 'coupon-10-percent',
-    title: '全场商品 9 折券',
-    valueLabel: '9折',
-    conditionLabel: '无门槛',
-    scopeLabel: '全场商品',
-    code: 'MSA10OFF',
-    status: 'available',
-    validFromUtc: '2026-09-01T00:00:00+08:00',
-    validUntilUtc: '2026-09-15T23:59:59+08:00',
-    productId: 'editorial-charger',
-    isExpiringSoon: true,
+    couponId: 'demo-coupon-90', promotionId: 'demo-promo-90', promotionName: '会员日全场 9 折', maskedCode: '****0OFF',
+    isAssigned: true, status: 'Available', validFromUtc: '2026-09-01T00:00:00Z', validUntilUtc: '2026-09-25T15:59:59Z',
+    usedCount: 0, perUserLimit: 2, lastUsedOnUtc: null, rules: [], benefits: percent(10, 50), targets: everything,
   },
   {
-    id: 'coupon-20',
-    title: '满 199 减 20 优惠券',
-    valueLabel: '¥20',
-    conditionLabel: '满 199 可用',
-    scopeLabel: '居家与出行商品',
-    code: 'MSA20X199',
-    status: 'available',
-    validFromUtc: '2026-08-20T00:00:00+08:00',
-    validUntilUtc: '2026-11-30T23:59:59+08:00',
-    productId: 'editorial-backpack',
+    couponId: 'demo-coupon-used', promotionId: 'demo-promo-10', promotionName: '满 100 减 10', maskedCode: '****USED',
+    isAssigned: true, status: 'Used', validFromUtc: '2026-07-01T00:00:00Z', validUntilUtc: '2026-08-31T15:59:59Z',
+    usedCount: 1, perUserLimit: 1, lastUsedOnUtc: '2026-08-12T03:20:00Z', rules: minimum(100), benefits: fixed(10), targets: everything,
   },
   {
-    id: 'coupon-used',
-    title: '满 100 减 10 优惠券',
-    valueLabel: '¥10',
-    conditionLabel: '满 100 可用',
-    scopeLabel: '全场商品',
-    code: 'MSA10USED',
-    status: 'used',
-    validFromUtc: '2026-07-01T00:00:00+08:00',
-    validUntilUtc: '2026-08-31T23:59:59+08:00',
-  },
-  {
-    id: 'coupon-expired',
-    title: '满 299 减 30 优惠券',
-    valueLabel: '¥30',
-    conditionLabel: '满 299 可用',
-    scopeLabel: '全场商品',
-    code: 'MSA30OLD',
-    status: 'expired',
-    validFromUtc: '2026-05-01T00:00:00+08:00',
-    validUntilUtc: '2026-06-30T23:59:59+08:00',
+    couponId: 'demo-coupon-expired', promotionId: 'demo-promo-30', promotionName: '夏日满 299 减 30', maskedCode: '****3OLD',
+    isAssigned: true, status: 'Expired', validFromUtc: '2026-05-01T00:00:00Z', validUntilUtc: '2026-06-30T15:59:59Z',
+    usedCount: 0, perUserLimit: 1, lastUsedOnUtc: null, rules: minimum(299), benefits: fixed(30), targets: everything,
   },
 ];

@@ -1,4 +1,6 @@
-import { demoCoupons } from '../coupons/demo-coupons';
+import { appliesToProduct } from '../promotions/describe';
+import { listStorefrontPromotions } from '../promotions/promotions-api';
+import type { StorefrontPromotion } from '../promotions/types';
 import { demoProductReviews } from '../reviews/demo-reviews';
 import type { ProductReviewResult } from '../reviews/types';
 import { getProduct, listCategories } from './catalog-api';
@@ -18,6 +20,19 @@ const detailImages: Record<string, string[]> = {
   'editorial-backpack': ['/images/product-backpack.jpg'],
   'editorial-toothbrush': ['/images/product-toothbrush.jpg'],
 };
+
+// Editorial (demo) products preview how a storefront promotion is presented.
+const demoPromotions: StorefrontPromotion[] = [{
+  id: 'demo-promo-300',
+  name: '秋季焕新 · 满 300 减 30',
+  startsOnUtc: '2026-09-01T00:00:00Z',
+  endsOnUtc: '2026-10-07T15:59:59Z',
+  priority: 10,
+  stackPolicy: 'Stackable',
+  rules: [{ ruleType: 'MinimumOrderAmount', schemaVersion: 1, configurationJson: '{"amount":300}' }],
+  benefits: [{ benefitType: 'FixedAmountOff', schemaVersion: 1, configurationJson: '{"amount":30}' }],
+  targets: [{ targetType: 'All', targetKey: null, isExcluded: false }],
+}];
 
 // The review service is not deployed yet; products show an empty state until it is.
 export const emptyReviews: ProductReviewResult = {
@@ -53,7 +68,7 @@ function buildEditorialDetail(product: DisplayProduct): ProductDetail {
       { label: '售后服务', value: '签收后 7 天内可申请退换' },
     ],
     skus: getEditorialSkus(product),
-    coupons: demoCoupons.filter((coupon) => coupon.status === 'available').slice(0, 1),
+    promotions: demoPromotions,
     reviews: demoProductReviews,
   };
 }
@@ -66,9 +81,11 @@ export async function getProductDetail(productId: string): Promise<ProductDetail
   const editorialProduct = findEditorialProduct(productId);
   if (editorialProduct) return buildEditorialDetail(editorialProduct);
 
-  const [product, categories] = await Promise.all([
+  const [product, categories, promotions] = await Promise.all([
     getProduct(productId),
     listCategories().catch(() => []),
+    // Promotions only decorate the page; a failure must not hide the product.
+    listStorefrontPromotions().catch(() => [] as StorefrontPromotion[]),
   ]);
   const display = toDisplayProduct(product, categories);
   const skus = productSkusOf(product);
@@ -87,7 +104,11 @@ export async function getProductDetail(productId: string): Promise<ProductDetail
       { label: '售后服务', value: '签收后 7 天内可申请退换' },
     ],
     skus,
-    coupons: [],
+    promotions: promotions.filter((promotion) => appliesToProduct(promotion.targets, {
+      id: product.id,
+      categoryId: product.categoryId,
+      skus: skus.map((sku) => sku.sku),
+    })),
     reviews: emptyReviews,
   };
 }

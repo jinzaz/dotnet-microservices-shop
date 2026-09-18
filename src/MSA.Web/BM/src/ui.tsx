@@ -3,9 +3,11 @@ import { useSearchParams } from 'react-router-dom';
 
 export type IconName = 'overview' | 'order' | 'catalog' | 'inventory' | 'user' | 'payment' |
   'notification' | 'shield' | 'search' | 'menu' | 'logout' | 'plus' | 'refresh' |
-  'arrow' | 'check' | 'alert' | 'activity' | 'key' | 'close' | 'copy' | 'upload' | 'chevron' | 'truck' | 'image';
+  'arrow' | 'check' | 'alert' | 'activity' | 'key' | 'close' | 'copy' | 'upload' | 'chevron' | 'truck' | 'image' | 'download' | 'ticket';
 
 const iconPaths: Record<IconName, ReactNode> = {
+  download: <><path d="M12 4v11m0 0-4-4m4 4 4-4" /><path d="M5 19h14" /></>,
+  ticket: <><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V7Z" /><path d="M14 5v12" strokeDasharray="2 2" /></>,
   overview: <><path d="M4 13h6V4H4v9Zm10 7h6V11h-6v9ZM4 20h6v-3H4v3Zm10-13h6V4h-6v3Z" /></>,
   order: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z" /><path d="M9 8h6M9 12h6" /></>,
   catalog: <><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" /><path d="m4.5 7.7 7.5 4.4 7.5-4.4M12 12v9" /></>,

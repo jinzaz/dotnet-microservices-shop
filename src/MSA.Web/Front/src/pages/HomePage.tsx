@@ -7,6 +7,8 @@ import { ProductCard } from '../features/catalog/ProductCard';
 import { ProductPreviewDialog } from '../features/catalog/ProductPreviewDialog';
 import { toDisplayProduct } from '../features/catalog/product-view';
 import type { DisplayProduct } from '../features/catalog/types';
+import { describePromotion, describeTargets } from '../features/promotions/describe';
+import { storefrontPromotionsQuery } from '../features/promotions/promotions-api';
 import { HeroCarousel } from '../features/home/HeroCarousel';
 import { getErrorMessage } from '../shared/api/api-error';
 import { isDemoMode } from '../shared/config/api';
@@ -14,6 +16,7 @@ import { CommerceShell } from '../shared/layout/CommerceShell';
 import { ServicePromises } from '../shared/layout/ServicePromises';
 import { Button } from '../shared/ui/Button';
 import { Icon, type IconName } from '../shared/ui/Icon';
+import { formatDateTime } from '../shared/utils/format';
 
 const categoryIcons: IconName[] = ['sofa', 'phone', 'luggage', 'cup', 'gift', 'package'];
 const demoCategories = [
@@ -43,6 +46,8 @@ export default function HomePage() {
   const demoSuffix = demoMode ? '?demo=1' : '';
   const [previewProduct, setPreviewProduct] = useState<DisplayProduct | null>(null);
   const categories = useQuery({ ...categoriesQuery, enabled: !demoMode });
+  const promotions = useQuery({ ...storefrontPromotionsQuery, enabled: !demoMode });
+  const categoryNames = new Map((categories.data ?? []).map((category) => [category.id, category.name]));
   const catalogQuery = useQuery({
     queryKey: ['catalog', 'featured-products'],
     queryFn: () => listProducts({ take: 8 }),
@@ -77,6 +82,21 @@ export default function HomePage() {
             ))}
           </div>
         </nav>
+      ) : null}
+
+      {promotions.data?.length ? (
+        <section className="promotion-strip" aria-label="正在进行的活动">
+          {promotions.data.slice(0, 3).map((promotion) => (
+            <Link key={promotion.id} to={`/products${demoSuffix}`} className="promotion-strip__card">
+              <Icon name="gift" />
+              <span>
+                <strong>{describePromotion(promotion.rules, promotion.benefits)}</strong>
+                <small>{promotion.name} · {describeTargets(promotion.targets, categoryNames)} · {formatDateTime(promotion.endsOnUtc)} 结束</small>
+              </span>
+              <Icon name="chevron-right" />
+            </Link>
+          ))}
+        </section>
       ) : null}
 
       <section className="featured-products" id="featured">

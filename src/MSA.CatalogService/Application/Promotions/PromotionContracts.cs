@@ -68,6 +68,35 @@ public sealed record EndPromotionCommand(
     long? ExpectedVersion,
     string Actor) : ICommand<bool>;
 
+/// <summary>Moves a paused, scheduled or ended promotion back to draft so its definition can be edited and republished.</summary>
+public sealed record RevisePromotionCommand(
+    Guid PromotionId,
+    long? ExpectedVersion,
+    string Actor) : ICommand<bool>;
+
+public sealed record ArchivePromotionCommand(
+    Guid PromotionId,
+    long? ExpectedVersion,
+    string Actor) : ICommand<bool>;
+
+/// <summary>Automatic promotions a shopper can see right now; coupon promotions stay private to code holders.</summary>
+public sealed record ListStorefrontPromotionsQuery : IQuery<IReadOnlyList<StorefrontPromotionDto>>;
+
+public sealed record StorefrontPromotionRuleDto(string RuleType, int SchemaVersion, string ConfigurationJson);
+public sealed record StorefrontPromotionBenefitDto(string BenefitType, int SchemaVersion, string ConfigurationJson);
+public sealed record StorefrontPromotionTargetDto(string TargetType, string? TargetKey, bool IsExcluded);
+
+public sealed record StorefrontPromotionDto(
+    Guid Id,
+    string Name,
+    DateTimeOffset StartsOnUtc,
+    DateTimeOffset EndsOnUtc,
+    int Priority,
+    string StackPolicy,
+    IReadOnlyList<StorefrontPromotionRuleDto> Rules,
+    IReadOnlyList<StorefrontPromotionBenefitDto> Benefits,
+    IReadOnlyList<StorefrontPromotionTargetDto> Targets);
+
 public sealed record GetPromotionQuery(Guid PromotionId) : IQuery<PromotionDto?>;
 
 public sealed record ListPromotionsQuery(int Skip, int Take, string? Status)

@@ -27,13 +27,13 @@ internal sealed class PostgresCouponRedemptionStore(OrderDbContext db) : ICoupon
                         && redemption.Status != CouponRedemptionStatus.Released,
                     cancellationToken);
             if (activeForUser >= coupon.PerUserLimit)
-                throw new InvalidOperationException("Coupon per-user usage limit has been reached.");
+                throw new CouponRejectedException(CouponRejectionReason.UsageLimitReached, "Coupon per-user usage limit has been reached.", coupon.CouponId);
 
             long? bucketId = null;
             if (coupon.HasTotalLimit)
             {
                 bucketId = await TryClaimQuotaBucketAsync(coupon.CouponId, orderId, cancellationToken)
-                    ?? throw new InvalidOperationException("Coupon quota has been exhausted.");
+                    ?? throw new CouponRejectedException(CouponRejectionReason.QuotaExhausted, "Coupon quota has been exhausted.", coupon.CouponId);
             }
 
             db.CouponRedemptions.Add(new OrderCouponRedemption(

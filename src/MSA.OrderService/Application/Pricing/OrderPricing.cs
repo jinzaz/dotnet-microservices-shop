@@ -14,9 +14,49 @@ public interface IOrderPricingService
     Task<OrderPricingResult> CalculateAsync(
         string userId,
         IReadOnlyList<PricingItem> items,
-        IReadOnlyList<string> couponCodes,
+        CouponSelection coupons,
         DateTimeOffset now,
         CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Coupons requested for an order: secret codes typed by the buyer, plus coupons issued to the buyer's
+/// wallet, which are referenced by id because their plaintext code is never stored.
+/// </summary>
+public sealed record CouponSelection(IReadOnlyList<string> Codes, IReadOnlyList<Guid> WalletCouponIds)
+{
+    public const int MaximumCoupons = 5;
+    public static readonly CouponSelection None = new([], []);
+
+    public int Count => Codes.Count + WalletCouponIds.Count;
+
+    public static CouponSelection From(IReadOnlyList<string>? codes, IReadOnlyList<Guid>? walletCouponIds) =>
+        new(codes ?? [], walletCouponIds ?? []);
+}
+
+public enum CouponRejectionReason
+{
+    Unknown,
+    Duplicate,
+    NotAvailable,
+    SamePromotion,
+    PromotionInactive,
+    TargetMismatch,
+    ConditionsNotMet,
+    ExclusiveGroup,
+    NoDiscount,
+    NotApplied,
+    UsageLimitReached,
+    QuotaExhausted,
+    Conflict
+}
+
+/// <summary>A requested coupon cannot be applied; still an <see cref="InvalidOperationException"/> so the API maps it to 409.</summary>
+public sealed class CouponRejectedException(CouponRejectionReason reason, string message, Guid? couponId = null)
+    : InvalidOperationException(message)
+{
+    public CouponRejectionReason Reason { get; } = reason;
+    public Guid? CouponId { get; } = couponId;
 }
 
 public interface ICouponRedemptionStore
@@ -44,12 +84,23 @@ public sealed record AppliedCoupon(
     bool HasTotalLimit,
     decimal DiscountAmount);
 
+/// <summary>An automatic promotion whose targets match but whose threshold is not reached yet.</summary>
+public sealed record PromotionOpportunity(
+    Guid PromotionId,
+    string PromotionName,
+    decimal? MissingAmount,
+    int? MissingQuantity,
+    string BenefitsJson);
+
 public sealed record OrderPricingResult(
     decimal Subtotal,
     decimal DiscountTotal,
     IReadOnlyList<OrderDiscount> Discounts,
     IReadOnlyList<AppliedCoupon> Coupons,
-    string SnapshotHash);
+    string SnapshotHash)
+{
+    public IReadOnlyList<PromotionOpportunity> Opportunities { get; init; } = [];
+}
 
 public sealed class OrderPricingService(
     OrderDbContext db,
@@ -64,7 +115,7 @@ public sealed class OrderPricingService(
     public async Task<OrderPricingResult> CalculateAsync(
         string userId,
         IReadOnlyList<PricingItem> items,
-        IReadOnlyList<string> couponCodes,
+        CouponSelection couponSelection,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
@@ -75,27 +126,12 @@ public sealed class OrderPricingService(
         if (subtotal <= 0)
             throw new InvalidOperationException("A payable order must have a positive subtotal.");
 
-        var normalizedCodes = couponCodes
-            .Where(code => !string.IsNullOrWhiteSpace(code))
-            .Select(CouponCode.Normalize)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
-        if (normalizedCodes.Length != couponCodes.Count)
-            throw new InvalidOperationException("Coupon codes must be non-empty and unique.");
-
-        var digests = normalizedCodes.Select(CouponCode.Digest).ToArray();
-        var coupons = digests.Length == 0
-            ? []
-            : await db.CouponProjections
-                .AsNoTracking()
-                .Where(coupon => digests.Contains(coupon.CodeDigest))
-                .ToArrayAsync(cancellationToken);
-        if (coupons.Length != digests.Length)
-            throw new InvalidOperationException("One or more coupon codes are unknown.");
-        if (coupons.Any(coupon => !coupon.IsAvailableFor(userId, now)))
-            throw new InvalidOperationException("One or more coupons are not active for this buyer.");
+        var coupons = await ResolveCouponsAsync(userId, couponSelection, cancellationToken);
+        var unavailable = coupons.FirstOrDefault(coupon => !coupon.IsAvailableFor(userId, now));
+        if (unavailable is not null)
+            throw new CouponRejectedException(CouponRejectionReason.NotAvailable, "One or more coupons are not active for this buyer.", unavailable.Id);
         if (coupons.Select(coupon => coupon.PromotionId).Distinct().Count() != coupons.Length)
-            throw new InvalidOperationException("Only one coupon from the same promotion can be applied to an order.");
+            throw new CouponRejectedException(CouponRejectionReason.SamePromotion, "Only one coupon from the same promotion can be applied to an order.");
 
         var couponByPromotion = coupons.ToDictionary(coupon => coupon.PromotionId);
         var couponPromotionIds = couponByPromotion.Keys.ToArray();
@@ -114,12 +150,14 @@ public sealed class OrderPricingService(
             .Where(promotion => string.Equals(promotion.TriggerType, "Coupon", StringComparison.OrdinalIgnoreCase))
             .Select(promotion => promotion.Id)
             .ToHashSet();
-        if (couponPromotionIds.Any(id => !loadedCouponPromotionIds.Contains(id)))
-            throw new InvalidOperationException("A coupon's promotion is not currently active.");
+        var inactive = coupons.FirstOrDefault(coupon => !loadedCouponPromotionIds.Contains(coupon.PromotionId));
+        if (inactive is not null)
+            throw new CouponRejectedException(CouponRejectionReason.PromotionInactive, "A coupon's promotion is not currently active.", inactive.Id);
 
         var context = new PromotionEvaluationContext(items, subtotal, subtotal);
         var discounts = new List<OrderDiscount>();
         var appliedCoupons = new List<AppliedCoupon>();
+        var opportunities = new List<PromotionOpportunity>();
         var claimedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var remaining = subtotal;
 
@@ -129,20 +167,26 @@ public sealed class OrderPricingService(
             var promotionContext = ApplyTargets(promotion.TargetsJson, context);
             if (promotionContext is null)
             {
-                EnsureRequestedCouponCanApply(promotion, couponByPromotion, "Coupon target does not match this order.");
+                EnsureRequestedCouponCanApply(promotion, couponByPromotion, CouponRejectionReason.TargetMismatch, "Coupon target does not match this order.");
                 continue;
             }
 
             if (!RulesMatch(promotion.RulesJson, promotionContext))
             {
-                EnsureRequestedCouponCanApply(promotion, couponByPromotion, "Coupon conditions are not satisfied.");
+                EnsureRequestedCouponCanApply(promotion, couponByPromotion, CouponRejectionReason.ConditionsNotMet, "Coupon conditions are not satisfied.");
+                if (string.Equals(promotion.TriggerType, "Automatic", StringComparison.OrdinalIgnoreCase)
+                    && Shortfall(promotion.RulesJson, promotionContext) is { } shortfall)
+                {
+                    opportunities.Add(new PromotionOpportunity(
+                        promotion.Id, promotion.Name, shortfall.Amount, shortfall.Quantity, promotion.BenefitsJson));
+                }
                 continue;
             }
 
             if (!string.IsNullOrWhiteSpace(promotion.ExclusiveGroup)
                 && claimedGroups.Contains(promotion.ExclusiveGroup))
             {
-                EnsureRequestedCouponCanApply(promotion, couponByPromotion, "Another promotion in the same exclusive group already applies.");
+                EnsureRequestedCouponCanApply(promotion, couponByPromotion, CouponRejectionReason.ExclusiveGroup, "Another promotion in the same exclusive group already applies.");
                 continue;
             }
 
@@ -150,7 +194,7 @@ public sealed class OrderPricingService(
             var amount = Round(Math.Min(calculated, Math.Max(0, remaining - 0.01m)));
             if (amount <= 0)
             {
-                EnsureRequestedCouponCanApply(promotion, couponByPromotion, "Coupon has no payable discount for this order.");
+                EnsureRequestedCouponCanApply(promotion, couponByPromotion, CouponRejectionReason.NoDiscount, "Coupon has no payable discount for this order.");
                 continue;
             }
 
@@ -194,13 +238,90 @@ public sealed class OrderPricingService(
                 break;
         }
 
-        if (appliedCoupons.Count != coupons.Length)
-            throw new InvalidOperationException("Not every requested coupon could be applied.");
+        var skipped = coupons.FirstOrDefault(coupon => appliedCoupons.All(applied => applied.CouponId != coupon.Id));
+        if (skipped is not null)
+            throw new CouponRejectedException(CouponRejectionReason.NotApplied, "Not every requested coupon could be applied.", skipped.Id);
 
         var discountTotal = Round(discounts.Sum(discount => discount.Amount));
         // 快照摘要随订单固化，支付服务据此校验金额来自同一版商品和优惠定义。
         var snapshotHash = PricingSnapshotHash.Create(items, discounts, subtotal, discountTotal);
-        return new OrderPricingResult(subtotal, discountTotal, discounts, appliedCoupons, snapshotHash);
+        return new OrderPricingResult(subtotal, discountTotal, discounts, appliedCoupons, snapshotHash)
+        {
+            Opportunities = opportunities
+        };
+    }
+
+    private async Task<CouponProjection[]> ResolveCouponsAsync(
+        string userId,
+        CouponSelection selection,
+        CancellationToken cancellationToken)
+    {
+        if (selection.Count == 0)
+            return [];
+        if (selection.Count > CouponSelection.MaximumCoupons)
+            throw new CouponRejectedException(CouponRejectionReason.Conflict, $"At most {CouponSelection.MaximumCoupons} coupons can be applied.");
+
+        var normalizedCodes = selection.Codes
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(CouponCode.Normalize)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var walletIds = selection.WalletCouponIds.Distinct().ToArray();
+        if (normalizedCodes.Length != selection.Codes.Count || walletIds.Length != selection.WalletCouponIds.Count)
+            throw new CouponRejectedException(CouponRejectionReason.Duplicate, "Coupon codes must be non-empty and unique.");
+
+        var digests = normalizedCodes.Select(CouponCode.Digest).ToArray();
+        var byCode = digests.Length == 0
+            ? []
+            : await db.CouponProjections
+                .AsNoTracking()
+                .Where(coupon => digests.Contains(coupon.CodeDigest))
+                .ToArrayAsync(cancellationToken);
+        if (byCode.Length != digests.Length)
+            throw new CouponRejectedException(CouponRejectionReason.Unknown, "One or more coupon codes are unknown.");
+
+        // Wallet coupons are only reachable by the buyer they were issued to; a foreign id reads as unknown.
+        var byWallet = walletIds.Length == 0
+            ? []
+            : await db.CouponProjections
+                .AsNoTracking()
+                .Where(coupon => walletIds.Contains(coupon.Id) && coupon.AssignedUserId == userId)
+                .ToArrayAsync(cancellationToken);
+        if (byWallet.Length != walletIds.Length)
+            throw new CouponRejectedException(CouponRejectionReason.Unknown, "One or more wallet coupons do not belong to this buyer.");
+
+        var all = byCode.Concat(byWallet).ToArray();
+        if (all.Select(coupon => coupon.Id).Distinct().Count() != all.Length)
+            throw new CouponRejectedException(CouponRejectionReason.Duplicate, "The same coupon was requested twice.");
+        return all;
+    }
+
+    private static (decimal? Amount, int? Quantity)? Shortfall(string rulesJson, PromotionEvaluationContext context)
+    {
+        var rules = JsonSerializer.Deserialize<IReadOnlyList<PromotionRuleContract>>(rulesJson) ?? [];
+        decimal? amount = null;
+        int? quantity = null;
+        foreach (var rule in rules)
+        {
+            if (rule.SchemaVersion == 1 && string.Equals(rule.RuleType, "MinimumOrderAmount", StringComparison.OrdinalIgnoreCase))
+            {
+                var missing = PromotionJson.RequiredDecimal(rule.ConfigurationJson, "amount") - context.Subtotal;
+                if (missing > 0)
+                    amount = Round(missing);
+            }
+            else if (rule.SchemaVersion == 1 && string.Equals(rule.RuleType, "MinimumItemQuantity", StringComparison.OrdinalIgnoreCase))
+            {
+                var missing = PromotionJson.RequiredInt32(rule.ConfigurationJson, "quantity") - context.TotalQuantity;
+                if (missing > 0)
+                    quantity = missing;
+            }
+            else
+            {
+                // Rules the storefront cannot express as "buy a little more" produce no hint.
+                return null;
+            }
+        }
+        return amount is null && quantity is null ? null : (amount, quantity);
     }
 
     private bool RulesMatch(string rulesJson, PromotionEvaluationContext context)
@@ -277,10 +398,11 @@ public sealed class OrderPricingService(
     private static void EnsureRequestedCouponCanApply(
         PromotionProjection promotion,
         IReadOnlyDictionary<Guid, CouponProjection> coupons,
-        string reason)
+        CouponRejectionReason reason,
+        string message)
     {
-        if (coupons.ContainsKey(promotion.Id))
-            throw new InvalidOperationException(reason);
+        if (coupons.TryGetValue(promotion.Id, out var coupon))
+            throw new CouponRejectedException(reason, message, coupon.Id);
     }
 
     private static decimal Round(decimal value) =>
@@ -375,7 +497,8 @@ public static class OrderRequestFingerprint
         IEnumerable<string> couponCodes,
         ShippingAddressSnapshot shippingAddress,
         Guid? sourceBasketId,
-        long? sourceBasketVersion)
+        long? sourceBasketVersion,
+        IEnumerable<Guid>? walletCouponIds = null)
     {
         ArgumentNullException.ThrowIfNull(shippingAddress);
         if (sourceBasketId.HasValue != sourceBasketVersion.HasValue)
@@ -416,6 +539,13 @@ public static class OrderRequestFingerprint
                 shippingAddress.PostalCode
             }
         });
+        var canonicalWalletCoupons = (walletCouponIds ?? [])
+            .Select(id => id.ToString("N"))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        // Appended only when present so fingerprints of code-only requests match earlier releases.
+        if (canonicalWalletCoupons.Length > 0)
+            canonical = string.Join('|', canonical, "wallet", string.Join(',', canonicalWalletCoupons));
         if (sourceBasketId.HasValue)
         {
             canonical = string.Join(

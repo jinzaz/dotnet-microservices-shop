@@ -3,6 +3,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../app/auth/AuthProvider';
 import { MAX_LINE_QUANTITY, useBasket, useBasketActions } from '../features/basket/basket-store';
 import type { CartLine } from '../features/basket/types';
+import { PriceBreakdown, PromotionOpportunities } from '../features/pricing/PriceBreakdown';
+import { couponReasonText, useOrderQuote } from '../features/pricing/quote-api';
 import { getErrorMessage } from '../shared/api/api-error';
 import { isDemoMode } from '../shared/config/api';
 import { CommerceShell } from '../shared/layout/CommerceShell';
@@ -29,6 +31,12 @@ export default function CartPage() {
   const [busySku, setBusySku] = useState<string | null>(null);
   const [couponDraft, setCouponDraft] = useState('');
   const [savingCoupons, setSavingCoupons] = useState(false);
+  // Only signed-in baskets can be quoted: Ordering prices per buyer (wallet, per-user coupon limits).
+  const quote = useOrderQuote({
+    items: basket.lines.filter((line) => line.isAvailable !== false).map((line) => ({ sku: line.sku, quantity: line.quantity })),
+    couponCodes: basket.couponCodes,
+  }, basket.remote);
+  const couponOutcome = new Map((quote.data?.coupons ?? []).map((coupon) => [coupon.key, coupon]));
 
   const run = async (sku: string, action: () => Promise<unknown>, success?: string) => {
     setBusySku(sku);
@@ -124,6 +132,7 @@ export default function CartPage() {
         {unavailableCount ? (
           <p className="inline-alert inline-alert--error" role="alert"><Icon name="alert-circle" />{unavailableCount} 件商品已下架或暂不可售，请移除后再结算。</p>
         ) : null}
+        <PromotionOpportunities quote={quote.data} currency={basket.currency} productsPath={`/products${suffix}`} />
 
         <div className="checkout-layout">
           <ul className="cart-lines">
@@ -166,24 +175,30 @@ export default function CartPage() {
                 </div>
                 {basket.couponCodes.length ? (
                   <ul className="coupon-chips">
-                    {basket.couponCodes.map((code) => (
-                      <li key={code}>
-                        <Icon name="ticket" />{code}
-                        <button type="button" aria-label={`移除优惠码 ${code}`} disabled={savingCoupons} onClick={() => void updateCoupons(basket.couponCodes.filter((value) => value !== code))}><Icon name="close" /></button>
-                      </li>
-                    ))}
+                    {basket.couponCodes.map((code) => {
+                      const outcome = couponOutcome.get(code);
+                      const rejected = outcome && !outcome.applied;
+                      return (
+                        <li key={code} className={rejected ? 'is-rejected' : outcome?.applied ? 'is-applied' : undefined} title={rejected ? couponReasonText(outcome.reason) : undefined}>
+                          <Icon name="ticket" />{code}
+                          {outcome?.applied ? <b>-{formatMoney(outcome.discountAmount, basket.currency)}</b> : null}
+                          <button type="button" aria-label={`移除优惠码 ${code}`} disabled={savingCoupons} onClick={() => void updateCoupons(basket.couponCodes.filter((value) => value !== code))}><Icon name="close" /></button>
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : null}
+                {basket.couponCodes.filter((code) => couponOutcome.get(code)?.applied === false).map((code) => (
+                  <small key={code} className="coupon-rejection" role="status">{code}：{couponReasonText(couponOutcome.get(code)?.reason)}</small>
+                ))}
               </form>
             ) : (
               <p className="checkout-contract-note">登录后可使用优惠码，购物袋也会同步到你的账户。</p>
             )}
-            <dl className="summary-totals">
-              <div><dt>商品金额（预估）</dt><dd>{formatMoney(basket.subtotal, basket.currency)}</dd></div>
-              <div><dt>运费</dt><dd>{formatMoney(0, basket.currency)}</dd></div>
-              <div className="summary-total"><dt>预估合计</dt><dd>{formatMoney(basket.subtotal, basket.currency)}</dd></div>
-            </dl>
-            <p className="checkout-contract-note">优惠与最终金额以提交订单时的计算为准。</p>
+            <PriceBreakdown quote={quote.data} fallbackSubtotal={basket.subtotal} currency={basket.currency} loading={quote.isFetching} totalLabel="预估合计" />
+            <p className="checkout-contract-note">
+              {basket.remote ? '已按当前活动试算，账户券可在结算时勾选；最终金额以提交订单时为准。' : '登录后自动计算满减与优惠券。'}
+            </p>
             <Button type="button" className="submit-order" disabled={unavailableCount > 0} onClick={checkout}>
               {isAuthenticated || demoMode ? `去结算（${basket.itemCount}）` : '登录后结算'}
             </Button>

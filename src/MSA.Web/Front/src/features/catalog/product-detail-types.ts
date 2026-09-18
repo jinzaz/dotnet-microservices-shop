@@ -1,4 +1,4 @@
-import type { CustomerCoupon } from '../coupons/types';
+import type { StorefrontPromotion } from '../promotions/types';
 import type { ProductReviewResult } from '../reviews/types';
 import type { DisplayProduct } from './types';
 
@@ -23,6 +23,7 @@ export type ProductDetail = DisplayProduct & {
   longDescription: string;
   specifications: ProductSpecification[];
   skus: ProductSku[];
-  coupons: CustomerCoupon[];
+  /** Automatic promotions whose targets include this product. */
+  promotions: StorefrontPromotion[];
   reviews: ProductReviewResult;
 };

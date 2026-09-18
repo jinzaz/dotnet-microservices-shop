@@ -389,6 +389,28 @@ internal static class CatalogAdminEndpoints
             return Results.NoContent();
         });
 
+        write.MapPost("/promotions/{id:guid}/revise", async (
+            Guid id,
+            VersionedCatalogRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new RevisePromotionCommand(id, request.ExpectedVersion, GetActor(context)), cancellationToken);
+            return Results.NoContent();
+        });
+
+        write.MapPost("/promotions/{id:guid}/archive", async (
+            Guid id,
+            VersionedCatalogRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new ArchivePromotionCommand(id, request.ExpectedVersion, GetActor(context)), cancellationToken);
+            return Results.NoContent();
+        });
+
         write.MapPost("/promotions/{id:guid}/end", async (
             Guid id,
             VersionedCatalogRequest request,
@@ -427,10 +449,12 @@ internal static class CatalogAdminEndpoints
             ISender sender,
             CancellationToken cancellationToken) =>
         {
+            // An empty code asks the service to generate one; the plaintext is only ever returned here.
+            var code = string.IsNullOrWhiteSpace(request.Code) ? Coupon.GenerateCode(request.CodePrefix) : request.Code.Trim();
             var id = await sender.Send(
                 new CreateCouponCommand(
                     request.PromotionId,
-                    request.Code,
+                    code,
                     request.ValidFromUtc,
                     request.ValidUntilUtc,
                     request.AssignedUserId,
@@ -440,8 +464,27 @@ internal static class CatalogAdminEndpoints
                     request.BucketCount,
                     GetActor(context)),
                 cancellationToken);
-            return Results.Created($"/api/catalog/admin/coupons/{id}", new { id });
+            return Results.Created($"/api/catalog/admin/coupons/{id}", new { id, code = code.ToUpperInvariant() });
         });
+
+        write.MapPost("/coupons/batch", async (
+            CreateCouponBatchRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(
+                new CreateCouponBatchCommand(
+                    request.PromotionId,
+                    request.Count,
+                    request.AssignedUserIds,
+                    request.CodePrefix,
+                    request.ValidFromUtc,
+                    request.ValidUntilUtc,
+                    request.TotalLimitPerCoupon,
+                    request.PerUserLimit,
+                    request.Activate,
+                    GetActor(context)),
+                cancellationToken)));
 
         write.MapPost("/coupons/{id:guid}/activate", async (
             Guid id,
@@ -544,11 +587,23 @@ public sealed record PromotionDefinitionRequest(
 
 public sealed record CreateCouponRequest(
     Guid PromotionId,
-    string Code,
+    string? Code,
     DateTimeOffset ValidFromUtc,
     DateTimeOffset ValidUntilUtc,
     string? AssignedUserId,
     int? TotalLimit,
     int PerUserLimit = 1,
     string QuotaStrategy = "SingleRow",
-    int? BucketCount = null);
+    int? BucketCount = null,
+    string? CodePrefix = null);
+
+public sealed record CreateCouponBatchRequest(
+    Guid PromotionId,
+    DateTimeOffset ValidFromUtc,
+    DateTimeOffset ValidUntilUtc,
+    int Count = 0,
+    IReadOnlyList<string>? AssignedUserIds = null,
+    string? CodePrefix = null,
+    int? TotalLimitPerCoupon = null,
+    int PerUserLimit = 1,
+    bool Activate = false);

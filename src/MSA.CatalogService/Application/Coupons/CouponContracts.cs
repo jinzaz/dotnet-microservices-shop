@@ -31,10 +31,56 @@ public sealed record ExpireCouponCommand(
     long? ExpectedVersion,
     string Actor) : ICommand<bool>;
 
+/// <summary>
+/// Issues many coupons at once. With <paramref name="AssignedUserIds"/> one personal coupon is issued per user
+/// (landing in their wallet); otherwise <paramref name="Count"/> shareable codes are generated.
+/// Plaintext codes are returned exactly once because only their digest is stored.
+/// </summary>
+public sealed record CreateCouponBatchCommand(
+    Guid PromotionId,
+    int Count,
+    IReadOnlyList<string>? AssignedUserIds,
+    string? CodePrefix,
+    DateTimeOffset ValidFromUtc,
+    DateTimeOffset ValidUntilUtc,
+    int? TotalLimitPerCoupon,
+    int PerUserLimit,
+    bool Activate,
+    string Actor) : ICommand<IReadOnlyList<IssuedCouponDto>>;
+
+public sealed record IssuedCouponDto(Guid Id, string Code, string MaskedCode, string? AssignedUserId);
+
 public sealed record GetCouponQuery(Guid CouponId) : IQuery<CouponDto?>;
 
 public sealed record ListCouponsQuery(int Skip, int Take, string? Status, Guid? PromotionId)
     : IQuery<PagedResult<CouponDto>>;
+
+public sealed class CreateCouponBatchValidator : AbstractValidator<CreateCouponBatchCommand>
+{
+    public const int MaximumBatchSize = 500;
+
+    public CreateCouponBatchValidator()
+    {
+        RuleFor(command => command.PromotionId).NotEmpty();
+        RuleFor(command => command.Count).InclusiveBetween(1, MaximumBatchSize)
+            .When(command => command.AssignedUserIds is null || command.AssignedUserIds.Count == 0);
+        RuleFor(command => command.AssignedUserIds!.Count).InclusiveBetween(1, MaximumBatchSize)
+            .When(command => command.AssignedUserIds is { Count: > 0 });
+        RuleForEach(command => command.AssignedUserIds).NotEmpty().MaximumLength(200);
+        RuleFor(command => command.AssignedUserIds)
+            .Must(ids => ids is null || ids.Select(id => id.Trim()).Distinct(StringComparer.Ordinal).Count() == ids.Count)
+            .WithMessage("Assigned users must be unique.");
+        RuleFor(command => command.CodePrefix).MaximumLength(20).Matches("^[A-Za-z0-9\\-]*$");
+        RuleFor(command => command.TotalLimitPerCoupon).GreaterThan(0).When(command => command.TotalLimitPerCoupon.HasValue);
+        RuleFor(command => command.PerUserLimit).GreaterThan(0);
+        RuleFor(command => command).Must(command =>
+                !command.TotalLimitPerCoupon.HasValue || command.PerUserLimit <= command.TotalLimitPerCoupon.Value)
+            .WithMessage("Per-user limit cannot exceed total limit.");
+        RuleFor(command => command).Must(command => command.ValidFromUtc < command.ValidUntilUtc)
+            .WithMessage("Coupon validity end must be after its start.");
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
 
 public sealed class CreateCouponValidator : AbstractValidator<CreateCouponCommand>
 {

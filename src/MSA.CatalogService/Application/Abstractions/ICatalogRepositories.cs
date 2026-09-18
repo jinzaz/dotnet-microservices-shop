@@ -29,6 +29,7 @@ public interface ICouponRepository
 {
     Task<Coupon?> FindAsync(Guid id, CancellationToken cancellationToken);
     Task<bool> CodeDigestExistsAsync(string codeDigest, Guid? exceptId, CancellationToken cancellationToken);
+    Task<IReadOnlySet<string>> FindExistingDigestsAsync(IReadOnlyCollection<string> codeDigests, CancellationToken cancellationToken);
     void Add(Coupon coupon);
 }
 

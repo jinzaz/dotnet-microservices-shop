@@ -1,19 +1,24 @@
-export type CouponStatus = 'available' | 'used' | 'expired';
+import type { PromotionBenefit, PromotionRule, PromotionTarget } from '../promotions/types';
 
-export type CustomerCoupon = {
-  id: string;
-  title: string;
-  valueLabel: string;
-  conditionLabel: string;
-  scopeLabel: string;
-  code: string;
-  status: CouponStatus;
+export type WalletCouponStatus = 'Available' | 'NotStarted' | 'Used' | 'Expired' | 'Unavailable';
+
+/**
+ * Mirrors Ordering's WalletCouponDto. Issued coupons are applied by couponId because the
+ * plaintext code is never stored; public codes the buyer typed before show up once redeemed.
+ */
+export type WalletCoupon = {
+  couponId: string;
+  promotionId: string;
+  promotionName: string;
+  maskedCode: string;
+  isAssigned: boolean;
+  status: WalletCouponStatus;
   validFromUtc: string;
   validUntilUtc: string;
-  productId?: string;
-  isExpiringSoon?: boolean;
-};
-
-export type RedeemCouponResponse = {
-  coupon: CustomerCoupon;
+  usedCount: number;
+  perUserLimit: number;
+  lastUsedOnUtc: string | null;
+  rules: PromotionRule[];
+  benefits: PromotionBenefit[];
+  targets: PromotionTarget[];
 };

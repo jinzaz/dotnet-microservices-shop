@@ -6,6 +6,7 @@ using MSA.OrderService.Application.CancelOrder;
 using MSA.OrderService.Application.CreateOrder;
 using MSA.OrderService.Application.GetOrder;
 using MSA.OrderService.Application.GetOrders;
+using MSA.OrderService.Application.Pricing;
 using MSA.OrderService.Domain;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
@@ -24,7 +25,17 @@ public sealed class OrdersController(ISender sender) : ControllerBase
         ShippingAddressInput ShippingAddress,
         IReadOnlyList<string>? CouponCodes = null,
         Guid? SourceBasketId = null,
-        long? SourceBasketVersion = null);
+        long? SourceBasketVersion = null,
+        IReadOnlyList<Guid>? WalletCouponIds = null);
+
+    public sealed record QuoteItemRequest(
+        [property: Required, MaxLength(80)] string Sku,
+        [property: Range(1, 999)] int Quantity);
+
+    public sealed record QuoteOrderRequest(
+        [property: Required, MinLength(1), MaxLength(50)] IReadOnlyList<QuoteItemRequest> Items,
+        [property: MaxLength(5)] IReadOnlyList<string>? CouponCodes = null,
+        [property: MaxLength(5)] IReadOnlyList<Guid>? WalletCouponIds = null);
 
     public sealed record CancelOrderRequest([property: MaxLength(200)] string? Reason = null);
 
@@ -46,7 +57,8 @@ public sealed class OrdersController(ISender sender) : ControllerBase
                 request.ShippingAddress,
                 request.CouponCodes,
                 request.SourceBasketId,
-                request.SourceBasketVersion),
+                request.SourceBasketVersion,
+                request.WalletCouponIds),
             cancellationToken);
         return AcceptedAtAction(nameof(Get), new { id }, new { orderId = id });
     }
@@ -95,5 +107,20 @@ public sealed class OrdersController(ISender sender) : ControllerBase
     {
         var userId = User.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
         return sender.Send(new CancelOrderCommand(id, userId, request?.Reason), cancellationToken);
+    }
+
+    /// <summary>Prices the items with automatic promotions and the requested coupons without reserving anything.</summary>
+    [HttpPost("quote")]
+    [Authorize(Policy = "order-api")]
+    public Task<OrderQuoteDto> Quote(QuoteOrderRequest request, CancellationToken cancellationToken)
+    {
+        var userId = User.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
+        return sender.Send(
+            new QuoteOrderQuery(
+                userId,
+                request.Items.Select(item => new QuoteItem(item.Sku, item.Quantity)).ToArray(),
+                request.CouponCodes,
+                request.WalletCouponIds),
+            cancellationToken);
     }
 }

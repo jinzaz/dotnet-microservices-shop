@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MSA.OrderService.Application.Pricing;
 
 namespace MSA.OrderService.Middleware;
 
@@ -18,6 +19,7 @@ internal sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler> logger) :
             UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, "Unauthorized", "The access token does not identify a user."),
             KeyNotFoundException => (StatusCodes.Status404NotFound, "Resource not found", "The requested order resource was not found."),
             ArgumentException => (StatusCodes.Status400BadRequest, "Invalid request", "The request violates an order rule."),
+            CouponRejectedException => (StatusCodes.Status409Conflict, "Coupon not applicable", exception.Message),
             InvalidOperationException => (StatusCodes.Status409Conflict, "Order conflict", "The request conflicts with the current order or campaign state."),
             DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Order changed", "The order changed concurrently; retry with the same idempotency key."),
             DbUpdateException => (StatusCodes.Status409Conflict, "Order constraint conflict", "The request conflicts with an order uniqueness constraint."),
@@ -28,15 +30,20 @@ internal sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler> logger) :
 
         logger.LogWarning(exception, "Handled order API exception with status {StatusCode}.", statusCode);
         httpContext.Response.StatusCode = statusCode;
-        await httpContext.Response.WriteAsJsonAsync(
-            new ProblemDetails
-            {
-                Status = statusCode,
-                Title = title,
-                Detail = detail,
-                Instance = httpContext.Request.Path
-            },
-            cancellationToken);
+        var problem = new ProblemDetails
+        {
+            Status = statusCode,
+            Title = title,
+            Detail = detail,
+            Instance = httpContext.Request.Path
+        };
+        // Clients localize coupon failures from the stable reason code rather than the English detail.
+        if (exception is CouponRejectedException rejected)
+        {
+            problem.Extensions["couponReason"] = rejected.Reason.ToString();
+            problem.Extensions["couponId"] = rejected.CouponId;
+        }
+        await httpContext.Response.WriteAsJsonAsync(problem, cancellationToken);
         return true;
     }
 }

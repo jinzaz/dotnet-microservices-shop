@@ -48,6 +48,7 @@ builder.Services.AddScoped<IValidator<UpdateProductMediaCommand>, UpdateProductM
 builder.Services.AddScoped<IValidator<CreatePromotionCommand>, CreatePromotionValidator>();
 builder.Services.AddScoped<IValidator<ReplacePromotionDefinitionCommand>, ReplacePromotionDefinitionValidator>();
 builder.Services.AddScoped<IValidator<CreateCouponCommand>, CreateCouponValidator>();
+builder.Services.AddScoped<IValidator<CreateCouponBatchCommand>, CreateCouponBatchValidator>();
 
 builder.Services.AddStackExchangeRedisCache(options => options.Configuration = redis);
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));

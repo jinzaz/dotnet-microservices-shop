@@ -88,6 +88,15 @@ internal sealed class CatalogStore(CatalogDbContext db, TimeProvider clock) :
             .Include(coupon => coupon.QuotaBuckets)
             .SingleOrDefaultAsync(coupon => coupon.Id == id, cancellationToken);
 
+    async Task<IReadOnlySet<string>> ICouponRepository.FindExistingDigestsAsync(
+        IReadOnlyCollection<string> codeDigests,
+        CancellationToken cancellationToken) =>
+        (await db.Coupons
+            .Where(coupon => codeDigests.Contains(coupon.CodeDigest))
+            .Select(coupon => coupon.CodeDigest)
+            .ToArrayAsync(cancellationToken))
+        .ToHashSet(StringComparer.Ordinal);
+
     Task<bool> ICouponRepository.CodeDigestExistsAsync(
         string codeDigest,
         Guid? exceptId,

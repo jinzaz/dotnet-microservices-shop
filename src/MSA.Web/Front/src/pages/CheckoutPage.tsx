@@ -4,6 +4,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { basketQueryKey, clearCart, ensureCartLine, useBasket } from '../features/basket/basket-store';
 import type { CartLine } from '../features/basket/types';
 import { createOrder, type PaymentMethod } from '../features/checkout/order-api';
+import { listMyCoupons, myCouponsQueryKey, usableCoupons } from '../features/coupons/coupons-api';
+import { demoCoupons } from '../features/coupons/demo-coupons';
+import { PriceBreakdown, PromotionOpportunities } from '../features/pricing/PriceBreakdown';
+import { couponReasonText, couponRejectionOf, useOrderQuote } from '../features/pricing/quote-api';
+import { benefitValue, conditionText, describePromotion } from '../features/promotions/describe';
 import { demoAccountSnapshot } from '../features/profile/demo-account';
 import { listAddresses } from '../features/profile/profile-api';
 import type { UserAddress } from '../features/profile/types';
@@ -36,6 +41,8 @@ function fullAddress(address: UserAddress): string {
 
 function checkoutErrorMessage(error: unknown): string {
   if (error instanceof ApiError && error.status === 429) return '提交过于频繁，请稍候再试。';
+  const couponProblem = couponRejectionOf(error);
+  if (couponProblem) return `优惠券无法使用：${couponProblem}。请调整优惠后重新提交。`;
   if (error instanceof ApiError && error.status === 409) return `${getErrorMessage(error)} 请返回购物袋确认商品和库存后重试。`;
   return getErrorMessage(error);
 }
@@ -50,6 +57,7 @@ export default function CheckoutPage() {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [walletSelection, setWalletSelection] = useState<string[]>([]);
   // One key per checkout attempt: retries after a network failure must not create a second order.
   const idempotencyKey = useRef(crypto.randomUUID());
   const addressQuery = useQuery({
@@ -60,9 +68,34 @@ export default function CheckoutPage() {
     staleTime: 0,
   });
 
+  const walletQuery = useQuery({
+    queryKey: myCouponsQueryKey,
+    queryFn: listMyCoupons,
+    enabled: !demoMode,
+    staleTime: 30_000,
+  });
+  const walletCoupons = usableCoupons(demoMode ? demoCoupons : walletQuery.data);
+  const orderableLines = basket.lines.filter((line) => line.isAvailable !== false);
+  const quote = useOrderQuote({
+    items: orderableLines.map((line) => ({ sku: line.sku, quantity: line.quantity })),
+    couponCodes: basket.couponCodes,
+    walletCouponIds: walletSelection,
+  }, basket.remote);
+  const couponOutcome = new Map((quote.data?.coupons ?? []).map((coupon) => [coupon.key, coupon]));
+  // Only coupons the quote accepted are submitted, so one bad code cannot block the whole order.
+  const appliedCodes = basket.couponCodes.filter((code) => couponOutcome.get(code)?.applied !== false);
+  const appliedWalletIds = walletSelection.filter((id) => couponOutcome.get(id)?.applied !== false);
+
   useEffect(() => {
     if (demoMode && basket.lines.length === 0) ensureCartLine(demoCheckoutLine);
   }, [demoMode, basket.lines.length]);
+
+  const toggleWalletCoupon = (couponId: string) => {
+    setSubmitError('');
+    setWalletSelection((current) => current.includes(couponId)
+      ? current.filter((id) => id !== couponId)
+      : [...current, couponId].slice(-5));
+  };
 
   const lines = basket.lines;
   const addresses = demoMode ? demoAccountSnapshot.addresses : addressQuery.data ?? [];
@@ -101,12 +134,14 @@ export default function CheckoutPage() {
           streetLine2: null,
           postalCode: selectedAddress.postalCode,
         },
-        couponCodes: basket.couponCodes,
+        couponCodes: appliedCodes,
+        walletCouponIds: appliedWalletIds,
         // Lets BasketService clear exactly this basket version once the order is accepted.
         sourceBasketId: basket.basket?.basketId ?? undefined,
         sourceBasketVersion: basket.basket?.basketId ? basket.basket.version : undefined,
       }, idempotencyKey.current);
       void queryClient.invalidateQueries({ queryKey: ['ordering', 'orders'] });
+      void queryClient.invalidateQueries({ queryKey: myCouponsQueryKey });
       // The basket is cleared asynchronously; refresh it after the event has had time to arrive.
       window.setTimeout(() => void queryClient.invalidateQueries({ queryKey: basketQueryKey }), 3_000);
       navigate(`/payment/${response.orderId}`, { replace: true });
@@ -180,13 +215,45 @@ export default function CheckoutPage() {
 
             <section className="checkout-section">
               <div className="checkout-section__title"><span>4</span><h2>优惠</h2></div>
+              <PromotionOpportunities quote={quote.data} currency={basket.currency} productsPath={`/products${demoMode ? '?demo=1' : ''}`} />
+              {walletCoupons.length ? (
+                <fieldset className="wallet-coupons">
+                  <legend>账户优惠券 <small>可用 {walletCoupons.length} 张，最多同时使用 5 张</small></legend>
+                  {walletCoupons.map((coupon) => {
+                    const selected = walletSelection.includes(coupon.couponId);
+                    const outcome = couponOutcome.get(coupon.couponId);
+                    const rejected = selected && outcome && !outcome.applied;
+                    return (
+                      <label key={coupon.couponId} className={`${selected ? 'is-selected' : ''} ${rejected ? 'is-rejected' : ''}`.trim() || undefined}>
+                        <input type="checkbox" checked={selected} onChange={() => toggleWalletCoupon(coupon.couponId)} />
+                        <span className="wallet-coupons__value">{benefitValue(coupon.benefits, basket.currency)}<small>{conditionText(coupon.rules, basket.currency)}</small></span>
+                        <span className="wallet-coupons__info">
+                          <strong>{coupon.promotionName}</strong>
+                          <small>{rejected ? couponReasonText(outcome.reason) : describePromotion(coupon.rules, coupon.benefits, basket.currency)}</small>
+                        </span>
+                        {selected && outcome?.applied ? <b>-{formatMoney(outcome.discountAmount, basket.currency)}</b> : null}
+                      </label>
+                    );
+                  })}
+                </fieldset>
+              ) : null}
               {basket.couponCodes.length ? (
                 <ul className="coupon-chips coupon-chips--static">
-                  {basket.couponCodes.map((code) => <li key={code}><Icon name="ticket" />{code}</li>)}
+                  {basket.couponCodes.map((code) => {
+                    const outcome = couponOutcome.get(code);
+                    return (
+                      <li key={code} className={outcome && !outcome.applied ? 'is-rejected' : outcome?.applied ? 'is-applied' : undefined}>
+                        <Icon name="ticket" />{code}
+                        {outcome ? <small>{outcome.applied ? `-${formatMoney(outcome.discountAmount, basket.currency)}` : couponReasonText(outcome.reason)}</small> : null}
+                      </li>
+                    );
+                  })}
                 </ul>
-              ) : <p className="checkout-contract-note">未使用优惠码。</p>}
-              <Link className="outline-action" to={`/cart${demoMode ? '?demo=1' : ''}`}><Icon name="edit" />在购物袋中修改优惠码</Link>
-              <small className="checkout-contract-note">满减、折扣等活动会在提交订单时自动计算，实付金额以支付页为准。</small>
+              ) : !walletCoupons.length ? <p className="checkout-contract-note">暂无可用优惠券。</p> : null}
+              <Link className="outline-action" to={`/cart${demoMode ? '?demo=1' : ''}`}><Icon name="edit" />在购物袋中输入优惠码</Link>
+              {basket.couponCodes.some((code) => couponOutcome.get(code)?.applied === false) ? (
+                <small className="checkout-contract-note">不可用的优惠码不会随订单提交。</small>
+              ) : null}
             </section>
           </div>
 
@@ -205,14 +272,12 @@ export default function CheckoutPage() {
                 </article>
               ))}
             </div>
-            <dl className="summary-totals">
-              <div><dt>商品金额</dt><dd>{formatMoney(basket.subtotal, basket.currency)}</dd></div>
-              <div><dt>运费</dt><dd>{formatMoney(0, basket.currency)}</dd></div>
-              <div><dt>活动与优惠</dt><dd>提交后计算</dd></div>
-              <div className="summary-total"><dt>预估应付</dt><dd>{formatMoney(basket.subtotal, basket.currency)}</dd></div>
-            </dl>
+            <PriceBreakdown quote={quote.data} fallbackSubtotal={basket.subtotal} currency={basket.currency} loading={quote.isFetching} totalLabel="应付金额" />
+            {quote.isError ? <p className="checkout-contract-note">优惠试算暂不可用，提交订单时将重新计算。</p> : null}
             {submitError ? <p className="form-message form-message--error" role="alert">{submitError}</p> : null}
-            <Button type="button" className="submit-order" loading={submitting} disabled={!selectedAddress || unavailable.length > 0} onClick={() => void submit()}>提交订单</Button>
+            <Button type="button" className="submit-order" loading={submitting} disabled={!selectedAddress || unavailable.length > 0 || (quote.isFetching && !quote.data)} onClick={() => void submit()}>
+              提交订单{quote.data ? ` · ${formatMoney(quote.data.total, quote.data.currency)}` : ''}
+            </Button>
             <label className="summary-terms">
               <input type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} />
               <span><Icon name="check" /></span>

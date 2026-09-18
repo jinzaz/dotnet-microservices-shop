@@ -279,3 +279,14 @@ button.command-search > span { min-width: 0; flex: 1; overflow: hidden; font-siz
   .chip-filter button { flex: 0 0 auto; }
   .detail-list > div { grid-template-columns: 1fr; gap: 4px; }
 }
+
+/* Coupon issuance */
+.issued-codes { display: grid; gap: 6px; max-height: 320px; overflow: auto; padding: 4px; border: 1px solid var(--line); border-radius: 9px; }
+.issued-codes > div { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px; }
+.issued-codes > div:nth-child(odd) { background: rgb(0 0 0 / 3%); }
+.issued-codes code { font-size: 13px; font-weight: 700; letter-spacing: .04em; }
+.issued-codes small { flex: 1; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.coupon-usage { display: grid; gap: 2px; }
+.coupon-usage__bar { position: relative; width: 96px; height: 5px; border-radius: 99px; background: rgb(0 0 0 / 8%); overflow: hidden; }
+.coupon-usage__bar > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--lime-deep); }
+.catalog-filter-select { min-width: 200px; }

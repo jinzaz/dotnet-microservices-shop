@@ -39,4 +39,5 @@ public sealed record CreateOrderCommand(
     ShippingAddressInput ShippingAddress,
     IReadOnlyList<string>? CouponCodes = null,
     Guid? SourceBasketId = null,
-    long? SourceBasketVersion = null) : ICommand<Guid>;
+    long? SourceBasketVersion = null,
+    IReadOnlyList<Guid>? WalletCouponIds = null) : ICommand<Guid>;

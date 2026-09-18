@@ -4,6 +4,7 @@ import { api, catalogMediaPolicy, query, type Paged } from '../api';
 import { useSession } from '../session';
 import { asLocalInput, ChipFilter, CopyButton, Dropzone, Empty, ErrorNotice, Field, formatDate, formatMoney, formatRelative, Icon, Loading, Modal, PageHeader, Pagination, SearchInput, SkeletonRows, Status, statusLabel, SubmitBar, UploadList, useConfirm, usePage, useToast, useUrlState, type UploadItem } from '../ui';
 import { attachMedia, newUploadItems, ProductStudio, type Product } from './catalog/ProductStudio';
+import { CouponBatchForm, IssuedCouponsView, useCouponUsage, type CouponUsage, type IssuedCoupon } from './catalog/CouponTools';
 import { PromotionForm, type CategoryOption, type PromotionDetail } from './catalog/PromotionForm';
 
 type Tab = 'products' | 'categories' | 'promotions' | 'coupons';
@@ -35,14 +36,23 @@ export default function CatalogPage() {
   const [page, setPage] = usePage();
   const [productId, setProductId] = useUrlState('product', '', { resetPage: false });
   const [promotionId, setPromotionId] = useUrlState('promotion', '', { resetPage: false });
+  const [promotionFilter, setPromotionFilter] = useUrlState('forPromotion');
   const [createOpen, setCreateOpen] = useState(false);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [issued, setIssued] = useState<IssuedCoupon[] | null>(null);
   const module = tabMeta.module;
   const canQuery = can(`${module}.query`);
   const canEdit = can(`${module}.edit`);
 
   const listQuery = useQuery({
-    queryKey: ['catalog', tab, { status, search, page }],
-    queryFn: ({ signal }) => api<Paged<CatalogRow>>(`/api/catalog/admin/${tab}?${query({ status, search: tab === 'products' ? search : '', skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE })}`, { signal }),
+    queryKey: ['catalog', tab, { status, search, page, promotionFilter }],
+    queryFn: ({ signal }) => api<Paged<CatalogRow>>(`/api/catalog/admin/${tab}?${query({
+      status,
+      search: tab === 'products' ? search : '',
+      promotionId: tab === 'coupons' ? promotionFilter : '',
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    })}`, { signal }),
     enabled: canQuery,
     placeholderData: keepPreviousData,
   });
@@ -109,7 +119,8 @@ export default function CatalogPage() {
 
   const createMutation = useMutation({
     mutationFn: async ({ body, uploads, onUpload }: { body: unknown; uploads?: UploadItem[]; onUpload?: (item: UploadItem) => void }) => {
-      const created = await api<{ id: string }>(`/api/catalog/admin/${tab}`, { method: 'POST', body });
+      const created = await api<{ id: string; code?: string }>(`/api/catalog/admin/${tab}`, { method: 'POST', body });
+      if (tab === 'coupons' && created.code) setIssued([{ id: created.id, code: created.code, assignedUserId: (body as { assignedUserId?: string | null }).assignedUserId }]);
       const failures = tab === 'products' && uploads?.length && onUpload
         ? await attachMedia(created.id, uploads, (body as { name: string }).name, null, 0, onUpload)
         : [];
@@ -124,17 +135,32 @@ export default function CatalogPage() {
     },
   });
 
+  const batchMutation = useMutation({
+    mutationFn: (body: unknown) => api<IssuedCoupon[]>('/api/catalog/admin/coupons/batch', { method: 'POST', body }),
+    onSuccess: async (coupons) => {
+      setBatchOpen(false);
+      setIssued(coupons);
+      toast.success(`已发放 ${coupons.length} 张优惠券`);
+      await invalidateCatalog();
+    },
+  });
+
   const promotionMutation = useMutation({
     mutationFn: ({ id, body }: { id: string; body: unknown }) => api<void>(`/api/catalog/admin/promotions/${id}`, { method: 'PUT', body }),
     onSuccess: async () => { toast.success('促销草稿已保存'); await invalidateCatalog(); },
   });
 
   const rows = listQuery.data?.items ?? [];
+  const usageQuery = useCouponUsage(tab === 'coupons' ? rows.map((row) => row.id) : [], tab === 'coupons' && canQuery);
+  const couponPromotions = (promotionsQuery.data?.items ?? []).filter((item) => item.triggerType === 'Coupon');
   const createLabel = tabMeta.label;
 
   return <div className="page">
     <PageHeader eyebrow="CATALOG / MERCHANDISING" title="商品与营销目录" description="以 SPU 维护商品内容，以 SKU 维护规格、价格和可售状态；媒体文件直传 RustFS 并在写入前校验。"
-      actions={can(`${module}.create`) ? <button className="button button--dark" type="button" onClick={() => { createMutation.reset(); setCreateOpen(true); }}><Icon name="plus" />新建{createLabel}</button> : undefined} />
+      actions={can(`${module}.create`) ? <>
+        {tab === 'coupons' ? <button className="button button--quiet" type="button" onClick={() => { batchMutation.reset(); setBatchOpen(true); }}><Icon name="ticket" />批量发券</button> : null}
+        <button className="button button--dark" type="button" onClick={() => { createMutation.reset(); setCreateOpen(true); }}><Icon name="plus" />新建{createLabel}</button>
+      </> : undefined} />
 
     <div className="catalog-toolbar"><div className="tabs" role="tablist">{visibleTabs.map((item) => <button type="button" role="tab" key={item.id} aria-selected={tab === item.id} onClick={() => { setTab(item.id); setStatus(''); setSearch(''); }}>{item.label}</button>)}</div></div>
 
@@ -143,6 +169,10 @@ export default function CatalogPage() {
         <ChipFilter label="状态筛选" value={status} onChange={setStatus} chips={[{ value: '', label: '全部' }, ...tabMeta.statuses.map((value) => ({ value, label: statusLabel(value) }))]} />
         <div className="list-toolbar__filters">
           {tab === 'products' ? <SearchInput value={search} onChange={setSearch} placeholder="商品名称或 SKU" /> : null}
+          {tab === 'coupons' && couponPromotions.length ? <select className="catalog-filter-select" aria-label="按促销活动筛选" value={promotionFilter} onChange={(event) => setPromotionFilter(event.target.value)}>
+            <option value="">全部活动</option>
+            {couponPromotions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select> : null}
           <span className="list-toolbar__count">{listQuery.data?.total ?? 0} 条</span>
         </div>
       </div>
@@ -153,7 +183,7 @@ export default function CatalogPage() {
             {tab === 'products' ? <ProductTable rows={rows as Product[]} canEdit={canEdit} categoryNames={categoryNames} onOpen={setProductId} onAction={runAction} /> : null}
             {tab === 'categories' ? <CategoryTable rows={rows as Category[]} canEdit={canEdit} onRename={(row) => void renameCategory(row)} onAction={runAction} /> : null}
             {tab === 'promotions' ? <PromotionTable rows={rows as Promotion[]} canEdit={canEdit} onOpen={setPromotionId} onAction={runAction} /> : null}
-            {tab === 'coupons' ? <CouponTable rows={rows as Coupon[]} canEdit={canEdit} promotions={promotionById} onAction={runAction} /> : null}
+            {tab === 'coupons' ? <CouponTable rows={rows as Coupon[]} canEdit={canEdit} promotions={promotionById} usage={usageQuery.data} usageError={usageQuery.isError} onAction={runAction} /> : null}
           </div>
             : <Empty title={`没有${tabMeta.label}`} detail={status || search ? '当前筛选条件下没有记录。' : `创建第一条${tabMeta.label}记录开始运营。`} action={status || search ? <button className="button button--quiet" type="button" onClick={() => { setStatus(''); setSearch(''); }}>清空筛选</button> : undefined} />}
       <Pagination page={page} pageSize={PAGE_SIZE} total={listQuery.data?.total} onChange={setPage} busy={listQuery.isFetching} />
@@ -168,6 +198,14 @@ export default function CatalogPage() {
       </SimpleCreateForm> : null}
       {tab === 'promotions' ? <PromotionForm categories={categoriesQuery.data?.items ?? []} busy={createMutation.isPending} error={createMutation.isError ? <ErrorNotice error={createMutation.error} /> : null} onCancel={() => setCreateOpen(false)} onSubmit={(body) => createMutation.mutate({ body })} /> : null}
       {tab === 'coupons' ? <CouponCreateForm promotions={promotionsQuery.data?.items ?? []} canReadPromotions={can('catalog.promotions.query')} busy={createMutation.isPending} error={createMutation.error} onCancel={() => setCreateOpen(false)} onSubmit={(body) => createMutation.mutate({ body })} /> : null}
+    </Modal>
+
+    <Modal open={batchOpen} wide title="批量发放优惠券" description="定向发给用户或生成一批通用券码；完整券码只在发放后显示一次。" onClose={() => setBatchOpen(false)}>
+      {batchOpen ? <CouponBatchForm promotions={promotionsQuery.data?.items ?? []} busy={batchMutation.isPending} error={batchMutation.error} onCancel={() => setBatchOpen(false)} onSubmit={(body) => batchMutation.mutate(body)} /> : null}
+    </Modal>
+
+    <Modal open={Boolean(issued)} title={`已生成 ${issued?.length ?? 0} 个券码`} description="请立即保存：系统只存储券码摘要。" onClose={() => setIssued(null)}>
+      {issued ? <IssuedCouponsView coupons={issued} onClose={() => setIssued(null)} /> : null}
     </Modal>
 
     <Modal open={Boolean(productId)} wide title={productQuery.data?.name ?? '商品工作台'} description={productQuery.data ? `${productQuery.data.variants?.length ?? 0} 个 SKU · ${productQuery.data.media?.length ?? 0} 个媒体 · 更新于 ${formatRelative(productQuery.data.updatedOnUtc)}` : '读取商品信息'} onClose={() => setProductId('')}>
@@ -239,21 +277,35 @@ function PromotionTable({ rows, canEdit, onOpen, onAction }: { rows: Promotion[]
         {canEdit && row.status === 'Draft' ? <button className="row-action-primary" type="button" onClick={() => onAction(row, 'publish', '发布', { name: row.name, detail: '发布后定义不可再修改，订单服务将立即按活动周期计算优惠。' })}>发布</button> : null}
         {canEdit && row.status === 'Active' ? <button type="button" onClick={() => onAction(row, 'pause', '暂停', { name: row.name })}>暂停</button> : null}
         {canEdit && row.status === 'Paused' ? <button type="button" onClick={() => onAction(row, 'resume', '恢复', { name: row.name })}>恢复</button> : null}
-        {canEdit && ['Active', 'Paused', 'Scheduled'].includes(row.status) ? <button className="danger-link" type="button" onClick={() => onAction(row, 'end', '结束', { name: row.name, danger: true, detail: '结束后活动不再参与计算，且不可恢复。' })}>结束</button> : null}
+        {canEdit && ['Paused', 'Scheduled', 'Ended'].includes(row.status) ? <button type="button" onClick={() => onAction(row, 'revise', '重新编辑', { name: row.name, detail: '活动回到草稿并立即停止参与计算，修改后需要重新发布。' })}>重新编辑</button> : null}
+        {canEdit && ['Active', 'Paused', 'Scheduled'].includes(row.status) ? <button className="danger-link" type="button" onClick={() => onAction(row, 'end', '结束', { name: row.name, danger: true, detail: '结束后活动不再参与计算；可重新编辑后再发布。' })}>结束</button> : null}
+        {canEdit && ['Draft', 'Ended'].includes(row.status) ? <button className="danger-link" type="button" onClick={() => onAction(row, 'archive', '归档', { name: row.name, danger: true, detail: '归档是终态，活动将不能再编辑或发布。' })}>归档</button> : null}
       </div></td>
     </tr>;
   })}</tbody></table>;
 }
 
-function CouponTable({ rows, canEdit, promotions, onAction }: { rows: Coupon[]; canEdit: boolean; promotions: Map<string, Promotion>; onAction: ActionHandler }) {
-  return <table><thead><tr><th>优惠券</th><th>促销活动</th><th>有效期</th><th>配额</th><th>状态</th><th>操作</th></tr></thead><tbody>{rows.map((row) => {
+function CouponUsageCell({ row, usage, error }: { row: Coupon; usage?: CouponUsage; error: boolean }) {
+  if (!usage) return <>{error ? '—' : '…'}<small>{error ? '使用数据不可用' : '读取中'}</small></>;
+  const used = usage.consumedCount + usage.reservedCount;
+  const ratio = row.totalLimit ? Math.min(1, used / row.totalLimit) : 0;
+  return <div className="coupon-usage">
+    <strong>已核销 {usage.consumedCount}{usage.reservedCount ? <small> · 占用 {usage.reservedCount}</small> : null}</strong>
+    {row.totalLimit ? <span className="coupon-usage__bar" title={`${used}/${row.totalLimit}`}><span style={{ width: `${ratio * 100}%` }} /></span> : null}
+    <small>{usage.remainingQuota !== null ? `剩余 ${usage.remainingQuota}` : '不限量'}{usage.consumedDiscountTotal ? ` · 让利 ${formatMoney(usage.consumedDiscountTotal)}` : ''}</small>
+  </div>;
+}
+
+function CouponTable({ rows, canEdit, promotions, usage, usageError, onAction }: { rows: Coupon[]; canEdit: boolean; promotions: Map<string, Promotion>; usage?: Map<string, CouponUsage>; usageError: boolean; onAction: ActionHandler }) {
+  return <table><thead><tr><th>优惠券</th><th>促销活动</th><th>有效期</th><th>配额</th><th>使用情况</th><th>状态</th><th>操作</th></tr></thead><tbody>{rows.map((row) => {
     const promotion = promotions.get(row.promotionId);
     const ended = Date.now() >= new Date(row.validUntilUtc).getTime();
     return <tr key={row.id}>
-      <td><strong className="mono">{row.maskedCode}</strong><small>{row.assignedUserId ? `定向 ${row.assignedUserId.slice(0, 8)}…` : '不定向'}</small></td>
+      <td><strong className="mono">{row.maskedCode}</strong><small title={row.assignedUserId}>{row.assignedUserId ? `定向 ${row.assignedUserId.slice(0, 8)}…` : '通用券码'}</small></td>
       <td><strong>{promotion?.name ?? '未读取到活动'}</strong><small>{promotion ? `${promotion.code} · ${statusLabel(promotion.status)}` : row.promotionId}</small></td>
       <td>{formatDate(row.validFromUtc)}<small>至 {formatDate(row.validUntilUtc)}</small></td>
       <td>{row.totalLimit ?? '不限'}<small>每人 {row.perUserLimit} 次 · {row.quotaStrategy === 'Bucketed' ? '分桶' : '单行'}</small></td>
+      <td><CouponUsageCell row={row} usage={usage?.get(row.id)} error={usageError} /></td>
       <td><Status>{row.status}</Status></td>
       <td><div className="row-actions">{canEdit && row.status !== 'Expired' ? <>
         {row.status !== 'Active' && !ended ? <button className="row-action-primary" type="button" onClick={() => onAction(row, 'activate', '启用', { name: row.maskedCode, detail: '所属促销活动必须已发布且处于进行中。' })}>启用</button> : null}
@@ -275,7 +327,7 @@ function PromotionSummary({ promotion, categoryNames }: { promotion: Promotion; 
     <section><h3>门槛</h3>{promotion.rules.length ? <div className="compact-list">{promotion.rules.map((rule) => <article key={rule.sequence}><div><strong>{labels[rule.ruleType ?? ''] ?? rule.ruleType}</strong><small>{describe(rule.configurationJson)}</small></div></article>)}</div> : <p className="muted-copy">无门槛</p>}</section>
     <section><h3>优惠</h3><div className="compact-list">{promotion.benefits.map((benefit) => <article key={benefit.sequence}><div><strong>{labels[benefit.benefitType ?? ''] ?? benefit.benefitType}</strong><small>{describe(benefit.configurationJson)}</small></div></article>)}</div></section>
     <section><h3>适用范围</h3><div className="tag-list">{promotion.targets.length ? promotion.targets.map((target, index) => <span key={index}>{target.isExcluded ? '排除 ' : ''}{target.targetType === 'All' ? '全部商品' : target.targetType === 'Category' ? `分类 ${categoryNames.get(target.targetKey ?? '') ?? target.targetKey}` : `${target.targetType} ${target.targetKey}`}</span>) : <span>全部商品</span>}</div></section>
-    <p className="muted-copy"><Icon name="alert" />已发布的活动定义不可修改；如需调整请结束后重新创建。<CopyButton value={promotion.id} label="复制活动 ID" /></p>
+    <p className="muted-copy"><Icon name="alert" />已发布的活动定义不可修改；暂停或结束后可在列表中「重新编辑」，修改后重新发布。<CopyButton value={promotion.id} label="复制活动 ID" /></p>
   </div>;
 }
 
@@ -338,7 +390,7 @@ function CouponCreateForm({ promotions, canReadPromotions, busy, error, onSubmit
     <Field label="促销活动" hint={!canReadPromotions ? '需要 catalog.promotions.query 才能选择活动' : '仅显示「凭券使用」的活动；券的有效期必须落在活动周期内'}>
       <select required disabled={!canReadPromotions} value={promotionId} onChange={(event) => setPromotionId(event.target.value)}><option value="">选择促销活动</option>{couponPromotions.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code} · {statusLabel(item.status)}</option>)}</select>
     </Field>
-    <Field label="券码" hint="至少 6 位；系统只保存摘要，创建后无法再次查看完整券码"><div className="input-group"><input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} required minLength={6} maxLength={80} className="mono" /><button className="button button--quiet" type="button" onClick={() => setCode(generate())}><Icon name="refresh" />生成</button><CopyButton value={code} label="复制券码" /></div></Field>
+    <Field label="券码" hint="至少 6 位；系统只保存摘要，创建后会再展示一次完整券码供保存"><div className="input-group"><input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} required minLength={6} maxLength={80} className="mono" /><button className="button button--quiet" type="button" onClick={() => setCode(generate())}><Icon name="refresh" />生成</button><CopyButton value={code} label="复制券码" /></div></Field>
     <div className="form-row" key={selected?.id ?? 'none'}>
       <Field label="生效时间"><input name="validFrom" type="datetime-local" defaultValue={asLocalInput(selected ? new Date(Math.max(Date.now(), new Date(selected.startsOnUtc).getTime())) : new Date())} min={selected ? asLocalInput(new Date(selected.startsOnUtc)) : undefined} required /></Field>
       <Field label="失效时间"><input name="validUntil" type="datetime-local" defaultValue={asLocalInput(selected ? new Date(selected.endsOnUtc) : new Date(Date.now() + 7 * 86_400_000))} max={selected ? asLocalInput(new Date(selected.endsOnUtc)) : undefined} required /></Field>

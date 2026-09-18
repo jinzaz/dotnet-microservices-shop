@@ -234,6 +234,41 @@ public sealed class CatalogApplicationTests
     }
 
     [TestMethod]
+    public async Task CouponBatch_IssuesOneActivePersonalCouponPerUserWithUniqueCodes()
+    {
+        var promotion = new Promotion(Guid.NewGuid(), "welcome", "Welcome", PromotionTriggerType.Coupon,
+            Now, Now.AddDays(30), 0, PromotionStackPolicy.Stackable, null, "operator", Now);
+        promotion.ReplaceDefinition(
+            Array.Empty<PromotionRuleDefinition>(),
+            [new PromotionBenefitDefinition("FixedAmountOff", 1, "{\"amount\":20}", 0)],
+            Array.Empty<PromotionTargetDefinition>(),
+            "operator",
+            Now);
+        promotion.Publish("operator", Now);
+        var promotions = new Mock<IPromotionRepository>();
+        promotions.Setup(value => value.FindAsync(promotion.Id, It.IsAny<CancellationToken>())).ReturnsAsync(promotion);
+        var added = new List<Coupon>();
+        var coupons = new Mock<ICouponRepository>();
+        coupons.Setup(value => value.Add(It.IsAny<Coupon>())).Callback<Coupon>(added.Add);
+        coupons.Setup(value => value.FindExistingDigestsAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<string>());
+        var snapshots = new Mock<ICatalogSnapshotPublisher>();
+        var handler = new CreateCouponBatchHandler(promotions.Object, coupons.Object, snapshots.Object,
+            Mock.Of<ICatalogAuditWriter>(), new TestClock(Now.AddHours(1)));
+
+        var issued = await handler.Handle(new CreateCouponBatchCommand(
+            promotion.Id, 0, ["user-a", "user-b", "user-c"], "wel", Now, Now.AddDays(30), null, 1, true, "operator"),
+            CancellationToken.None);
+
+        Assert.HasCount(3, issued);
+        CollectionAssert.AreEquivalent(new[] { "user-a", "user-b", "user-c" }, issued.Select(item => item.AssignedUserId).ToArray());
+        Assert.HasCount(3, issued.Select(item => item.Code).Distinct().ToArray());
+        Assert.IsTrue(issued.All(item => item.Code.StartsWith("WEL", StringComparison.Ordinal) && item.Code.Length == 13));
+        Assert.IsTrue(added.All(coupon => coupon.Status == CouponStatus.Active));
+        snapshots.Verify(value => value.Publish(It.IsAny<Coupon>()), Times.Exactly(3));
+    }
+
+    [TestMethod]
     public void Promotion_PublishRequiresBenefitAndFreezesDefinition()
     {
         var promotion = new Promotion(Guid.NewGuid(), "summer", "Summer", PromotionTriggerType.Automatic,

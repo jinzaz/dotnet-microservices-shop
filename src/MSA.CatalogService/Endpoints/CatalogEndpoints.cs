@@ -36,6 +36,12 @@ internal static class CatalogEndpoints
                 new PublicCategoryDto(category.Id, category.Code, category.Name)));
         }).AllowAnonymous();
 
+        endpoints.MapGet("/catalog/promotions", async (
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(new ListStorefrontPromotionsQuery(), cancellationToken)))
+            .AllowAnonymous();
+
         return endpoints;
     }
 }

@@ -12,6 +12,8 @@ import { formatMoney } from '../../shared/utils/format';
 import { getInventoryAvailability } from './inventory-api';
 import type { ProductDetail, ProductSku } from './product-detail-types';
 import { RatingStars } from './RatingStars';
+import { describePromotion } from '../promotions/describe';
+import { formatDateTime } from '../../shared/utils/format';
 
 function attributeGroups(skus: ProductSku[]) {
   const names = Array.from(new Set(skus.flatMap((sku) => Object.keys(sku.attributes))));
@@ -50,7 +52,6 @@ export function ProductPurchasePanel({ product, onSkuChange }: { product: Produc
   });
   const available = inventoryQuery.data?.available ?? selectedSku?.availableQuantity;
   const maxQuantity = Math.max(1, Math.min(MAX_LINE_QUANTITY, available ?? MAX_LINE_QUANTITY));
-  const coupon = product.coupons[0];
 
   // Attribute values that cannot combine with the rest of the current selection are shown disabled.
   const isValueSelectable = (name: string, value: string) => {
@@ -118,12 +119,16 @@ export function ProductPurchasePanel({ product, onSkuChange }: { product: Produc
       ) : null}
       <strong className="product-price">{formatMoney(selectedSku.price, selectedSku.currency)}</strong>
 
-      {coupon ? (
-        <div className="product-coupon">
-          <strong>优惠</strong>
-          <span>{coupon.title}</span>
-          <Link to={`/coupons${demoSuffix}`}>查看<Icon name="chevron-right" /></Link>
-        </div>
+      {product.promotions.length ? (
+        <ul className="product-promotions" aria-label="可享优惠">
+          {product.promotions.slice(0, 3).map((promotion) => (
+            <li key={promotion.id}>
+              <em>促销</em>
+              <span><strong>{describePromotion(promotion.rules, promotion.benefits, selectedSku.currency)}</strong><small>{promotion.name} · {formatDateTime(promotion.endsOnUtc)} 结束</small></span>
+            </li>
+          ))}
+          <li className="product-promotions__coupon"><em>优惠码</em><span>有优惠码？<Link to={`/coupons${demoSuffix}`}>在我的优惠券中使用<Icon name="chevron-right" /></Link></span></li>
+        </ul>
       ) : null}
 
       <div className="sku-selector">

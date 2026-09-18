@@ -21,6 +21,8 @@ export type CreateOrderRequest = {
   paymentMethod: PaymentMethod;
   shippingAddress: ShippingAddressInput;
   couponCodes: string[];
+  /** Coupons issued to the buyer's wallet, applied by id because their code is never stored. */
+  walletCouponIds?: string[];
   sourceBasketId?: string;
   sourceBasketVersion?: number;
 };

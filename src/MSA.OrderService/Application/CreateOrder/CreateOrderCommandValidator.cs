@@ -46,6 +46,12 @@ public sealed class CreateOrderCommandValidator : AbstractValidator<CreateOrderC
             .NotEmpty()
             .MaximumLength(80)
             .When(command => command.CouponCodes is not null);
+        RuleFor(command => command.WalletCouponIds)
+            .Must(ids => ids is null || ids.All(id => id != Guid.Empty) && ids.Distinct().Count() == ids.Count)
+            .WithMessage("Wallet coupon ids must be non-empty and unique.");
+        RuleFor(command => command)
+            .Must(command => (command.CouponCodes?.Count ?? 0) + (command.WalletCouponIds?.Count ?? 0) <= 5)
+            .WithMessage("At most five coupons can be applied.");
     }
 }
 

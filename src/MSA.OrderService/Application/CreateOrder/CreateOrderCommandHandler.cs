@@ -26,6 +26,7 @@ internal sealed class CreateOrderCommandHandler(
     {
         var idempotencyKey = request.IdempotencyKey.Trim();
         var couponCodes = request.CouponCodes ?? [];
+        var walletCouponIds = request.WalletCouponIds ?? [];
         var shippingAddress = request.ShippingAddress.ToSnapshot();
         var fingerprint = OrderRequestFingerprint.Create(
             request.UserId,
@@ -34,8 +35,21 @@ internal sealed class CreateOrderCommandHandler(
             couponCodes,
             shippingAddress,
             request.SourceBasketId,
-            request.SourceBasketVersion);
-        var couponDigests = couponCodes.Select(CouponCode.Digest).ToArray();
+            request.SourceBasketVersion,
+            walletCouponIds);
+        // Wallet coupons lock on the same digest key as typed codes, so both paths share one per-user quota lock.
+        var walletDigests = walletCouponIds.Count == 0
+            ? []
+            : await db.CouponProjections
+                .AsNoTracking()
+                .Where(coupon => walletCouponIds.Contains(coupon.Id) && coupon.AssignedUserId == request.UserId)
+                .Select(coupon => coupon.CodeDigest)
+                .ToArrayAsync(cancellationToken);
+        var couponDigests = couponCodes.Select(CouponCode.Digest)
+            .Concat(walletDigests)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
 
         var lockKeys = new List<string>
         {
@@ -147,7 +161,7 @@ internal sealed class CreateOrderCommandHandler(
         var price = await pricing.CalculateAsync(
             request.UserId,
             pricingItems,
-            couponCodes,
+            CouponSelection.From(couponCodes, walletCouponIds),
             now,
             cancellationToken);
 

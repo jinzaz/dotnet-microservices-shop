@@ -1447,6 +1447,38 @@ namespace MSA.BFF.BM.Migrations
                             Order = 64,
                             PathTemplate = "/api/catalog/admin/coupons/{id}/expire",
                             PermissionId = new Guid("83630e28-746d-3387-ea54-046054e22e88")
+                        },
+                        new
+                        {
+                            Id = new Guid("ce01652c-e37c-60ba-2046-fbb997488bb7"),
+                            HttpMethod = "POST",
+                            Order = 65,
+                            PathTemplate = "/api/catalog/admin/promotions/{id}/revise",
+                            PermissionId = new Guid("38f4dc5b-928b-ab91-6cca-2b733e22b265")
+                        },
+                        new
+                        {
+                            Id = new Guid("0161e319-ebf9-aaae-2327-e006d9bb1e29"),
+                            HttpMethod = "POST",
+                            Order = 66,
+                            PathTemplate = "/api/catalog/admin/promotions/{id}/archive",
+                            PermissionId = new Guid("38f4dc5b-928b-ab91-6cca-2b733e22b265")
+                        },
+                        new
+                        {
+                            Id = new Guid("c39467f9-88e0-a33d-4225-afee0516fe7f"),
+                            HttpMethod = "POST",
+                            Order = 67,
+                            PathTemplate = "/api/catalog/admin/coupons/batch",
+                            PermissionId = new Guid("88893bde-9223-0a9a-4835-b9d5a55b0bb5")
+                        },
+                        new
+                        {
+                            Id = new Guid("7128c68f-e122-2710-ef4d-02722023bf6c"),
+                            HttpMethod = "GET",
+                            Order = 68,
+                            PathTemplate = "/api/order/admin/coupons/usage",
+                            PermissionId = new Guid("2deb8aec-1e0d-6491-1079-b35bd9888447")
                         });
                 });
 
