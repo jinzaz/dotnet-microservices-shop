@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using MSA.Contracts;
 using MSA.EventBus.DependencyInjection;
+using MSA.EventBusRabbitMQ;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
 using MSA.NotificationService.Application;
@@ -25,17 +26,7 @@ builder.Services.AddScoped<MSADbContext>(services => services.GetRequiredService
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddMediatR(configuration => configuration.RegisterServicesFromAssemblyContaining<OrderConfirmedHandler>());
 builder.Services.AddMsaApplicationPipeline();
-builder.Services.AddRabbitMQEventBus(options =>
-{
-    options.HostName = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
-    options.ExchangeName = builder.Configuration["RabbitMQ:ExchangeName"] ?? "msa.commerce.events";
-    options.UserName = builder.Configuration["RabbitMQ:User"] ?? "guest";
-    options.VirtualHost = builder.Configuration["RabbitMQ:VirtualHost"] ?? "/";
-    options.Password = builder.Configuration["RabbitMQ:Password"] ?? "guest";
-    options.QueueName = "msa.notification";
-    options.DeadLetterExchange = $"{options.ExchangeName}.dlx";
-    options.DeadLetterQueue = $"{options.QueueName}.dlq";
-});
+builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 builder.Services.AddIntegrationEventHandler<OrderConfirmedIntegrationEvent, OrderConfirmedHandler>();
 builder.Services.AddIntegrationEventHandler<OrderCancelledIntegrationEvent, OrderCancelledHandler>();
 builder.Services.AddScoped<INotificationSender, LoggingNotificationSender>();

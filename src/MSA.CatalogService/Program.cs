@@ -6,6 +6,7 @@ using MSA.CatalogService.Endpoints;
 using MSA.CatalogService.Infrastructure;
 using MSA.CatalogService.Middleware;
 using MSA.EventBus.DependencyInjection;
+using MSA.EventBusRabbitMQ;
 using MSA.EventBusOutbox.Extensions;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
@@ -49,17 +50,7 @@ builder.Services.AddScoped<IValidator<ReplacePromotionDefinitionCommand>, Replac
 builder.Services.AddScoped<IValidator<CreateCouponCommand>, CreateCouponValidator>();
 
 builder.Services.AddStackExchangeRedisCache(options => options.Configuration = redis);
-builder.Services.AddRabbitMQEventBus(options =>
-{
-    options.HostName = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
-    options.UserName = builder.Configuration["RabbitMQ:User"] ?? "guest";
-    options.Password = builder.Configuration["RabbitMQ:Password"] ?? "guest";
-    options.VirtualHost = builder.Configuration["RabbitMQ:VirtualHost"] ?? "/";
-    options.ExchangeName = builder.Configuration["RabbitMQ:ExchangeName"] ?? "msa.commerce.events";
-    options.DeadLetterExchange = builder.Configuration["RabbitMQ:DeadLetterExchange"] ?? "msa.commerce.events.dlx";
-    options.QueueName = builder.Configuration["RabbitMQ:QueueName"] ?? "msa.catalog";
-    options.DeadLetterQueue = builder.Configuration["RabbitMQ:DeadLetterQueue"] ?? "msa.catalog.dlq";
-});
+builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 builder.Services.AddOutbox<CatalogDbContext>();
 builder.Services.AddExceptionHandler<CatalogApiExceptionHandler>();
 builder.Services.AddProblemDetails();

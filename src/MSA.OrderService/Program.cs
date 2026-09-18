@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using MSA.Contracts;
 using MSA.EventBus.DependencyInjection;
+using MSA.EventBusRabbitMQ;
 using MSA.EventBusOutbox.Extensions;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
@@ -81,17 +82,7 @@ builder.Services.AddRateLimiter(options =>
             }));
 });
 
-builder.Services.AddRabbitMQEventBus(options =>
-{
-    options.HostName = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
-    options.ExchangeName = builder.Configuration["RabbitMQ:ExchangeName"] ?? "msa.commerce.events";
-    options.VirtualHost = builder.Configuration["RabbitMQ:VirtualHost"] ?? "/";
-    options.UserName = builder.Configuration["RabbitMQ:User"] ?? "guest";
-    options.Password = builder.Configuration["RabbitMQ:Password"] ?? "guest";
-    options.QueueName = "msa.ordering";
-    options.DeadLetterExchange = $"{options.ExchangeName}.dlx";
-    options.DeadLetterQueue = $"{options.QueueName}.dlq";
-});
+builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 builder.Services.AddOutbox<OrderDbContext>();
 builder.Services.AddSaga<OrderDbContext>();
 builder.Services.AddIntegrationEventHandler<ProductChangedIntegrationEvent, ProductChangedHandler>();

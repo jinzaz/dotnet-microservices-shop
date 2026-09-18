@@ -10,6 +10,7 @@ using MSA.BasketService.Integration;
 using MSA.BasketService.Middleware;
 using MSA.Contracts;
 using MSA.EventBus.DependencyInjection;
+using MSA.EventBusRabbitMQ;
 using MSA.EventBusOutbox.Extensions;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
@@ -53,18 +54,7 @@ builder.Services.AddScoped<IValidator<ClearBasketCommand>, ClearBasketCommandVal
 builder.Services.AddScoped<IValidator<ReplaceBasketCouponsCommand>, ReplaceBasketCouponsCommandValidator>();
 builder.Services.AddMsaApplicationPipeline();
 
-builder.Services.AddRabbitMQEventBus(options =>
-{
-    options.HostName = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
-    options.UserName = builder.Configuration["RabbitMQ:User"] ?? "guest";
-    options.Password = builder.Configuration["RabbitMQ:Password"] ?? "guest";
-    options.VirtualHost = builder.Configuration["RabbitMQ:VirtualHost"] ?? "/";
-    options.ExchangeName = builder.Configuration["RabbitMQ:ExchangeName"] ?? "msa.commerce.events";
-    options.QueueName = builder.Configuration["RabbitMQ:QueueName"] ?? "msa.basket";
-    options.DeadLetterExchange = builder.Configuration["RabbitMQ:DeadLetterExchange"] ?? $"{options.ExchangeName}.dlx";
-    options.DeadLetterQueue = builder.Configuration["RabbitMQ:DeadLetterQueue"] ?? $"{options.QueueName}.dlq";
-    options.PrefetchCount = builder.Configuration.GetValue<ushort?>("RabbitMQ:PrefetchCount") ?? 32;
-});
+builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 builder.Services.AddOutbox<BasketDbContext>();
 builder.Services.AddIntegrationEventHandler<ProductChangedIntegrationEvent, ProductChangedHandler>();
 builder.Services.AddIntegrationEventHandler<ProductVariantChangedIntegrationEvent, ProductVariantChangedHandler>();

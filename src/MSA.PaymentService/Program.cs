@@ -3,6 +3,7 @@ using Essensoft.Paylinks.WeChatPay.Client.Extensions;
 using Microsoft.EntityFrameworkCore;
 using MSA.Contracts;
 using MSA.EventBus.DependencyInjection;
+using MSA.EventBusRabbitMQ;
 using MSA.EventBusOutbox.Extensions;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
@@ -39,17 +40,7 @@ builder.Services.AddScoped<IPaymentNotificationVerifier, AlipayNotificationVerif
 builder.Services.AddScoped<IPaymentNotificationVerifier, WeChatPayNotificationVerifier>();
 builder.Services.AddScoped<PaymentGatewayResolver>();
 builder.Services.AddScoped<PaymentProviderOperationStore>();
-builder.Services.AddRabbitMQEventBus(options =>
-{
-    options.HostName = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
-    options.ExchangeName = builder.Configuration["RabbitMQ:ExchangeName"] ?? "msa.commerce.events";
-    options.UserName = builder.Configuration["RabbitMQ:User"] ?? "guest";
-    options.Password = builder.Configuration["RabbitMQ:Password"] ?? "guest";
-    options.VirtualHost = builder.Configuration["RabbitMQ:VirtualHost"] ?? "/";
-    options.QueueName = "msa.payment";
-    options.DeadLetterExchange = $"{options.ExchangeName}.dlx";
-    options.DeadLetterQueue = $"{options.QueueName}.dlq";
-});
+builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 builder.Services.AddOutbox<PaymentDbContext>();
 builder.Services.AddIntegrationEventHandler<PaymentRequestedIntegrationEvent, PaymentRequestedHandler>();
 builder.Services.AddIntegrationEventHandler<CancelPaymentRequestedIntegrationEvent, CancelPaymentRequestedHandler>();
