@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { api, idempotencyKey, query, type Paged } from '../api';
+import { parseIds, UserPicker } from '../pickers';
 import { useSession } from '../session';
 import { ChipFilter, CopyButton, Empty, ErrorNotice, Field, formatDate, formatRelative, Icon, Modal, PageHeader, Pagination, SearchInput, SkeletonRows, Status, statusLabel, SubmitBar, usePage, useToast, useUrlState } from '../ui';
 
@@ -98,18 +99,17 @@ export default function NotificationsPage() {
     </Modal>
 
     <Modal open={composing} wide title="发送用户通知" description={`单次最多 ${MAX_RECIPIENTS} 个用户；重复 User ID 会自动去重。`} onClose={closeComposer}>
-      <ComposeForm initialRecipients={compose} templates={templatesQuery.data ?? []} onCancel={closeComposer} onSent={(count) => { toast.success(`已为 ${count} 位用户排队发送通知`); closeComposer(); void client.invalidateQueries({ queryKey: ['notifications'] }); }} />
+      <ComposeForm initialRecipients={compose} canSearchUsers={can('identity.users.query')} templates={templatesQuery.data ?? []} onCancel={closeComposer} onSent={(count) => { toast.success(`已为 ${count} 位用户排队发送通知`); closeComposer(); void client.invalidateQueries({ queryKey: ['notifications'] }); }} />
     </Modal>
   </div>;
 }
 
-function ComposeForm({ initialRecipients, templates, onSent, onCancel }: { initialRecipients: string; templates: Template[]; onSent: (count: number) => void; onCancel: () => void }) {
-  const [recipients, setRecipients] = useState(initialRecipients);
+function ComposeForm({ initialRecipients, canSearchUsers, templates, onSent, onCancel }: { initialRecipients: string; canSearchUsers: boolean; templates: Template[]; onSent: (count: number) => void; onCancel: () => void }) {
+  const [userIds, setUserIds] = useState(() => parseIds(initialRecipients));
   const [templateCode, setTemplateCode] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [requestKey] = useState(idempotencyKey);
-  const userIds = [...new Set(recipients.split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean))];
   const mutation = useMutation({
     mutationFn: () => api('/api/notification/admin/messages', { method: 'POST', body: { userIds, templateCode: templateCode || null, subject: subject.trim(), body: body.trim() }, headers: { 'Idempotency-Key': requestKey } }),
     onSuccess: () => onSent(userIds.length),
@@ -128,7 +128,7 @@ function ComposeForm({ initialRecipients, templates, onSent, onCancel }: { initi
   };
   return <form className="modal-form compose-form" onSubmit={submit}>
     <div className="compose-form__editor">
-      <Field label="收件人 User ID" hint="换行、空格、逗号或分号分隔"><textarea required rows={4} value={recipients} onChange={(event) => setRecipients(event.target.value)} className="mono" /></Field>
+      <Field label="收件人" hint="按姓名或邮箱搜索添加"><UserPicker value={userIds} onChange={setUserIds} canSearch={canSearchUsers} /></Field>
       <p className={`recipient-count${userIds.length > MAX_RECIPIENTS ? ' is-invalid' : ''}`}>{userIds.length} / {MAX_RECIPIENTS} 位用户{userIds.length > MAX_RECIPIENTS ? '，超出单次上限' : ''}</p>
       <Field label="模板" hint="选择模板会带入主题与正文，仍可修改"><select value={templateCode} onChange={(event) => applyTemplate(event.target.value)}><option value="">admin-message（自定义）</option>{templates.map((template) => <option key={template.id} value={template.code}>{template.code} · {template.subject}</option>)}</select></Field>
       <Field label="主题"><input required maxLength={500} value={subject} onChange={(event) => setSubject(event.target.value)} /></Field>

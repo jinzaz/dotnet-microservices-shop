@@ -285,6 +285,7 @@ internal static class CatalogAdminEndpoints
 
         MapPromotionEndpoints(read, write);
         MapCouponEndpoints(read, write);
+        MapCouponCampaignEndpoints(read, write);
         return endpoints;
     }
 
@@ -431,8 +432,9 @@ internal static class CatalogAdminEndpoints
             int take = 50,
             string? status = null,
             Guid? promotionId = null,
+            Guid? campaignId = null,
             CancellationToken cancellationToken = default) =>
-            Results.Ok(await sender.Send(new ListCouponsQuery(skip, take, status, promotionId), cancellationToken)));
+            Results.Ok(await sender.Send(new ListCouponsQuery(skip, take, status, promotionId, campaignId), cancellationToken)));
 
         read.MapGet("/coupons/{id:guid}", async (
             Guid id,
@@ -523,6 +525,96 @@ internal static class CatalogAdminEndpoints
         });
     }
 
+    private static void MapCouponCampaignEndpoints(RouteGroupBuilder read, RouteGroupBuilder write)
+    {
+        read.MapGet("/coupon-campaigns", async (
+            ISender sender,
+            int skip = 0,
+            int take = 50,
+            string? status = null,
+            Guid? promotionId = null,
+            CancellationToken cancellationToken = default) =>
+            Results.Ok(await sender.Send(new ListCouponCampaignsQuery(skip, take, status, promotionId), cancellationToken)));
+
+        read.MapGet("/coupon-campaigns/{id:guid}", async (
+            Guid id,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var campaign = await sender.Send(new GetCouponCampaignQuery(id), cancellationToken);
+            return campaign is null ? Results.NotFound() : Results.Ok(campaign);
+        });
+
+        read.MapGet("/coupon-campaigns/{id:guid}/stats", async (
+            Guid id,
+            ISender sender,
+            int days = 14,
+            CancellationToken cancellationToken = default) =>
+            Results.Ok(await sender.Send(new GetCouponCampaignStatsQuery(id, days), cancellationToken)));
+
+        read.MapGet("/coupon-campaigns/{id:guid}/claims", async (
+            Guid id,
+            ISender sender,
+            int skip = 0,
+            int take = 20,
+            CancellationToken cancellationToken = default) =>
+            Results.Ok(await sender.Send(new ListCouponClaimsQuery(id, skip, take), cancellationToken)));
+
+        write.MapPost("/coupon-campaigns", async (
+            CreateCouponCampaignRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var id = await sender.Send(
+                new CreateCouponCampaignCommand(request.PromotionId, request.Definition, GetActor(context)),
+                cancellationToken);
+            return Results.Created($"/api/catalog/admin/coupon-campaigns/{id}", new { id });
+        });
+
+        write.MapPut("/coupon-campaigns/{id:guid}", async (
+            Guid id,
+            ReviseCouponCampaignRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(
+                new ReviseCouponCampaignCommand(id, request.Definition, request.ExpectedVersion, GetActor(context)),
+                cancellationToken);
+            return Results.NoContent();
+        });
+
+        foreach (var action in Enum.GetValues<CouponCampaignAction>())
+        {
+            write.MapPost($"/coupon-campaigns/{{id:guid}}/{action.ToString().ToLowerInvariant()}", async (
+                Guid id,
+                VersionedCatalogRequest request,
+                HttpContext context,
+                ISender sender,
+                CancellationToken cancellationToken) =>
+            {
+                await sender.Send(
+                    new ChangeCouponCampaignStatusCommand(id, action, request.ExpectedVersion, GetActor(context)),
+                    cancellationToken);
+                return Results.NoContent();
+            });
+        }
+
+        write.MapPost("/coupon-campaigns/{id:guid}/quantity", async (
+            Guid id,
+            ChangeCouponCampaignQuantityRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(
+                new ChangeCouponCampaignQuantityCommand(id, request.TotalQuantity, request.ExpectedVersion, GetActor(context)),
+                cancellationToken);
+            return Results.NoContent();
+        });
+    }
+
     private static string GetActor(HttpContext context) =>
         context.User.FindFirstValue("sub")
         ?? context.User.Identity?.Name
@@ -540,6 +632,9 @@ public sealed record CreateProductRequest(
 public sealed record CreateAdminCategoryRequest(string Code, string Name);
 public sealed record RenameCategoryRequest(string Name, long? ExpectedVersion);
 public sealed record VersionedCatalogRequest(long? ExpectedVersion);
+public sealed record CreateCouponCampaignRequest(Guid PromotionId, CouponCampaignInput Definition);
+public sealed record ReviseCouponCampaignRequest(CouponCampaignInput Definition, long? ExpectedVersion);
+public sealed record ChangeCouponCampaignQuantityRequest(int? TotalQuantity, long? ExpectedVersion);
 public sealed record CatalogStateChangeRequest(long? ExpectedVersion, string? Reason);
 public sealed record UpdateProductDetailsRequest(string Name, string Description, long? ExpectedVersion);
 public sealed record ChangeProductPriceRequest(decimal Price, string Currency, long? ExpectedVersion);

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type FormEvent } from 'react';
 import { api } from '../api';
+import { UserPicker } from '../pickers';
 import { useSession } from '../session';
 import { CopyButton, Empty, ErrorNotice, Field, formatDate, Icon, Modal, PageHeader, SearchInput, SkeletonRows, Status, SubmitBar, useConfirm, useToast, useUrlState } from '../ui';
 
@@ -63,6 +64,7 @@ export default function AccessPage() {
     } else if (editor.kind === 'users') {
       const item = editor.item as BmUser | undefined;
       const id = isEdit ? item!.identityUserId : value('identityUserId');
+      if (!id) { toast.error('请选择要授权的 Identity 用户'); return; }
       saveMutation.mutate({ path: `/bff/pbac/users/${isEdit ? encodeURIComponent(id) : ''}`, method: isEdit ? 'PUT' : 'POST', body: { ...(isEdit ? {} : { identityUserId: id }), isActive: data.has('isActive'), roleIds: data.getAll('roleIds').map(String) } });
     } else {
       const item = editor.item as Policy | undefined;
@@ -119,8 +121,12 @@ function RoleFields({ item }: { item?: Role }) {
 }
 
 function UserFields({ item, roles }: { item?: BmUser; roles: Role[] }) {
+  const { can } = useSession();
+  const [userIds, setUserIds] = useState<string[]>([]);
   const selected = new Set(item?.roles.map((role) => role.id));
-  return <><Field label="Identity User ID" hint="仅保存关联标识，不复制 Identity 用户数据"><input name="identityUserId" defaultValue={item?.identityUserId} disabled={Boolean(item)} required maxLength={200} /></Field><label className="switch-row"><input name="isActive" type="checkbox" defaultChecked={item?.isActive ?? true} /><span />允许进入 BM</label><fieldset className="choice-grid"><legend>分配 BM 角色</legend>{roles.map((role) => <label key={role.id}><input type="checkbox" name="roleIds" value={role.id} defaultChecked={selected.has(role.id)} /><span><strong>{role.displayName}</strong><small>{role.code}</small></span></label>)}</fieldset></>;
+  return <>{item
+    ? <Field label="Identity User ID"><input value={item.identityUserId} disabled /></Field>
+    : <Field label="Identity 用户" hint="按姓名或邮箱搜索；仅保存关联标识，不复制 Identity 用户数据"><UserPicker value={userIds} onChange={setUserIds} canSearch={can('identity.users.query')} single /><input type="hidden" name="identityUserId" value={userIds[0] ?? ''} /></Field>}<label className="switch-row"><input name="isActive" type="checkbox" defaultChecked={item?.isActive ?? true} /><span />允许进入 BM</label><fieldset className="choice-grid"><legend>分配 BM 角色</legend>{roles.map((role) => <label key={role.id}><input type="checkbox" name="roleIds" value={role.id} defaultChecked={selected.has(role.id)} /><span><strong>{role.displayName}</strong><small>{role.code}</small></span></label>)}</fieldset></>;
 }
 
 function PolicyFields({ item, permissions, users, roles }: { item?: Policy; permissions: Permission[]; users: BmUser[]; roles: Role[] }) {

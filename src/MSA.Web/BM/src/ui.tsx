@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 
 export type IconName = 'overview' | 'order' | 'catalog' | 'inventory' | 'user' | 'payment' |
   'notification' | 'shield' | 'search' | 'menu' | 'logout' | 'plus' | 'refresh' |
-  'arrow' | 'check' | 'alert' | 'activity' | 'key' | 'close' | 'copy' | 'upload' | 'chevron' | 'truck' | 'image' | 'download' | 'ticket';
+  'arrow' | 'check' | 'alert' | 'activity' | 'key' | 'close' | 'copy' | 'upload' | 'chevron' | 'truck' | 'image' | 'download' | 'ticket' | 'link';
 
 const iconPaths: Record<IconName, ReactNode> = {
   download: <><path d="M12 4v11m0 0-4-4m4 4 4-4" /><path d="M5 19h14" /></>,
@@ -27,6 +27,7 @@ const iconPaths: Record<IconName, ReactNode> = {
   activity: <path d="M3 12h4l2.2-6 4.1 12 2.1-6H21" />,
   key: <><circle cx="8" cy="15" r="4" /><path d="m11 12 9-9M16 7l2 2M14 9l2 2" /></>,
   close: <path d="m5 5 14 14M19 5 5 19" />,
+  link: <><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1" /><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1" /></>,
   copy: <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></>,
   upload: <><path d="M12 16V4M7 9l5-5 5 5" /><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" /></>,
   chevron: <path d="m9 6 6 6-6 6" />,

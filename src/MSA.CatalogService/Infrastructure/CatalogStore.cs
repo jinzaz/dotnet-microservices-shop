@@ -265,11 +265,14 @@ internal sealed class CatalogStore(CatalogDbContext db, TimeProvider clock) :
         int take,
         string? status,
         Guid? promotionId,
+        Guid? campaignId,
         CancellationToken cancellationToken)
     {
         skip = Math.Max(0, skip);
         take = Math.Clamp(take, 1, 200);
         var query = db.Coupons.AsNoTracking();
+        if (campaignId.HasValue)
+            query = query.Where(coupon => coupon.CampaignId == campaignId.Value);
         if (!string.IsNullOrWhiteSpace(status))
         {
             var parsed = ParseStatus<CouponStatus>(status);
@@ -397,6 +400,7 @@ internal sealed class CatalogStore(CatalogDbContext db, TimeProvider clock) :
         coupon.Revision,
         coupon.QuotaBuckets.OrderBy(bucket => bucket.BucketNumber).Select(bucket =>
             new CouponQuotaBucketDto(bucket.BucketNumber, bucket.Capacity)).ToArray(),
+        coupon.CampaignId,
         coupon.CreatedOnUtc,
         coupon.UpdatedOnUtc,
         coupon.CreatedBy,

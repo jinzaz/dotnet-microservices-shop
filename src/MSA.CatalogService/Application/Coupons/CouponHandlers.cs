@@ -217,5 +217,6 @@ internal sealed class ListCouponsHandler(ICatalogReadService reads)
             request.Take,
             request.Status,
             request.PromotionId,
+            request.CampaignId,
             cancellationToken);
 }

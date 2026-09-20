@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using MSA.CatalogService.Application;
 
 namespace MSA.CatalogService.Endpoints;
@@ -42,6 +43,37 @@ internal static class CatalogEndpoints
             Results.Ok(await sender.Send(new ListStorefrontPromotionsQuery(), cancellationToken)))
             .AllowAnonymous();
 
+        // The coupon center is browsable anonymously; a signed-in shopper also sees how many they already claimed.
+        endpoints.MapGet("/catalog/coupon-campaigns", async (
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(new ListClaimableCouponCampaignsQuery(ShopperId(context)), cancellationToken)))
+            .AllowAnonymous();
+
+        endpoints.MapGet("/catalog/coupon-campaigns/{id:guid}", async (
+            Guid id,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var campaign = await sender.Send(new GetStorefrontCouponCampaignQuery(id, ShopperId(context)), cancellationToken);
+            return campaign is null ? Results.NotFound() : Results.Ok(campaign);
+        }).AllowAnonymous();
+
+        endpoints.MapPost("/catalog/coupon-campaigns/{id:guid}/claim", async (
+            Guid id,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await sender.Send(
+                new ClaimCouponCommand(id, ShopperId(context) ?? throw new UnauthorizedAccessException()),
+                cancellationToken)))
+            .RequireAuthorization("catalog-api");
+
         return endpoints;
     }
+
+    private static string? ShopperId(HttpContext context) =>
+        context.User.Identity?.IsAuthenticated == true ? context.User.FindFirstValue("sub") : null;
 }

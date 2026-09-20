@@ -1479,6 +1479,94 @@ namespace MSA.BFF.BM.Migrations
                             Order = 68,
                             PathTemplate = "/api/order/admin/coupons/usage",
                             PermissionId = new Guid("2deb8aec-1e0d-6491-1079-b35bd9888447")
+                        },
+                        new
+                        {
+                            Id = new Guid("c4441131-e603-d3af-859d-56013fb7f3e7"),
+                            HttpMethod = "GET",
+                            Order = 69,
+                            PathTemplate = "/api/catalog/admin/coupon-campaigns",
+                            PermissionId = new Guid("2deb8aec-1e0d-6491-1079-b35bd9888447")
+                        },
+                        new
+                        {
+                            Id = new Guid("9c6ef48a-989f-d487-f95a-670fdedd91ad"),
+                            HttpMethod = "GET",
+                            Order = 70,
+                            PathTemplate = "/api/catalog/admin/coupon-campaigns/{id}",
+                            PermissionId = new Guid("2deb8aec-1e0d-6491-1079-b35bd9888447")
+                        },
+                        new
+                        {
+                            Id = new Guid("7d0e69b5-4ad3-0c20-ae86-165db1c9149c"),
+                            HttpMethod = "GET",
+                            Order = 71,
+                            PathTemplate = "/api/catalog/admin/coupon-campaigns/{id}/stats",
+                            PermissionId = new Guid("2deb8aec-1e0d-6491-1079-b35bd9888447")
+                        },
+                        new
+                        {
+                            Id = new Guid("abcba821-b37c-bcbf-40ae-5d25cf1fd454"),
+                            HttpMethod = "GET",
+                            Order = 72,
+                            PathTemplate = "/api/catalog/admin/coupon-campaigns/{id}/claims",
+                            PermissionId = new Guid("2deb8aec-1e0d-6491-1079-b35bd9888447")
+                        },
+                        new
+                        {
+                            Id = new Guid("d442de31-0f6b-a355-6871-ce3af6acb6de"),
+                            HttpMethod = "POST",
+                            Order = 73,
+                            PathTemplate = "/api/catalog/admin/coupon-campaigns",
+                            PermissionId = new Guid("88893bde-9223-0a9a-4835-b9d5a55b0bb5")
+                        },
+                        new
+                        {
+                            Id = new Guid("f5a5c8b1-2f6d-d432-ac23-1cc8ff769cc2"),
+                            HttpMethod = "PUT",
+                            Order = 74,
+                            PathTemplate = "/api/catalog/admin/coupon-campaigns/{id}",
+                            PermissionId = new Guid("83630e28-746d-3387-ea54-046054e22e88")
+                        },
+                        new
+                        {
+                            Id = new Guid("b185e6fd-c44e-4e4d-ead3-277ddddcbeb8"),
+                            HttpMethod = "POST",
+                            Order = 75,
+                            PathTemplate = "/api/catalog/admin/coupon-campaigns/{id}/publish",
+                            PermissionId = new Guid("83630e28-746d-3387-ea54-046054e22e88")
+                        },
+                        new
+                        {
+                            Id = new Guid("b56783a0-5bca-8909-7577-6d0a0f954d31"),
+                            HttpMethod = "POST",
+                            Order = 76,
+                            PathTemplate = "/api/catalog/admin/coupon-campaigns/{id}/pause",
+                            PermissionId = new Guid("83630e28-746d-3387-ea54-046054e22e88")
+                        },
+                        new
+                        {
+                            Id = new Guid("433a307b-bef0-83cc-c6a5-66ea1b3601c7"),
+                            HttpMethod = "POST",
+                            Order = 77,
+                            PathTemplate = "/api/catalog/admin/coupon-campaigns/{id}/resume",
+                            PermissionId = new Guid("83630e28-746d-3387-ea54-046054e22e88")
+                        },
+                        new
+                        {
+                            Id = new Guid("0a6f9522-dc68-b314-9196-284de181f461"),
+                            HttpMethod = "POST",
+                            Order = 78,
+                            PathTemplate = "/api/catalog/admin/coupon-campaigns/{id}/end",
+                            PermissionId = new Guid("83630e28-746d-3387-ea54-046054e22e88")
+                        },
+                        new
+                        {
+                            Id = new Guid("f3e8ab37-273a-08c0-cdfb-73404094d8ea"),
+                            HttpMethod = "POST",
+                            Order = 79,
+                            PathTemplate = "/api/catalog/admin/coupon-campaigns/{id}/quantity",
+                            PermissionId = new Guid("83630e28-746d-3387-ea54-046054e22e88")
                         });
                 });
 

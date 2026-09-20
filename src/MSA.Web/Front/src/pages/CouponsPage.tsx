@@ -113,7 +113,7 @@ export default function CouponsPage() {
           <div className="coupon-wallet__heading">
             <div>
               <h1>我的优惠券</h1>
-              <p>发放到账户的券可在结算时直接勾选；收到的优惠码请在下方输入。</p>
+              <p>发放到账户的券可在结算时直接勾选；收到的优惠码请在下方输入。<Link className="text-link" to={`/coupon-center${demoSuffix}`}>去领券中心领更多 <Icon name="arrow-right" /></Link></p>
               <strong>可用 <span>{counts.available}</span> 张</strong>
             </div>
             <form className="coupon-redeem" onSubmit={(event) => void submitCode(event)}>
@@ -189,7 +189,7 @@ export default function CouponsPage() {
           ) : (demoMode || couponsQuery.isSuccess) ? (
             <div className="account-empty coupon-empty">
               <Icon name="ticket" />
-              <p>{activeFilter === 'available' ? '暂无可用优惠券，参与活动或输入优惠码即可享受优惠。' : '当前分类下没有优惠券。'}</p>
+              <p>{activeFilter === 'available' ? '暂无可用优惠券，去领券中心领取，或输入优惠码。' : '当前分类下没有优惠券。'}</p>{activeFilter === 'available' ? <Link className="text-link" to={`/coupon-center${demoSuffix}`}>去领券中心 <Icon name="arrow-right" /></Link> : null}
             </div>
           ) : null}
         </section>

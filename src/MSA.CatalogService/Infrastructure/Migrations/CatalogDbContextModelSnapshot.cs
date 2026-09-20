@@ -25,7 +25,6 @@ namespace MSA.CatalogService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.CatalogService.Domain.CatalogAuditEntry", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Actor")
@@ -70,7 +69,6 @@ namespace MSA.CatalogService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.CatalogService.Domain.Category", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Code")
@@ -135,13 +133,16 @@ namespace MSA.CatalogService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.CatalogService.Domain.Coupon", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("AssignedUserId")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasComment("专属券绑定的用户标识；为空表示不限定用户");
+
+                    b.Property<Guid?>("CampaignId")
+                        .HasColumnType("uuid")
+                        .HasComment("领券活动标识；为空表示后台直接创建或批量发放");
 
                     b.Property<string>("CodeDigest")
                         .IsRequired()
@@ -210,6 +211,8 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CampaignId");
+
                     b.HasIndex("CodeDigest")
                         .IsUnique();
 
@@ -235,6 +238,166 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_coupons_window", "\"ValidFromUtc\" < \"ValidUntilUtc\"");
                         });
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.CouponCampaign", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ClaimEndsOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("停止领取的 UTC 时间");
+
+                    b.Property<DateTimeOffset>("ClaimStartsOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("开始领取的 UTC 时间");
+
+                    b.Property<int>("ClaimedQuantity")
+                        .HasColumnType("integer")
+                        .HasComment("已领取数量，在活动行锁内递增");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("DailyQuantity")
+                        .HasColumnType("integer")
+                        .HasComment("每日可领取总量；为空表示不限");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("领券中心展示的补充说明");
+
+                    b.Property<bool>("IsListed")
+                        .HasColumnType("boolean")
+                        .HasComment("是否在领券中心展示；否则仅凭链接领取");
+
+                    b.Property<int?>("PerUserDailyLimit")
+                        .HasColumnType("integer")
+                        .HasComment("每个用户每日最多可领取张数；为空表示不限");
+
+                    b.Property<int>("PerUserLimit")
+                        .HasColumnType("integer")
+                        .HasComment("每个用户最多可领取张数");
+
+                    b.Property<Guid>("PromotionId")
+                        .HasColumnType("uuid")
+                        .HasComment("领券活动所属的凭券促销标识");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasComment("领券活动状态");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasComment("领券中心展示的标题");
+
+                    b.Property<int?>("TotalQuantity")
+                        .HasColumnType("integer")
+                        .HasComment("可领取总量；为空表示不限量");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UsesPerCoupon")
+                        .HasColumnType("integer")
+                        .HasComment("每张领取的券可使用次数");
+
+                    b.Property<int?>("ValidDays")
+                        .HasColumnType("integer")
+                        .HasComment("领取后有效天数");
+
+                    b.Property<DateTimeOffset?>("ValidFromUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("固定时段模式的券生效 UTC 时间");
+
+                    b.Property<DateTimeOffset?>("ValidUntilUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("固定时段模式的券失效 UTC 时间");
+
+                    b.Property<int>("ValidityMode")
+                        .HasColumnType("integer")
+                        .HasComment("券有效期模式：固定时段或领取后 N 天");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasComment("领券活动乐观并发版本号");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PromotionId", "Status");
+
+                    b.HasIndex("Status", "ClaimEndsOnUtc", "Id");
+
+                    b.ToTable("catalog_coupon_campaigns", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_coupon_campaigns_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+
+                            t.HasCheckConstraint("CK_coupon_campaigns_claimed", "\"ClaimedQuantity\" >= 0 AND (\"TotalQuantity\" IS NULL OR \"ClaimedQuantity\" <= \"TotalQuantity\")");
+
+                            t.HasCheckConstraint("CK_coupon_campaigns_limits", "\"PerUserLimit\" > 0 AND \"UsesPerCoupon\" > 0 AND (\"DailyQuantity\" IS NULL OR \"DailyQuantity\" > 0) AND (\"PerUserDailyLimit\" IS NULL OR \"PerUserDailyLimit\" BETWEEN 1 AND \"PerUserLimit\")");
+
+                            t.HasCheckConstraint("CK_coupon_campaigns_status", "\"Status\" BETWEEN 0 AND 3");
+
+                            t.HasCheckConstraint("CK_coupon_campaigns_validity", "(\"ValidityMode\" = 0 AND \"ValidFromUtc\" < \"ValidUntilUtc\" AND \"ValidDays\" IS NULL) OR (\"ValidityMode\" = 1 AND \"ValidDays\" > 0 AND \"ValidFromUtc\" IS NULL AND \"ValidUntilUtc\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_coupon_campaigns_window", "\"ClaimStartsOnUtc\" < \"ClaimEndsOnUtc\"");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.CouponClaim", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uuid")
+                        .HasComment("领券活动标识");
+
+                    b.Property<DateOnly>("ClaimDay")
+                        .HasColumnType("date")
+                        .HasComment("领取所在的业务日，用于每日限额");
+
+                    b.Property<DateTimeOffset>("ClaimedOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("领取的 UTC 时间");
+
+                    b.Property<Guid>("CouponId")
+                        .HasColumnType("uuid")
+                        .HasComment("领取后生成的专属券标识");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("领取用户标识");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CouponId")
+                        .IsUnique();
+
+                    b.HasIndex("CampaignId", "ClaimDay");
+
+                    b.HasIndex("CampaignId", "ClaimedOnUtc");
+
+                    b.HasIndex("CampaignId", "UserId", "ClaimDay");
+
+                    b.ToTable("catalog_coupon_claims", (string)null);
                 });
 
             modelBuilder.Entity("MSA.CatalogService.Domain.CouponQuotaBucket", b =>
@@ -263,7 +426,6 @@ namespace MSA.CatalogService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.CatalogService.Domain.Product", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset?>("ArchivedOnUtc")
@@ -348,7 +510,6 @@ namespace MSA.CatalogService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.CatalogService.Domain.ProductMedia", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("AltText")
@@ -410,7 +571,6 @@ namespace MSA.CatalogService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.CatalogService.Domain.ProductVariant", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("AttributesJson")
@@ -504,7 +664,6 @@ namespace MSA.CatalogService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.CatalogService.Domain.Promotion", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Code")
@@ -623,7 +782,6 @@ namespace MSA.CatalogService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.CatalogService.Domain.PromotionBenefit", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("BenefitType")
@@ -666,7 +824,6 @@ namespace MSA.CatalogService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.CatalogService.Domain.PromotionRule", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("ConfigurationJson")
@@ -709,7 +866,6 @@ namespace MSA.CatalogService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.CatalogService.Domain.PromotionTarget", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("ConfigurationJson")
@@ -761,7 +917,6 @@ namespace MSA.CatalogService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.EventBusOutbox.OutboxMessage", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("EventType")
@@ -840,7 +995,6 @@ namespace MSA.CatalogService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.Saga.SagaState", b =>
                 {
                     b.Property<Guid>("CorrelationId")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasComment("跨服务流程的关联标识");
 
@@ -902,9 +1056,38 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
             modelBuilder.Entity("MSA.CatalogService.Domain.Coupon", b =>
                 {
+                    b.HasOne("MSA.CatalogService.Domain.CouponCampaign", null)
+                        .WithMany()
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("MSA.CatalogService.Domain.Promotion", null)
                         .WithMany()
                         .HasForeignKey("PromotionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.CouponCampaign", b =>
+                {
+                    b.HasOne("MSA.CatalogService.Domain.Promotion", null)
+                        .WithMany()
+                        .HasForeignKey("PromotionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.CatalogService.Domain.CouponClaim", b =>
+                {
+                    b.HasOne("MSA.CatalogService.Domain.CouponCampaign", null)
+                        .WithMany()
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MSA.CatalogService.Domain.Coupon", null)
+                        .WithMany()
+                        .HasForeignKey("CouponId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

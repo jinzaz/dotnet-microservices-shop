@@ -285,6 +285,7 @@ internal sealed class CouponConfiguration : IEntityTypeConfiguration<Coupon>
         entity.Property(value => value.ValidFromUtc).HasComment("优惠券有效期开始的 UTC 时间");
         entity.Property(value => value.ValidUntilUtc).HasComment("优惠券有效期结束的 UTC 时间");
         entity.Property(value => value.AssignedUserId).HasMaxLength(200).HasComment("专属券绑定的用户标识；为空表示不限定用户");
+        entity.Property(value => value.CampaignId).HasComment("领券活动标识；为空表示后台直接创建或批量发放");
         entity.Property(value => value.TotalLimit).HasComment("全局可核销总量；为空表示不限制");
         entity.Property(value => value.PerUserLimit).HasComment("单个用户最多可核销次数");
         entity.Property(value => value.QuotaStrategy).HasComment("券配额的单行或分桶并发策略");
@@ -295,6 +296,11 @@ internal sealed class CouponConfiguration : IEntityTypeConfiguration<Coupon>
         entity.HasIndex(value => value.CodeDigest).IsUnique();
         entity.HasIndex(value => new { value.PromotionId, value.Status, value.Id });
         entity.HasIndex(value => new { value.Status, value.ValidUntilUtc, value.Id });
+        entity.HasIndex(value => value.CampaignId);
+        entity.HasOne<CouponCampaign>()
+            .WithMany()
+            .HasForeignKey(value => value.CampaignId)
+            .OnDelete(DeleteBehavior.Restrict);
         entity.HasOne<Promotion>()
             .WithMany()
             .HasForeignKey(value => value.PromotionId)
@@ -305,6 +311,78 @@ internal sealed class CouponConfiguration : IEntityTypeConfiguration<Coupon>
             .HasForeignKey(value => value.CouponId)
             .OnDelete(DeleteBehavior.Cascade);
         entity.Navigation(value => value.QuotaBuckets).UsePropertyAccessMode(PropertyAccessMode.Field);
+    }
+}
+
+internal sealed class CouponCampaignConfiguration : IEntityTypeConfiguration<CouponCampaign>
+{
+    public void Configure(EntityTypeBuilder<CouponCampaign> entity)
+    {
+        entity.ToTable("catalog_coupon_campaigns", table =>
+        {
+            table.HasCheckConstraint("CK_coupon_campaigns_window", "\"ClaimStartsOnUtc\" < \"ClaimEndsOnUtc\"");
+            table.HasCheckConstraint("CK_coupon_campaigns_status", "\"Status\" BETWEEN 0 AND 3");
+            // 与领域校验互为兜底：即使绕过聚合直接改库，也不会出现超发。
+            table.HasCheckConstraint("CK_coupon_campaigns_claimed", "\"ClaimedQuantity\" >= 0 AND (\"TotalQuantity\" IS NULL OR \"ClaimedQuantity\" <= \"TotalQuantity\")");
+            table.HasCheckConstraint("CK_coupon_campaigns_limits", "\"PerUserLimit\" > 0 AND \"UsesPerCoupon\" > 0 AND (\"DailyQuantity\" IS NULL OR \"DailyQuantity\" > 0) AND (\"PerUserDailyLimit\" IS NULL OR \"PerUserDailyLimit\" BETWEEN 1 AND \"PerUserLimit\")");
+            table.HasCheckConstraint("CK_coupon_campaigns_validity", "(\"ValidityMode\" = 0 AND \"ValidFromUtc\" < \"ValidUntilUtc\" AND \"ValidDays\" IS NULL) OR (\"ValidityMode\" = 1 AND \"ValidDays\" > 0 AND \"ValidFromUtc\" IS NULL AND \"ValidUntilUtc\" IS NULL)");
+            table.HasCheckConstraint("CK_coupon_campaigns_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+        });
+        entity.HasKey(value => value.Id);
+        entity.Property(value => value.PromotionId).HasComment("领券活动所属的凭券促销标识");
+        entity.Property(value => value.Title).HasMaxLength(60).IsRequired().HasComment("领券中心展示的标题");
+        entity.Property(value => value.Description).HasMaxLength(200).HasComment("领券中心展示的补充说明");
+        entity.Property(value => value.Status).HasComment("领券活动状态");
+        entity.Property(value => value.ClaimStartsOnUtc).HasComment("开始领取的 UTC 时间");
+        entity.Property(value => value.ClaimEndsOnUtc).HasComment("停止领取的 UTC 时间");
+        entity.Property(value => value.TotalQuantity).HasComment("可领取总量；为空表示不限量");
+        entity.Property(value => value.ClaimedQuantity).HasComment("已领取数量，在活动行锁内递增");
+        entity.Property(value => value.DailyQuantity).HasComment("每日可领取总量；为空表示不限");
+        entity.Property(value => value.PerUserLimit).HasComment("每个用户最多可领取张数");
+        entity.Property(value => value.PerUserDailyLimit).HasComment("每个用户每日最多可领取张数；为空表示不限");
+        entity.Property(value => value.ValidityMode).HasComment("券有效期模式：固定时段或领取后 N 天");
+        entity.Property(value => value.ValidFromUtc).HasComment("固定时段模式的券生效 UTC 时间");
+        entity.Property(value => value.ValidUntilUtc).HasComment("固定时段模式的券失效 UTC 时间");
+        entity.Property(value => value.ValidDays).HasComment("领取后有效天数");
+        entity.Property(value => value.UsesPerCoupon).HasComment("每张领取的券可使用次数");
+        entity.Property(value => value.IsListed).HasComment("是否在领券中心展示；否则仅凭链接领取");
+        entity.Property(value => value.CreatedBy).HasMaxLength(200).IsRequired();
+        entity.Property(value => value.UpdatedBy).HasMaxLength(200).IsRequired();
+        entity.Property(value => value.Version).IsConcurrencyToken().HasComment("领券活动乐观并发版本号");
+        entity.Ignore(value => value.RemainingQuantity);
+        entity.HasIndex(value => new { value.Status, value.ClaimEndsOnUtc, value.Id });
+        entity.HasIndex(value => new { value.PromotionId, value.Status });
+        entity.HasOne<Promotion>()
+            .WithMany()
+            .HasForeignKey(value => value.PromotionId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired();
+    }
+}
+
+internal sealed class CouponClaimConfiguration : IEntityTypeConfiguration<CouponClaim>
+{
+    public void Configure(EntityTypeBuilder<CouponClaim> entity)
+    {
+        entity.ToTable("catalog_coupon_claims");
+        entity.HasKey(value => value.Id);
+        entity.Property(value => value.CampaignId).HasComment("领券活动标识");
+        entity.Property(value => value.UserId).HasMaxLength(200).IsRequired().HasComment("领取用户标识");
+        entity.Property(value => value.CouponId).HasComment("领取后生成的专属券标识");
+        entity.Property(value => value.ClaimedOnUtc).HasComment("领取的 UTC 时间");
+        entity.Property(value => value.ClaimDay).HasComment("领取所在的业务日，用于每日限额");
+        entity.HasIndex(value => new { value.CampaignId, value.UserId, value.ClaimDay });
+        entity.HasIndex(value => new { value.CampaignId, value.ClaimDay });
+        entity.HasIndex(value => new { value.CampaignId, value.ClaimedOnUtc });
+        entity.HasIndex(value => value.CouponId).IsUnique();
+        entity.HasOne<CouponCampaign>()
+            .WithMany()
+            .HasForeignKey(value => value.CampaignId)
+            .OnDelete(DeleteBehavior.Restrict);
+        entity.HasOne<Coupon>()
+            .WithMany()
+            .HasForeignKey(value => value.CouponId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }
 

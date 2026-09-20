@@ -156,7 +156,19 @@ internal static class PbacSeedData
             ("catalog.promotions.edit", HttpMethods.Post, "/api/catalog/admin/promotions/{id}/archive"),
             ("catalog.coupons.create", HttpMethods.Post, "/api/catalog/admin/coupons/batch"),
             // Usage counters live in Ordering but belong to the coupon screen, so they share its query permission.
-            ("catalog.coupons.query", HttpMethods.Get, "/api/order/admin/coupons/usage")
+            ("catalog.coupons.query", HttpMethods.Get, "/api/order/admin/coupons/usage"),
+            // Claim campaigns are how coupons are handed out, so they reuse the coupon permissions.
+            ("catalog.coupons.query", HttpMethods.Get, "/api/catalog/admin/coupon-campaigns"),
+            ("catalog.coupons.query", HttpMethods.Get, "/api/catalog/admin/coupon-campaigns/{id}"),
+            ("catalog.coupons.query", HttpMethods.Get, "/api/catalog/admin/coupon-campaigns/{id}/stats"),
+            ("catalog.coupons.query", HttpMethods.Get, "/api/catalog/admin/coupon-campaigns/{id}/claims"),
+            ("catalog.coupons.create", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns"),
+            ("catalog.coupons.edit", HttpMethods.Put, "/api/catalog/admin/coupon-campaigns/{id}"),
+            ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/publish"),
+            ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/pause"),
+            ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/resume"),
+            ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/end"),
+            ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/quantity")
         ];
 
         return definitions

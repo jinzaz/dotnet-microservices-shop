@@ -10,6 +10,7 @@ const RegisterPage = lazy(() => import('../pages/RegisterPage'));
 const AccountPage = lazy(() => import('../pages/AccountPage'));
 const OrdersPage = lazy(() => import('../pages/OrdersPage'));
 const CouponsPage = lazy(() => import('../pages/CouponsPage'));
+const CouponCenterPage = lazy(() => import('../pages/CouponCenterPage'));
 const ProductDetailPage = lazy(() => import('../pages/ProductDetailPage'));
 const CheckoutPage = lazy(() => import('../pages/CheckoutPage'));
 const PaymentPage = lazy(() => import('../pages/PaymentPage'));
@@ -43,6 +44,8 @@ export default function App() {
         <Route path="/checkout" element={<RequireAuth><CheckoutPage /></RequireAuth>} />
         <Route path="/payment/:orderId" element={<RequireAuth><PaymentPage /></RequireAuth>} />
         <Route path="/coupons" element={<RequireAuth><CouponsPage /></RequireAuth>} />
+        <Route path="/coupon-center" element={<CouponCenterPage />} />
+        <Route path="/coupon-center/:campaignId" element={<CouponCenterPage />} />
         <Route path="/orders" element={<RequireAuth><OrdersPage /></RequireAuth>} />
         <Route path="/orders/:orderId" element={<RequireAuth><OrderDetailPage /></RequireAuth>} />
         <Route path="/orders/:orderId/after-sales/new" element={<RequireAuth><AfterSalesApplyPage /></RequireAuth>} />

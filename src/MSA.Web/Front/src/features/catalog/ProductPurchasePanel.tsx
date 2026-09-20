@@ -13,6 +13,7 @@ import { getInventoryAvailability } from './inventory-api';
 import type { ProductDetail, ProductSku } from './product-detail-types';
 import { RatingStars } from './RatingStars';
 import { describePromotion } from '../promotions/describe';
+import { ProductCouponStrip } from '../coupons/ProductCouponStrip';
 import { formatDateTime } from '../../shared/utils/format';
 
 function attributeGroups(skus: ProductSku[]) {
@@ -130,6 +131,8 @@ export function ProductPurchasePanel({ product, onSkuChange }: { product: Produc
           <li className="product-promotions__coupon"><em>优惠码</em><span>有优惠码？<Link to={`/coupons${demoSuffix}`}>在我的优惠券中使用<Icon name="chevron-right" /></Link></span></li>
         </ul>
       ) : null}
+
+      <ProductCouponStrip product={{ id: product.id, categoryId: product.categoryId, skus: product.skus.map((sku) => sku.sku) }} />
 
       <div className="sku-selector">
         {groups.map((group) => (

@@ -23,7 +23,8 @@ public sealed class Coupon : RevisionedCatalogAggregateRoot<Guid>
         CouponQuotaStrategy quotaStrategy,
         int? bucketCount,
         string actor,
-        DateTimeOffset createdOnUtc)
+        DateTimeOffset createdOnUtc,
+        Guid? campaignId = null)
     {
         CatalogDomainGuard.ValidWindow(
             validFromUtc,
@@ -33,6 +34,7 @@ public sealed class Coupon : RevisionedCatalogAggregateRoot<Guid>
 
         Id = CatalogDomainGuard.Required(id, nameof(id));
         PromotionId = CatalogDomainGuard.Required(promotionId, nameof(promotionId));
+        CampaignId = campaignId;
         var normalizedCode = NormalizeCode(code);
         CodeDigest = ComputeCodeDigest(normalizedCode);
         MaskedCode = MaskCode(normalizedCode);
@@ -49,6 +51,9 @@ public sealed class Coupon : RevisionedCatalogAggregateRoot<Guid>
     }
 
     public Guid PromotionId { get; private set; }
+
+    /// <summary>领券活动标识；为空表示后台直接创建或批量发放的券。</summary>
+    public Guid? CampaignId { get; private set; }
 
     /// <summary>标准化券码的 SHA-256 摘要；可核销券码明文永不落库。</summary>
     public string CodeDigest { get; private set; } = string.Empty;

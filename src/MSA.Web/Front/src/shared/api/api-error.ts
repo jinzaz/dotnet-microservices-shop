@@ -4,6 +4,8 @@ export type ApiProblem = {
   error?: string;
   error_description?: string;
   errors?: Record<string, string[] | string>;
+  /** Machine-readable cause, e.g. a coupon claim rejection such as "SoldOut". */
+  reason?: string;
 };
 
 export class ApiError extends Error {

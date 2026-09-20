@@ -19,6 +19,8 @@ public sealed class CatalogDbContext(
     public DbSet<PromotionTarget> PromotionTargets => Set<PromotionTarget>();
     public DbSet<Coupon> Coupons => Set<Coupon>();
     public DbSet<CouponQuotaBucket> CouponQuotaBuckets => Set<CouponQuotaBucket>();
+    public DbSet<CouponCampaign> CouponCampaigns => Set<CouponCampaign>();
+    public DbSet<CouponClaim> CouponClaims => Set<CouponClaim>();
     public DbSet<CatalogAuditEntry> CatalogAuditEntries => Set<CatalogAuditEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

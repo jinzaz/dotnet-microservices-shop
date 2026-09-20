@@ -116,6 +116,7 @@ public sealed record CouponDto(
     string QuotaStrategy,
     long Revision,
     IReadOnlyList<CouponQuotaBucketDto> QuotaBuckets,
+    Guid? CampaignId,
     DateTimeOffset CreatedOnUtc,
     DateTimeOffset UpdatedOnUtc,
     string CreatedBy,

@@ -24,8 +24,11 @@ public sealed class CatalogEndpointTests
             var method = route.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods.Single();
             if (!path.StartsWith("catalog/admin/", StringComparison.Ordinal))
             {
-                Assert.AreEqual("GET", method, path);
-                Assert.IsNotNull(route.Metadata.GetMetadata<IAllowAnonymous>(), path);
+                // Browsing is anonymous; the only shopper write (claiming a coupon) needs a signed-in customer.
+                if (method == "GET")
+                    Assert.IsNotNull(route.Metadata.GetMetadata<IAllowAnonymous>(), path);
+                else
+                    EndpointProbe.AssertPolicy(route, "catalog-api");
                 continue;
             }
 
@@ -33,6 +36,9 @@ public sealed class CatalogEndpointTests
         }
 
         Assert.IsNotNull(probe.Find("GET", "catalog/categories").Metadata.GetMetadata<IAllowAnonymous>());
+        Assert.IsNotNull(probe.Find("GET", "catalog/coupon-campaigns").Metadata.GetMetadata<IAllowAnonymous>());
+        EndpointProbe.AssertPolicy(probe.Find("POST", "catalog/coupon-campaigns/{id:guid}/claim"), "catalog-api");
+        EndpointProbe.AssertPolicy(probe.Find("POST", "catalog/admin/coupon-campaigns/{id:guid}/publish"), "catalog.admin.write");
         EndpointProbe.AssertPolicy(probe.Find("GET", "catalog/admin/products/{id:guid}"), "catalog.admin.read");
         EndpointProbe.AssertPolicy(probe.Find("POST", "catalog/admin/products/{id:guid}/variants"), "catalog.admin.write");
         EndpointProbe.AssertPolicy(probe.Find("DELETE", "catalog/admin/products/{id:guid}/variants/{variantId:guid}"), "catalog.admin.write");

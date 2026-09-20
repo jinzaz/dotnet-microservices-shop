@@ -22,3 +22,43 @@ export type WalletCoupon = {
   benefits: PromotionBenefit[];
   targets: PromotionTarget[];
 };
+
+export type ClaimState = 'NotStarted' | 'Claimable' | 'SoldOut' | 'DailySoldOut' | 'LimitReached' | 'DailyLimitReached' | 'Ended';
+
+/** Mirrors Catalog's StorefrontCouponCampaignDto: a coupon shoppers can claim into their wallet. */
+export type ClaimableCampaign = {
+  id: string;
+  title: string;
+  description: string | null;
+  promotionId: string;
+  promotionName: string;
+  rules: PromotionRule[];
+  benefits: PromotionBenefit[];
+  targets: PromotionTarget[];
+  claimStartsOnUtc: string;
+  claimEndsOnUtc: string;
+  totalQuantity: number | null;
+  claimedQuantity: number;
+  dailyQuantity: number | null;
+  claimedToday: number;
+  perUserLimit: number;
+  perUserDailyLimit: number | null;
+  myClaimedCount: number;
+  myClaimedToday: number;
+  validityMode: 'Fixed' | 'RelativeToClaim';
+  validFromUtc: string | null;
+  validUntilUtc: string | null;
+  validDays: number | null;
+  usesPerCoupon: number;
+  claimState: ClaimState;
+};
+
+export type ClaimResult = {
+  couponId: string;
+  maskedCode: string;
+  validFromUtc: string;
+  validUntilUtc: string;
+  remainingQuantity: number | null;
+  myClaimedCount: number;
+  perUserLimit: number;
+};

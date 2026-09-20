@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api, idempotencyKey, query } from '../api';
+import { UserPicker } from '../pickers';
 import { useSession } from '../session';
 import { CopyButton, Empty, ErrorNotice, Field, formatDate, formatRelative, Icon, Loading, Modal, PageHeader, Pagination, SearchInput, SkeletonRows, Status, SubmitBar, useConfirm, usePage, useToast, useUrlState } from '../ui';
 
@@ -72,10 +73,9 @@ export default function CustomersPage() {
     const role = String(new FormData(event.currentTarget).get('role') ?? '');
     userMutation.mutate({ id: roleUser.id, path: `roles/${encodeURIComponent(role)}`, success: `已为「${roleUser.displayName || roleUser.email}」添加角色 ${role}` });
   };
-  const lookup = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const lookup = (ids: string[]) => {
     setEntryPage(1);
-    setPointsUserId(String(new FormData(event.currentTarget).get('userId') ?? '').trim());
+    setPointsUserId(ids[0] ?? '');
   };
   const openPoints = (userId: string) => {
     setSelectedUserId('');
@@ -111,11 +111,11 @@ export default function CustomersPage() {
           </tr>)}</tbody></table></div> : <Empty title="暂无账号数据" detail={search ? '没有匹配的用户，换个关键词试试。' : 'IdentityService 没有返回用户。'} />}
       <Pagination page={page} pageSize={PAGE_SIZE} hasMore={(usersQuery.data?.length ?? 0) > PAGE_SIZE} onChange={setPage} busy={usersQuery.isFetching} />
     </section> : <>
-      <section className="lookup-bar panel"><form onSubmit={lookup} key={pointsUserId}><Field label="Identity User ID"><input name="userId" required defaultValue={pointsUserId} placeholder="输入或粘贴用户标识" /></Field><button className="button button--dark" type="submit" disabled={!can('user.loyalty-points.query')}><Icon name="search" />查询积分</button></form>{can('user.loyalty-points.edit') && pointsQuery.data ? <button className="button button--accent" type="button" onClick={() => { pointsMutation.reset(); setAdjustOpen(true); }}><Icon name="plus" />积分调整</button> : <span>USER SERVICE</span>}</section>
+      <section className="lookup-bar panel"><div className="lookup-bar__picker"><Field label="查询用户积分" hint={can('user.loyalty-points.query') ? '搜索并选中用户后自动查询' : '需要 user.loyalty-points.query 权限'}><UserPicker value={pointsUserId ? [pointsUserId] : []} onChange={lookup} canSearch={can('identity.users.query')} single /></Field></div>{can('user.loyalty-points.edit') && pointsQuery.data ? <button className="button button--accent" type="button" onClick={() => { pointsMutation.reset(); setAdjustOpen(true); }}><Icon name="plus" />积分调整</button> : <span>USER SERVICE</span>}</section>
       {pointsQuery.isError ? <ErrorNotice error={pointsQuery.error} /> : null}
       {pointsQuery.data ? <section className="points-overview"><article><span>当前余额</span><strong>{pointsQuery.data.balance.toLocaleString('zh-CN')}</strong><small>AVAILABLE POINTS</small></article><article><span>累计获得</span><strong>{pointsQuery.data.lifetimeEarned.toLocaleString('zh-CN')}</strong><small>LIFETIME EARNED</small></article><article><span>累计消耗</span><strong>{pointsQuery.data.lifetimeSpent.toLocaleString('zh-CN')}</strong><small>LIFETIME SPENT</small></article><article><span>最近更新</span><strong className="points-overview__date">{formatDate(pointsQuery.data.updatedOnUtc)}</strong><small>LAST UPDATED</small></article></section> : null}
       <section className="panel table-panel"><div className="section-heading"><div><p className="eyebrow">POINTS LEDGER</p><h2>积分流水</h2></div><span>{pointsUserId ? `用户 ${pointsUserId.slice(0, 8)}…` : ''}</span></div>
-        {!pointsUserId ? <Empty title="等待用户查询" detail="输入 User ID，或从 Identity 账号详情中点击「查看积分」。" />
+        {!pointsUserId ? <Empty title="等待用户查询" detail="搜索并选择用户，或从 Identity 账号详情中点击「查看积分」。" />
           : entriesQuery.isPending ? <SkeletonRows rows={5} />
             : entries.length ? <div className="data-table"><table><thead><tr><th>发生时间</th><th>变化</th><th>变化前</th><th>变化后</th><th>来源</th><th>原因</th></tr></thead><tbody>{entries.map((entry) => <tr key={entry.id}><td title={formatDate(entry.occurredOnUtc)}>{formatRelative(entry.occurredOnUtc)}<small>{formatDate(entry.occurredOnUtc)}</small></td><td className={entry.delta >= 0 ? 'number-good' : 'number-bad'}><strong>{entry.delta > 0 ? '+' : ''}{entry.delta}</strong></td><td>{entry.balanceBefore}</td><td>{entry.balanceAfter}</td><td><span className="tag">{entry.source}</span></td><td className="cell-wrap">{entry.reason}</td></tr>)}</tbody></table></div>
               : <Empty title="暂无积分流水" detail="该用户还没有积分变动。" />}

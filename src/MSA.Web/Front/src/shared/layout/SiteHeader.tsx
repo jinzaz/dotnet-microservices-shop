@@ -8,6 +8,7 @@ import { Icon } from '../ui/Icon';
 const navigation = [
   { label: '首页', to: '/', match: (pathname: string) => pathname === '/' },
   { label: '全部商品', to: '/products', match: (pathname: string) => pathname.startsWith('/products') },
+  { label: '领券中心', to: '/coupon-center', match: (pathname: string) => pathname.startsWith('/coupon-center') },
   { label: '我的订单', to: '/orders', match: (pathname: string) => pathname.startsWith('/orders') || pathname.startsWith('/after-sales') || pathname.startsWith('/payment') },
   { label: '我的账户', to: '/account', match: (pathname: string) => ['/account', '/coupons'].some((path) => pathname.startsWith(path)) },
 ] as const;

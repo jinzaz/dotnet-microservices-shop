@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MSA.CatalogService.Domain;
 
 namespace MSA.CatalogService.Middleware;
 
@@ -22,6 +23,8 @@ internal sealed class CatalogApiExceptionHandler(ILogger<CatalogApiExceptionHand
                 (StatusCodes.Status400BadRequest, "Invalid catalog request", exception.Message),
             DbUpdateConcurrencyException =>
                 (StatusCodes.Status409Conflict, "Catalog data changed", "The resource changed concurrently; reload it and retry."),
+            CouponClaimRejectedException =>
+                (StatusCodes.Status409Conflict, "Coupon claim rejected", exception.Message),
             DbUpdateException =>
                 (StatusCodes.Status409Conflict, "Catalog constraint conflict", "The operation conflicts with catalog uniqueness or integrity constraints."),
             InvalidOperationException =>
@@ -40,7 +43,11 @@ internal sealed class CatalogApiExceptionHandler(ILogger<CatalogApiExceptionHand
                 Status = statusCode,
                 Title = title,
                 Detail = detail,
-                Instance = httpContext.Request.Path
+                Instance = httpContext.Request.Path,
+                // Storefront buttons switch on the reason code rather than parsing the English message.
+                Extensions = exception is CouponClaimRejectedException rejected
+                    ? new Dictionary<string, object?> { ["reason"] = rejected.Reason.ToString() }
+                    : new Dictionary<string, object?>()
             },
             cancellationToken);
         return true;

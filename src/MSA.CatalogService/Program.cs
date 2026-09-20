@@ -35,6 +35,9 @@ builder.Services.AddScoped<IProductRepository>(services => services.GetRequiredS
 builder.Services.AddScoped<IPromotionRepository>(services => services.GetRequiredService<CatalogStore>());
 builder.Services.AddScoped<ICouponRepository>(services => services.GetRequiredService<CatalogStore>());
 builder.Services.AddScoped<ICatalogReadService>(services => services.GetRequiredService<CatalogStore>());
+builder.Services.AddScoped<CouponCampaignStore>();
+builder.Services.AddScoped<ICouponCampaignRepository>(services => services.GetRequiredService<CouponCampaignStore>());
+builder.Services.AddScoped<ICouponCampaignReadService>(services => services.GetRequiredService<CouponCampaignStore>());
 builder.Services.AddScoped<ICatalogSnapshotPublisher, OutboxCatalogSnapshotPublisher>();
 builder.Services.AddScoped<ICatalogAuditWriter, CatalogAuditWriter>();
 
@@ -49,6 +52,8 @@ builder.Services.AddScoped<IValidator<CreatePromotionCommand>, CreatePromotionVa
 builder.Services.AddScoped<IValidator<ReplacePromotionDefinitionCommand>, ReplacePromotionDefinitionValidator>();
 builder.Services.AddScoped<IValidator<CreateCouponCommand>, CreateCouponValidator>();
 builder.Services.AddScoped<IValidator<CreateCouponBatchCommand>, CreateCouponBatchValidator>();
+builder.Services.AddScoped<IValidator<CreateCouponCampaignCommand>, CreateCouponCampaignValidator>();
+builder.Services.AddScoped<IValidator<ReviseCouponCampaignCommand>, ReviseCouponCampaignValidator>();
 
 builder.Services.AddStackExchangeRedisCache(options => options.Configuration = redis);
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));

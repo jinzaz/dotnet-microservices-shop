@@ -33,6 +33,31 @@ public interface ICouponRepository
     void Add(Coupon coupon);
 }
 
+public interface ICouponCampaignRepository
+{
+    /// <summary>Loads the campaign with a row lock; every write (including claims) goes through it, so limits stay exact.</summary>
+    Task<CouponCampaign?> FindForUpdateAsync(Guid id, CancellationToken cancellationToken);
+    Task<CouponClaimCounts> CountClaimsAsync(Guid campaignId, string userId, DateOnly day, CancellationToken cancellationToken);
+    void Add(CouponCampaign campaign);
+    void AddClaim(CouponClaim claim);
+}
+
+public interface ICouponCampaignReadService
+{
+    Task<PagedResult<CouponCampaignDto>> ListAsync(int skip, int take, string? status, Guid? promotionId, CancellationToken cancellationToken);
+    Task<CouponCampaignDto?> GetAsync(Guid id, CancellationToken cancellationToken);
+    Task<CouponCampaignStatsDto> GetStatsAsync(Guid id, DateOnly today, int days, CancellationToken cancellationToken);
+    Task<PagedResult<CouponClaimDto>> ListClaimsAsync(Guid id, int skip, int take, CancellationToken cancellationToken);
+
+    /// <summary>Open campaigns (listed only, or the one requested) with their promotion and today's/the shopper's counts.</summary>
+    Task<IReadOnlyList<StorefrontCouponCampaignDto>> ListStorefrontAsync(
+        Guid? campaignId,
+        string? userId,
+        DateTimeOffset now,
+        DateOnly today,
+        CancellationToken cancellationToken);
+}
+
 public interface ICatalogReadService
 {
     Task<ProductDto?> GetProductAsync(Guid id, bool publicOnly, CancellationToken cancellationToken);
@@ -61,6 +86,7 @@ public interface ICatalogReadService
         int take,
         string? status,
         Guid? promotionId,
+        Guid? campaignId,
         CancellationToken cancellationToken);
 }
 
@@ -106,6 +132,13 @@ public static class CatalogRepositoryExtensions
         CancellationToken cancellationToken) =>
         await promotions.FindAsync(id, cancellationToken)
         ?? throw new KeyNotFoundException("Promotion was not found.");
+
+    public static async Task<CouponCampaign> GetRequiredAsync(
+        this ICouponCampaignRepository campaigns,
+        Guid id,
+        CancellationToken cancellationToken) =>
+        await campaigns.FindForUpdateAsync(id, cancellationToken)
+        ?? throw new KeyNotFoundException("Coupon campaign was not found.");
 
     public static async Task<Coupon> GetRequiredAsync(
         this ICouponRepository coupons,

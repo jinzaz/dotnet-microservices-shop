@@ -52,7 +52,7 @@ public sealed record IssuedCouponDto(Guid Id, string Code, string MaskedCode, st
 
 public sealed record GetCouponQuery(Guid CouponId) : IQuery<CouponDto?>;
 
-public sealed record ListCouponsQuery(int Skip, int Take, string? Status, Guid? PromotionId)
+public sealed record ListCouponsQuery(int Skip, int Take, string? Status, Guid? PromotionId, Guid? CampaignId = null)
     : IQuery<PagedResult<CouponDto>>;
 
 public sealed class CreateCouponBatchValidator : AbstractValidator<CreateCouponBatchCommand>
