@@ -1,4 +1,5 @@
 using FluentValidation;
+using MSA.Repositories.Persistence;
 using Microsoft.EntityFrameworkCore;
 using MSA.CatalogService.Application;
 using MSA.CatalogService.Application.Abstractions;
@@ -58,6 +59,8 @@ builder.Services.AddScoped<IValidator<ReviseCouponCampaignCommand>, ReviseCoupon
 builder.Services.AddStackExchangeRedisCache(options => options.Configuration = redis);
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 builder.Services.AddOutbox<CatalogDbContext>();
+// Outbox/Inbox 保留期清理，并为运维接口暴露失败消息与卡住的 Saga。
+builder.Services.AddMessagingOperations<CatalogDbContext>();
 builder.Services.AddExceptionHandler<CatalogApiExceptionHandler>();
 builder.Services.AddProblemDetails();
 // BM 以名称传枚举（如 ProductMediaRequest.MediaType = "Image"），默认序列化只接受数字。
@@ -97,4 +100,5 @@ app.UseAuthorization();
 app.MapHealthChecks("/health");
 app.MapCatalogEndpoints();
 app.MapCatalogAdminEndpoints();
+app.MapMessagingAdminEndpoints("catalog", "catalog.admin.read", "catalog.admin.write");
 app.Run();

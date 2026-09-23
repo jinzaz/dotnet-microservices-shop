@@ -12,7 +12,7 @@ public abstract class MessagingDbContext(
     DbContextOptions options,
     IMediator mediator,
     string tablePrefix)
-    : MSADbContext(options, mediator), IOutboxStore, ISagaStore
+    : MSADbContext(options, mediator), IOutboxStore, ISagaStore, IMessagingOperations
 {
     private string InboxTableName { get; } = $"{tablePrefix}_inbox_messages";
     private string OutboxTableName { get; } = $"{tablePrefix}_outbox_messages";
@@ -60,6 +60,93 @@ public abstract class MessagingDbContext(
 
         InboxMessages.Add(new InboxMessage(messageId, consumer, DateTimeOffset.UtcNow));
         return true;
+    }
+
+    async Task<IReadOnlyList<FailedOutboxMessageDto>> IMessagingOperations.ListFailedOutboxAsync(
+        int take,
+        CancellationToken cancellationToken) =>
+        await OutboxMessages
+            .AsNoTracking()
+            .Where(message => message.Status == OutboxStatus.Failed)
+            .OrderBy(message => message.OccurredOnUtc)
+            .Take(Math.Clamp(take, 1, 200))
+            .Select(message => new FailedOutboxMessageDto(
+                message.Id,
+                message.EventType,
+                message.RetryCount,
+                message.OccurredOnUtc,
+                message.LastError))
+            .ToArrayAsync(cancellationToken);
+
+    async Task<int> IMessagingOperations.RequeueFailedOutboxAsync(
+        Guid? messageId,
+        int max,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var rows = await OutboxMessages
+            .Where(message => message.Status == OutboxStatus.Failed
+                && (!messageId.HasValue || message.Id == messageId.Value))
+            .OrderBy(message => message.OccurredOnUtc)
+            .Take(Math.Clamp(max, 1, 500))
+            .ToListAsync(cancellationToken);
+        foreach (var row in rows)
+            row.Requeue(now);
+        await base.SaveChangesAsync(cancellationToken);
+        return rows.Count;
+    }
+
+    async Task<IReadOnlyList<StalledSagaDto>> IMessagingOperations.ListStalledSagasAsync(
+        DateTimeOffset stalledBefore,
+        int take,
+        CancellationToken cancellationToken) =>
+        await SagaStates
+            .AsNoTracking()
+            .Where(saga => saga.Status == SagaStatus.Failed
+                || ((saga.Status == SagaStatus.Running || saga.Status == SagaStatus.Compensating)
+                    && saga.UpdatedOnUtc < stalledBefore))
+            .OrderBy(saga => saga.UpdatedOnUtc)
+            .Take(Math.Clamp(take, 1, 200))
+            .Select(saga => new StalledSagaDto(
+                saga.CorrelationId,
+                saga.SagaType,
+                saga.State,
+                saga.Status.ToString(),
+                saga.UpdatedOnUtc,
+                saga.FailureReason))
+            .ToArrayAsync(cancellationToken);
+
+    async Task<(int Outbox, int Inbox)> IMessagingOperations.PurgeProcessedMessagesAsync(
+        DateTimeOffset outboxBefore,
+        DateTimeOffset inboxBefore,
+        int batchSize,
+        CancellationToken cancellationToken)
+    {
+        var take = Math.Clamp(batchSize, 1, 10_000);
+        // Inbox 的保留期必须长于消息可能的最大重投时间，否则重复消息会被当成新消息重新处理。
+        // 先取一批 id 再删：ExecuteDelete 在各提供程序上对 ORDER BY/LIMIT 的支持并不一致。
+        var outboxIds = await OutboxMessages
+            .Where(message => message.Status == OutboxStatus.Published && message.ProcessedOnUtc < outboxBefore)
+            .OrderBy(message => message.ProcessedOnUtc)
+            .Take(take)
+            .Select(message => message.Id)
+            .ToArrayAsync(cancellationToken);
+        var outbox = outboxIds.Length == 0
+            ? 0
+            : await OutboxMessages.Where(message => outboxIds.Contains(message.Id)).ExecuteDeleteAsync(cancellationToken);
+
+        var inboxIds = await InboxMessages
+            .Where(message => message.ProcessedOnUtc < inboxBefore)
+            .OrderBy(message => message.ProcessedOnUtc)
+            .Take(take)
+            .Select(message => message.MessageId)
+            .ToArrayAsync(cancellationToken);
+        var inbox = inboxIds.Length == 0
+            ? 0
+            : await InboxMessages
+                .Where(message => inboxIds.Contains(message.MessageId) && message.ProcessedOnUtc < inboxBefore)
+                .ExecuteDeleteAsync(cancellationToken);
+        return (outbox, inbox);
     }
 
     void IOutboxStore.Add(OutboxMessage message) => OutboxMessages.Add(message);

@@ -550,6 +550,38 @@ namespace MSA.BFF.BM.Migrations
                             Code = "notification.messages.delete",
                             DisplayName = "用户通知-删除",
                             Module = "notification.messages"
+                        },
+                        new
+                        {
+                            Id = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a"),
+                            Action = "Query",
+                            Code = "system.messaging.query",
+                            DisplayName = "消息运维-查询",
+                            Module = "system.messaging"
+                        },
+                        new
+                        {
+                            Id = new Guid("9dc32fb7-ff30-7325-0df2-b0ad4898e77e"),
+                            Action = "Create",
+                            Code = "system.messaging.create",
+                            DisplayName = "消息运维-创建",
+                            Module = "system.messaging"
+                        },
+                        new
+                        {
+                            Id = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed"),
+                            Action = "Edit",
+                            Code = "system.messaging.edit",
+                            DisplayName = "消息运维-编辑",
+                            Module = "system.messaging"
+                        },
+                        new
+                        {
+                            Id = new Guid("4da30147-3c51-9f58-50d6-98e543a2258b"),
+                            Action = "Delete",
+                            Code = "system.messaging.delete",
+                            DisplayName = "消息运维-删除",
+                            Module = "system.messaging"
                         });
                 });
 
@@ -861,6 +893,26 @@ namespace MSA.BFF.BM.Migrations
                         {
                             PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
                             PermissionId = new Guid("dc8e3eb9-a18f-cac8-82b2-669858c237bd")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("9dc32fb7-ff30-7325-0df2-b0ad4898e77e")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("4da30147-3c51-9f58-50d6-98e543a2258b")
                         });
                 });
 
@@ -1567,6 +1619,246 @@ namespace MSA.BFF.BM.Migrations
                             Order = 79,
                             PathTemplate = "/api/catalog/admin/coupon-campaigns/{id}/quantity",
                             PermissionId = new Guid("83630e28-746d-3387-ea54-046054e22e88")
+                        },
+                        new
+                        {
+                            Id = new Guid("945a5799-e378-572c-0480-cf03c32c0ce0"),
+                            HttpMethod = "GET",
+                            Order = 80,
+                            PathTemplate = "/api/catalog/admin/messaging/outbox/failed",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("c93eba14-0bd8-90e3-5e74-7cc74cda5dca"),
+                            HttpMethod = "GET",
+                            Order = 81,
+                            PathTemplate = "/api/catalog/admin/messaging/sagas/stalled",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("51e96dcf-881a-b217-168f-2efac5577216"),
+                            HttpMethod = "GET",
+                            Order = 82,
+                            PathTemplate = "/api/catalog/admin/messaging/dead-letters",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("803b24b0-cad5-a099-6243-d8a20a0174ba"),
+                            HttpMethod = "POST",
+                            Order = 83,
+                            PathTemplate = "/api/catalog/admin/messaging/outbox/failed/requeue",
+                            PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
+                        },
+                        new
+                        {
+                            Id = new Guid("3ad09d38-08b4-2172-7f10-b784880073b9"),
+                            HttpMethod = "POST",
+                            Order = 84,
+                            PathTemplate = "/api/catalog/admin/messaging/dead-letters/replay",
+                            PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
+                        },
+                        new
+                        {
+                            Id = new Guid("677f84a5-e6d5-8f83-ae14-0f8ef0e7d15f"),
+                            HttpMethod = "GET",
+                            Order = 85,
+                            PathTemplate = "/api/order/admin/messaging/outbox/failed",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("2dca26a4-1f71-7c20-fd75-7bbdca339481"),
+                            HttpMethod = "GET",
+                            Order = 86,
+                            PathTemplate = "/api/order/admin/messaging/sagas/stalled",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("fefbeb23-89a9-fdd0-1d98-bc2f8b137b89"),
+                            HttpMethod = "GET",
+                            Order = 87,
+                            PathTemplate = "/api/order/admin/messaging/dead-letters",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("22c0fab6-0558-38a1-dad4-f4cdb92a0fed"),
+                            HttpMethod = "POST",
+                            Order = 88,
+                            PathTemplate = "/api/order/admin/messaging/outbox/failed/requeue",
+                            PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
+                        },
+                        new
+                        {
+                            Id = new Guid("c94b3f08-4fd4-db99-d97d-3ef8d1762be8"),
+                            HttpMethod = "POST",
+                            Order = 89,
+                            PathTemplate = "/api/order/admin/messaging/dead-letters/replay",
+                            PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
+                        },
+                        new
+                        {
+                            Id = new Guid("55b44ccb-e4d8-768f-489c-7f2b957926cf"),
+                            HttpMethod = "GET",
+                            Order = 90,
+                            PathTemplate = "/api/inventory/admin/messaging/outbox/failed",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("6a0ca556-fa9b-8793-6ae5-ee3146e06dd3"),
+                            HttpMethod = "GET",
+                            Order = 91,
+                            PathTemplate = "/api/inventory/admin/messaging/sagas/stalled",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("51447e40-e0f8-ecb0-7871-77d613c3e40d"),
+                            HttpMethod = "GET",
+                            Order = 92,
+                            PathTemplate = "/api/inventory/admin/messaging/dead-letters",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("afa43aa8-c223-dd3f-d3c5-628b8b55c829"),
+                            HttpMethod = "POST",
+                            Order = 93,
+                            PathTemplate = "/api/inventory/admin/messaging/outbox/failed/requeue",
+                            PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
+                        },
+                        new
+                        {
+                            Id = new Guid("3aad32c3-c3ff-dad5-80b3-8ec93bcd0004"),
+                            HttpMethod = "POST",
+                            Order = 94,
+                            PathTemplate = "/api/inventory/admin/messaging/dead-letters/replay",
+                            PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
+                        },
+                        new
+                        {
+                            Id = new Guid("4b9be82b-94a9-bbe6-6ee3-a370f8af2bb6"),
+                            HttpMethod = "GET",
+                            Order = 95,
+                            PathTemplate = "/api/payment/admin/messaging/outbox/failed",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("f4353c61-a8cf-d035-7e64-7df0aba91896"),
+                            HttpMethod = "GET",
+                            Order = 96,
+                            PathTemplate = "/api/payment/admin/messaging/sagas/stalled",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("f12847e8-672e-9be3-5c75-7017daabe662"),
+                            HttpMethod = "GET",
+                            Order = 97,
+                            PathTemplate = "/api/payment/admin/messaging/dead-letters",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("c41185d9-1abf-496f-27a0-1d50557e00be"),
+                            HttpMethod = "POST",
+                            Order = 98,
+                            PathTemplate = "/api/payment/admin/messaging/outbox/failed/requeue",
+                            PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
+                        },
+                        new
+                        {
+                            Id = new Guid("72e0ac3f-9abc-6d96-baea-88ec3345501d"),
+                            HttpMethod = "POST",
+                            Order = 99,
+                            PathTemplate = "/api/payment/admin/messaging/dead-letters/replay",
+                            PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
+                        },
+                        new
+                        {
+                            Id = new Guid("5ef5964d-578a-eee2-77f5-0aa7ef43d81b"),
+                            HttpMethod = "GET",
+                            Order = 100,
+                            PathTemplate = "/api/basket/admin/messaging/outbox/failed",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("f269f2f3-c749-c1fe-d7c5-2a38d8ff0b3b"),
+                            HttpMethod = "GET",
+                            Order = 101,
+                            PathTemplate = "/api/basket/admin/messaging/sagas/stalled",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("b9bed228-5355-a6d7-dbaf-111304afa010"),
+                            HttpMethod = "GET",
+                            Order = 102,
+                            PathTemplate = "/api/basket/admin/messaging/dead-letters",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("fbf7ab33-470a-3056-1a8a-9762ab0c5c71"),
+                            HttpMethod = "POST",
+                            Order = 103,
+                            PathTemplate = "/api/basket/admin/messaging/outbox/failed/requeue",
+                            PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
+                        },
+                        new
+                        {
+                            Id = new Guid("657ba568-83a6-54a3-2e7b-81641470a834"),
+                            HttpMethod = "POST",
+                            Order = 104,
+                            PathTemplate = "/api/basket/admin/messaging/dead-letters/replay",
+                            PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
+                        },
+                        new
+                        {
+                            Id = new Guid("3e4b7a68-120f-bd81-37b7-38b31a45ee01"),
+                            HttpMethod = "GET",
+                            Order = 105,
+                            PathTemplate = "/api/notification/admin/messaging/outbox/failed",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("e779a5ed-98a0-e93f-591b-12c896f99925"),
+                            HttpMethod = "GET",
+                            Order = 106,
+                            PathTemplate = "/api/notification/admin/messaging/sagas/stalled",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("6e0331b0-d29b-0131-8b72-5688904010a8"),
+                            HttpMethod = "GET",
+                            Order = 107,
+                            PathTemplate = "/api/notification/admin/messaging/dead-letters",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("5d3a99e3-d3ff-2bb2-5a2e-abbdf881f8b4"),
+                            HttpMethod = "POST",
+                            Order = 108,
+                            PathTemplate = "/api/notification/admin/messaging/outbox/failed/requeue",
+                            PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
+                        },
+                        new
+                        {
+                            Id = new Guid("03513f53-1f4b-20d7-06aa-0ade6f7d8f63"),
+                            HttpMethod = "POST",
+                            Order = 109,
+                            PathTemplate = "/api/notification/admin/messaging/dead-letters/replay",
+                            PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
                         });
                 });
 

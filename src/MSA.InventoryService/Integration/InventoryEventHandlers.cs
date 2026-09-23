@@ -330,14 +330,30 @@ internal sealed class ReleaseInventoryHandler(
         });
     }
 
-    private async Task ApplyReleaseAsync(
+    private Task ApplyReleaseAsync(
+        InventoryReservation reservation,
+        string reason,
+        DateTimeOffset now,
+        CancellationToken cancellationToken) =>
+        InventoryRelease.ApplyAsync(Db, transactionLock, Cache, reservation, reason, now, cancellationToken);
+}
+
+/// <summary>
+/// 归还预占占用的余额。释放消息与预占过期清理共用同一套逻辑，避免两条路径对配额与库存的处理产生分歧。
+/// </summary>
+internal static class InventoryRelease
+{
+    public static async Task ApplyAsync(
+        InventoryDbContext db,
+        IInventoryTransactionLock transactionLock,
+        InventoryCacheInvalidator cache,
         InventoryReservation reservation,
         string reason,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         var (stock, allocations) = await InventoryReservationBalances.LockAsync(
-            Db, transactionLock, Cache, reservation, cancellationToken);
+            db, transactionLock, cache, reservation, cancellationToken);
 
         foreach (var line in reservation.Lines)
         {
@@ -346,7 +362,7 @@ internal sealed class ReleaseInventoryHandler(
                 var allocation = allocations[allocationId];
                 allocation.Release(line.Quantity);
                 var buyer = await InventoryRowLocks.LockBuyerAsync(
-                    Db, allocationId, InventoryReservationBalances.RequireUserId(reservation), cancellationToken);
+                    db, allocationId, InventoryReservationBalances.RequireUserId(reservation), cancellationToken);
                 buyer.Release(line.Quantity, now);
                 // 配额仍开放时，释放的数量回到配额池；配额关闭后才归还普通库存。
                 if (allocation.Status != InventoryAllocationStatus.Closed)
@@ -354,7 +370,7 @@ internal sealed class ReleaseInventoryHandler(
             }
 
             stock[line.Sku].Release(line.Quantity);
-            Db.StockMovements.Add(StockMovement.Record(
+            db.StockMovements.Add(StockMovement.Record(
                 stock[line.Sku],
                 StockMovementType.InventoryReleased,
                 0,

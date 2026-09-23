@@ -50,6 +50,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<RabbitMQTelemetry>();
         services.AddSingleton<IEventBus, RabbitMQEventBus>();
         services.AddSingleton<IHostedService>(sp => (RabbitMQEventBus)sp.GetRequiredService<IEventBus>());
+        services.AddSingleton<IDeadLetterAdmin, RabbitMQDeadLetterAdmin>();
 
         return services;
     }

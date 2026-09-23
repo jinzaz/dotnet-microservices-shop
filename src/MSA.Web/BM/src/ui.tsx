@@ -50,6 +50,7 @@ const statusLabels: Record<string, string> = {
   submitted: '已提交', awaitingpayment: '待支付', confirmed: '已确认',
   pending: '处理中', succeeded: '支付成功', failed: '失败', refunding: '退款中', refunded: '已退款', cancelling: '取消中',
   sending: '发送中', sent: '已送达', allow: '允许', deny: '拒绝',
+  running: '进行中', compensating: '补偿中', compensated: '已补偿',
 };
 
 export function statusLabel(value: string) {

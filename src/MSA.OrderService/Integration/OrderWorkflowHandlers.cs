@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using MSA.Contracts;
 using MSA.EventBus.Abstractions;
 using MSA.EventBusOutbox;
@@ -551,7 +552,8 @@ internal sealed class InventoryCommittedHandler(
     OrderDbContext db,
     IOutboxStore outbox,
     ISagaStore sagas,
-    TimeProvider clock)
+    TimeProvider clock,
+    ILogger<InventoryCommittedHandler> logger)
     : OrderEventHandler<InventoryCommittedIntegrationEvent>(db, outbox, "ordering.inventory-committed.v1")
 {
     protected override async Task HandleCoreAsync(
@@ -559,8 +561,14 @@ internal sealed class InventoryCommittedHandler(
         CancellationToken cancellationToken)
     {
         var order = await OrderRowLock.LockAsync(Db, integrationEvent.OrderId, cancellationToken);
+        // 过期回执（例如订单换了预占后旧消息才到）只记录不抛出：抛出会让这条消息一直卡在死信队列。
         if (order.ReservationId != integrationEvent.ReservationId)
-            throw new InvalidOperationException("Inventory commit acknowledgement does not match the order reservation.");
+        {
+            logger.LogWarning(
+                "Ignoring stale inventory commit for order {OrderId}: reservation {Acknowledged} is not the current {Current}.",
+                order.Id, integrationEvent.ReservationId, order.ReservationId);
+            return;
+        }
         var saga = await sagas.FindAsync(order.Id, cancellationToken);
         if (saga?.Status == SagaStatus.Running)
             saga.Complete(clock.GetUtcNow());
@@ -631,7 +639,8 @@ internal sealed class InventoryReleasedHandler(
     OrderDbContext db,
     IOutboxStore outbox,
     ISagaStore sagas,
-    TimeProvider clock)
+    TimeProvider clock,
+    ILogger<InventoryReleasedHandler> logger)
     : OrderEventHandler<InventoryReleasedIntegrationEvent>(db, outbox, "ordering.inventory-released.v1")
 {
     protected override async Task HandleCoreAsync(
@@ -640,7 +649,12 @@ internal sealed class InventoryReleasedHandler(
     {
         var order = await OrderRowLock.LockAsync(Db, integrationEvent.OrderId, cancellationToken);
         if (order.ReservationId != integrationEvent.ReservationId)
-            throw new InvalidOperationException("Inventory release acknowledgement does not match the order reservation.");
+        {
+            logger.LogWarning(
+                "Ignoring stale inventory release for order {OrderId}: reservation {Acknowledged} is not the current {Current}.",
+                order.Id, integrationEvent.ReservationId, order.ReservationId);
+            return;
+        }
         await OrderCompensation.MarkAsync(order.Id, inventory: true, payment: false, sagas, clock.GetUtcNow(), cancellationToken);
     }
 }
@@ -665,7 +679,8 @@ internal sealed class PaymentRefundedHandler(
     OrderDbContext db,
     IOutboxStore outbox,
     ISagaStore sagas,
-    TimeProvider clock)
+    TimeProvider clock,
+    ILogger<PaymentRefundedHandler> logger)
     : OrderEventHandler<PaymentRefundedIntegrationEvent>(db, outbox, "ordering.payment-refunded.v1")
 {
     protected override async Task HandleCoreAsync(
@@ -678,7 +693,10 @@ internal sealed class PaymentRefundedHandler(
         if (data?.RefundRequestId != integrationEvent.RefundRequestId
             || data.PaymentId != integrationEvent.PaymentId)
         {
-            throw new InvalidOperationException("Payment refund acknowledgement does not match the order compensation request.");
+            logger.LogWarning(
+                "Ignoring refund acknowledgement {RefundRequestId} for order {OrderId}: it does not match the current compensation request.",
+                integrationEvent.RefundRequestId, integrationEvent.OrderId);
+            return;
         }
         await OrderCompensation.MarkAsync(integrationEvent.OrderId, inventory: false, payment: true, sagas, clock.GetUtcNow(), cancellationToken);
     }
@@ -688,7 +706,8 @@ internal sealed class PaymentRefundFailedHandler(
     OrderDbContext db,
     IOutboxStore outbox,
     ISagaStore sagas,
-    TimeProvider clock)
+    TimeProvider clock,
+    ILogger<PaymentRefundFailedHandler> logger)
     : OrderEventHandler<PaymentRefundFailedIntegrationEvent>(db, outbox, "ordering.payment-refund-failed.v1")
 {
     protected override async Task HandleCoreAsync(
@@ -701,9 +720,16 @@ internal sealed class PaymentRefundFailedHandler(
         if (data?.RefundRequestId != integrationEvent.RefundRequestId
             || data.PaymentId != integrationEvent.PaymentId)
         {
-            throw new InvalidOperationException("Payment refund failure does not match the order compensation request.");
+            logger.LogWarning(
+                "Ignoring refund failure {RefundRequestId} for order {OrderId}: it does not match the current compensation request.",
+                integrationEvent.RefundRequestId, integrationEvent.OrderId);
+            return;
         }
+        // 退款失败必须人工介入：把 Saga 标记为 Failed，运维接口 /order/admin/messaging/sagas/stalled 可以查到。
         saga?.Fail($"Payment refund requires manual intervention: {integrationEvent.Reason}", clock.GetUtcNow());
+        logger.LogError(
+            "Refund {RefundRequestId} for order {OrderId} failed and needs manual intervention: {Reason}",
+            integrationEvent.RefundRequestId, integrationEvent.OrderId, integrationEvent.Reason);
     }
 }
 

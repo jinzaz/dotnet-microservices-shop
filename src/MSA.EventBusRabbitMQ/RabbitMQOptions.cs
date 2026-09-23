@@ -34,6 +34,21 @@ public class RabbitMQOptions
     /// <summary>死信交换机：处理失败(Nack且不重入队)的消息最终进入这里，供人工排查或重放</summary>
     public string DeadLetterExchange { get; set; } = "msa.commerce.events.dlx";
 
+    /// <summary>消费失败后的最大投递次数（含首次）。用尽后消息进入死信队列。</summary>
+    public int MaxDeliveryAttempts { get; set; } = 5;
+
+    /// <summary>两次投递之间的等待时间，由重试队列的 TTL 实现。</summary>
+    public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(10);
+
+    private string? _retryQueue;
+
+    /// <summary>重试队列，未配置时为 "{QueueName}.retry"。</summary>
+    public string RetryQueue
+    {
+        get => string.IsNullOrWhiteSpace(_retryQueue) ? $"{QueueName}.retry" : _retryQueue;
+        set => _retryQueue = value;
+    }
+
     private string? _deadLetterQueue;
 
     /// <summary>死信队列，未配置时为 "{QueueName}.dlq"，保证每个服务的死信互不混杂。</summary>

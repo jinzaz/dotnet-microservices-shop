@@ -92,7 +92,9 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
 
             var properties = new BasicProperties()
             {
-                DeliveryMode = DeliveryModes.Persistent
+                DeliveryMode = DeliveryModes.Persistent,
+                // 事件名随消息走：重试回流与死信重放都据此还原事件类型。
+                Headers = new Dictionary<string, object?> { [EventNameHeader] = routingKey }
             };
 
             static void InjectTraceContextIntoBasicProperties(IBasicProperties props, string key, string value)
@@ -168,7 +170,41 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
 
         await channel.QueueDeclareAsync(_options.QueueName, durable: _options.DurableQueue, exclusive: false,
             autoDelete: false, arguments: queueArgs!, cancellationToken: cancellationToken);
+
+        // 重试队列：消息在这里等待 TTL 后由死信机制回到主队列，实现「延迟重投」而不占用消费者。
+        // ponytail: 固定延迟 + 固定次数；需要更细的退避曲线时改成多级延迟队列。
+        var retryArgs = new Dictionary<string, object?>
+        {
+            { "x-message-ttl", (int)_options.RetryDelay.TotalMilliseconds },
+            { "x-dead-letter-exchange", string.Empty },
+            { "x-dead-letter-routing-key", _options.QueueName }
+        };
+        await channel.QueueDeclareAsync(_options.RetryQueue, durable: true, exclusive: false,
+            autoDelete: false, arguments: retryArgs!, cancellationToken: cancellationToken);
     }
+
+    /// <summary>事件名头：消息经重试队列回流后 RoutingKey 会变成队列名，必须靠它还原事件类型。</summary>
+    internal const string EventNameHeader = "x-msa-event";
+
+    /// <summary>已投递次数头，用于限制重试并最终进入死信队列。</summary>
+    internal const string AttemptHeader = "x-msa-attempt";
+
+    internal static string? ReadHeaderString(IReadOnlyBasicProperties properties, string key) =>
+        properties.Headers is not null && properties.Headers.TryGetValue(key, out var value)
+            ? value switch
+            {
+                byte[] bytes => Encoding.UTF8.GetString(bytes),
+                string text => text,
+                _ => value?.ToString()
+            }
+            : null;
+
+    private static int ReadAttempt(IReadOnlyBasicProperties properties) =>
+        properties.Headers is not null
+        && properties.Headers.TryGetValue(AttemptHeader, out var value)
+        && int.TryParse(value switch { byte[] bytes => Encoding.UTF8.GetString(bytes), _ => value?.ToString() }, out var attempt)
+            ? attempt
+            : 0;
 
     private async Task Consumer_ReceivedAsync(object sender, BasicDeliverEventArgs eventArgs)
     {
@@ -194,27 +230,61 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
 
         SetActivityContext(activity, eventArgs.RoutingKey, "receive");
 
-        var eventName = eventArgs.RoutingKey;
+        // 回流的消息 RoutingKey 是队列名，事件类型以头部为准。
+        var eventName = ReadHeaderString(eventArgs.BasicProperties, EventNameHeader) ?? eventArgs.RoutingKey;
         var message = Encoding.UTF8.GetString(eventArgs.Body.Span);
 
         try
         {
             activity?.SetTag("message", message);
 
-            if (message.Contains("throw-fake-exception", StringComparison.InvariantCultureIgnoreCase))
-            {
-                throw new InvalidOperationException($"Fake exception requested: \"{message}\"");
-            }
-
-            await ProcessEvent(eventName, message); //消息处理需要幂等和重试设计
+            // 处理器自身保证幂等（Inbox 去重），因此重复投递是安全的。
+            await ProcessEvent(eventName, message);
             await _consumerChannel!.BasicAckAsync(eventArgs.DeliveryTag, multiple: false);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "处理事件 '{EventName}' 失败，消息将进入死信队列: {Message}", eventName, message);
-
             activity?.SetExceptionTags(ex);
+            var attempt = ReadAttempt(eventArgs.BasicProperties) + 1;
+            if (attempt < _options.MaxDeliveryAttempts)
+            {
+                _logger.LogWarning(ex, "处理事件 '{EventName}' 失败（第 {Attempt}/{MaxAttempts} 次），{Delay} 后重投",
+                    eventName, attempt, _options.MaxDeliveryAttempts, _options.RetryDelay);
+                await RetryLaterAsync(eventArgs, eventName, attempt);
+                return;
+            }
+
+            _logger.LogError(ex, "处理事件 '{EventName}' 失败 {Attempt} 次，消息进入死信队列: {Message}", eventName, attempt, message);
             await _consumerChannel!.BasicNackAsync(eventArgs.DeliveryTag, multiple: false, requeue: false);
+        }
+    }
+
+    /// <summary>
+    /// 把消息投到重试队列后再确认原消息：重试队列的 TTL 到期后消息回到主队列。
+    /// 先投递后确认，崩溃时最多重复投递一次，由消费端的 Inbox 去重兜底。
+    /// </summary>
+    private async Task RetryLaterAsync(BasicDeliverEventArgs eventArgs, string eventName, int attempt)
+    {
+        try
+        {
+            var headers = eventArgs.BasicProperties.Headers is null
+                ? []
+                : new Dictionary<string, object?>(eventArgs.BasicProperties.Headers);
+            headers[EventNameHeader] = eventName;
+            headers[AttemptHeader] = attempt.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            await _consumerChannel!.BasicPublishAsync(
+                exchange: string.Empty,
+                routingKey: _options.RetryQueue,
+                mandatory: true,
+                basicProperties: new BasicProperties { DeliveryMode = DeliveryModes.Persistent, Headers = headers },
+                body: eventArgs.Body.ToArray());
+            await _consumerChannel.BasicAckAsync(eventArgs.DeliveryTag, multiple: false);
+        }
+        catch (Exception exception)
+        {
+            // 重投也失败时保持未确认状态，连接恢复后 broker 会重新投递，绝不静默丢消息。
+            _logger.LogError(exception, "事件 '{EventName}' 重投失败，保留未确认状态等待重新投递", eventName);
         }
     }
 

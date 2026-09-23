@@ -1,4 +1,5 @@
 using MediatR;
+using MSA.Repositories.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using MSA.Contracts;
@@ -22,6 +23,8 @@ if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
 
 builder.Services.AddDbContext<NotificationDbContext>(options => options.UseNpgsql(connectionString));
+// 本服务只消费不发布，但 Inbox 去重记录同样需要保留期清理。
+builder.Services.AddMessagingOperations<NotificationDbContext>();
 builder.Services.AddScoped<MSADbContext>(services => services.GetRequiredService<NotificationDbContext>());
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddMediatR(configuration => configuration.RegisterServicesFromAssemblyContaining<OrderConfirmedHandler>());
@@ -64,6 +67,7 @@ app.UseExceptionHandler();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealthChecks("/health");
+app.MapMessagingAdminEndpoints("notification", "notification.admin.read", "notification.admin.write");
 app.MapGet("/notification/users/{userId}", async (
     string userId,
     int skip,

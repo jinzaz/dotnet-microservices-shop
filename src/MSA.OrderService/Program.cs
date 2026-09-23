@@ -1,4 +1,5 @@
 using FluentValidation;
+using MSA.Repositories.Persistence;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
@@ -84,6 +85,8 @@ builder.Services.AddRateLimiter(options =>
 
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 builder.Services.AddOutbox<OrderDbContext>();
+// Outbox/Inbox 保留期清理，并为运维接口暴露失败消息与卡住的 Saga。
+builder.Services.AddMessagingOperations<OrderDbContext>();
 builder.Services.AddSaga<OrderDbContext>();
 builder.Services.AddIntegrationEventHandler<ProductChangedIntegrationEvent, ProductChangedHandler>();
 builder.Services.AddIntegrationEventHandler<ProductVariantChangedIntegrationEvent, ProductVariantChangedHandler>();
@@ -150,6 +153,7 @@ app.UseAuthorization();
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 app.MapHealthChecks("/health");
+app.MapMessagingAdminEndpoints("order", "order.admin.read", "order.admin.write");
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {

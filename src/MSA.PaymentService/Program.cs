@@ -1,4 +1,5 @@
 using Essensoft.Paylinks.Alipay.Client.Extensions;
+using MSA.Repositories.Persistence;
 using Essensoft.Paylinks.WeChatPay.Client.Extensions;
 using Microsoft.EntityFrameworkCore;
 using MSA.Contracts;
@@ -42,6 +43,8 @@ builder.Services.AddScoped<PaymentGatewayResolver>();
 builder.Services.AddScoped<PaymentProviderOperationStore>();
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 builder.Services.AddOutbox<PaymentDbContext>();
+// Outbox/Inbox 保留期清理，并为运维接口暴露失败消息与卡住的 Saga。
+builder.Services.AddMessagingOperations<PaymentDbContext>();
 builder.Services.AddIntegrationEventHandler<PaymentRequestedIntegrationEvent, PaymentRequestedHandler>();
 builder.Services.AddIntegrationEventHandler<CancelPaymentRequestedIntegrationEvent, CancelPaymentRequestedHandler>();
 builder.Services.AddIntegrationEventHandler<RefundPaymentRequestedIntegrationEvent, RefundPaymentRequestedHandler>();
@@ -80,6 +83,7 @@ app.UseAuthorization();
 app.MapHealthChecks("/health");
 app.MapPaymentApiEndpoints();
 app.MapPaymentAdminEndpoints();
+app.MapMessagingAdminEndpoints("payment", "payment.admin.read", "payment.admin.write");
 app.MapPaymentCallbackEndpoints();
 
 app.Run();

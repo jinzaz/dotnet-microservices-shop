@@ -12,7 +12,22 @@ internal sealed class OutboxProcessorService(IServiceScopeFactory scopes, TimePr
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(options.Value.PollingInterval, clock);
-        do { await ProcessBatchAsync(stoppingToken); } while (await timer.WaitForNextTickAsync(stoppingToken));
+          // 一轮失败（例如数据库重启）不能让发布器退出：BackgroundService 的未处理异常默认会停掉整个进程。
+        do
+        {
+            try
+            {
+                await ProcessBatchAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Outbox publishing round failed; retrying on the next tick.");
+            }
+        } while (await timer.WaitForNextTickAsync(stoppingToken));
     }
     private async Task ProcessBatchAsync(CancellationToken cancellationToken)
     {
@@ -31,7 +46,18 @@ internal sealed class OutboxProcessorService(IServiceScopeFactory scopes, TimePr
             catch (Exception exception)
             {
                 var seconds = Math.Min(Math.Pow(2, message.RetryCount + 1), options.Value.MaximumRetryDelay.TotalSeconds); var jitter = Random.Shared.NextDouble() * Math.Min(5, seconds * .2);
-                message.MarkFailed(lockId, exception, clock.GetUtcNow().AddSeconds(seconds + jitter), options.Value.MaxRetries); logger.LogError(exception, "Failed to publish outbox message {MessageId}", message.Id);
+                message.MarkFailed(lockId, exception, clock.GetUtcNow().AddSeconds(seconds + jitter), options.Value.MaxRetries);
+                if (message.Status == OutboxStatus.Failed)
+                {
+                    // 重试用尽后不会再自动发布：必须让它在日志与告警里显眼，再由运维接口重投。
+                    logger.LogCritical(exception,
+                        "Outbox message {MessageId} ({EventType}) gave up after {RetryCount} attempts and needs a manual requeue.",
+                        message.Id, message.EventType, message.RetryCount);
+                }
+                else
+                {
+                    logger.LogError(exception, "Failed to publish outbox message {MessageId}", message.Id);
+                }
             }
             await store.SaveChangesAsync(cancellationToken);
         }

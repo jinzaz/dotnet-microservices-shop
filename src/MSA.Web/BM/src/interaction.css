@@ -428,3 +428,10 @@ td > .tag-inline:first-child, td small.tag-inline { margin-left: 0; }
   .claim-card { grid-template-columns: 84px minmax(0, 1fr); }
   .claim-card__button { grid-column: 1 / -1; margin: 0 12px 10px; text-align: center; }
 }
+
+/* ---------- Messaging operations ---------- */
+.kpi-strip button { cursor: pointer; text-align: left; }
+.kpi-strip button:hover { background: #f6f6f2; }
+.kpi-strip button.kpi-strip__action:hover { background: #2a2f2c; }
+.error-cell { display: -webkit-box; overflow: hidden; color: var(--muted); -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.payload-view { max-height: 320px; margin: 0 22px 22px; overflow: auto; padding: 14px; border-radius: 9px; background: #1d211f; color: #e6ece4; font-size: 11px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }

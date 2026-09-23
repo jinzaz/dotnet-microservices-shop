@@ -10,7 +10,22 @@ internal sealed class SagaTimeoutService(IServiceScopeFactory scopes, TimeProvid
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(options.Value.PollingInterval, clock);
-        do { await ProcessAsync(stoppingToken); } while (await timer.WaitForNextTickAsync(stoppingToken));
+        // 同上：超时调度器必须活到进程结束，否则没有人再推进补偿。
+        do
+        {
+            try
+            {
+                await ProcessAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Saga timeout round failed; retrying on the next tick.");
+            }
+        } while (await timer.WaitForNextTickAsync(stoppingToken));
     }
     private async Task ProcessAsync(CancellationToken cancellationToken)
     {

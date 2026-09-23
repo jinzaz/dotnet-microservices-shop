@@ -30,5 +30,13 @@ public sealed class OutboxMessage
         Status = RetryCount >= maxRetries ? OutboxStatus.Failed : OutboxStatus.Pending;
         NextAttemptOnUtc = nextAttempt; LockId = null; LockedUntilUtc = null; Version++;
     }
+    /// <summary>把重试耗尽的消息放回待发布队列（运维在修复根因后手动触发）。</summary>
+    public void Requeue(DateTimeOffset now)
+    {
+        if (Status != OutboxStatus.Failed)
+            throw new InvalidOperationException($"Outbox message {Id} is not in a failed state.");
+        Status = OutboxStatus.Pending; RetryCount = 0; NextAttemptOnUtc = now; LockId = null; LockedUntilUtc = null; Version++;
+    }
+
     private void EnsureLock(Guid lockId) { if (LockId != lockId) throw new InvalidOperationException($"Outbox message {Id} is not owned by lock {lockId}."); }
 }

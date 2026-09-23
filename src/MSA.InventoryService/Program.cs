@@ -1,4 +1,5 @@
 using FluentValidation;
+using MSA.Repositories.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using MSA.Contracts;
@@ -56,6 +57,10 @@ builder.Services.AddStackExchangeRedisCache(options =>
     options.Configuration = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379");
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 builder.Services.AddOutbox<InventoryDbContext>();
+// 兜底释放到期未支付的预占，避免释放消息丢失时库存被永久锁死。
+builder.Services.AddHostedService<InventoryReservationExpiryService>();
+// Outbox/Inbox 保留期清理，并为运维接口暴露失败消息与卡住的 Saga。
+builder.Services.AddMessagingOperations<InventoryDbContext>();
 builder.Services.AddIntegrationEventHandler<OrderSubmittedIntegrationEvent, OrderSubmittedHandler>();
 builder.Services.AddIntegrationEventHandler<ReleaseInventoryIntegrationEvent, ReleaseInventoryHandler>();
 builder.Services.AddIntegrationEventHandler<CommitInventoryIntegrationEvent, CommitInventoryHandler>();
@@ -110,6 +115,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 });
 app.MapInventoryEndpoints();
 app.MapInventoryAdminEndpoints();
+app.MapMessagingAdminEndpoints("inventory", "inventory.admin.read", "inventory.admin.write");
 app.MapInventoryAllocationEndpoints();
 app.MapFlashSaleEndpoints();
 app.MapFlashSaleAdminEndpoints();

@@ -41,5 +41,6 @@
   </Folder>
   <Folder Name="/3.Tests/">
     <Project Path="tests/MSA.CommerceTests/MSA.CommerceTests.csproj" />
+    <Project Path="tests/MSA.DistributedTransactionTests/MSA.DistributedTransactionTests.csproj" />
   </Folder>
 </Solution>

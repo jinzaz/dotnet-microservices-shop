@@ -21,7 +21,8 @@ internal static class PbacSeedData
         ("inventory.allocations", "活动库存配额"),
         ("order.fulfillment", "订单履约"),
         ("payment.transactions", "支付交易"),
-        ("notification.messages", "用户通知")
+        ("notification.messages", "用户通知"),
+        ("system.messaging", "消息运维")
     ];
 
     internal static readonly BmRole[] SystemAdministratorRole =
@@ -168,7 +169,8 @@ internal static class PbacSeedData
             ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/pause"),
             ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/resume"),
             ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/end"),
-            ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/quantity")
+            ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/quantity"),
+            .. MessagingRoutes()
         ];
 
         return definitions
@@ -180,6 +182,21 @@ internal static class PbacSeedData
                 order))
             .ToArray();
     }
+
+    /// <summary>
+    /// 每个服务都有一组一致的消息运维接口（失败消息、卡住的 Saga、死信），统一归到 system.messaging 模块。
+    /// </summary>
+    private static (string Permission, string Method, string Path)[] MessagingRoutes() =>
+        new[] { "catalog", "order", "inventory", "payment", "basket", "notification" }
+            .SelectMany(service => new (string Permission, string Method, string Path)[]
+            {
+                ("system.messaging.query", HttpMethods.Get, $"/api/{service}/admin/messaging/outbox/failed"),
+                ("system.messaging.query", HttpMethods.Get, $"/api/{service}/admin/messaging/sagas/stalled"),
+                ("system.messaging.query", HttpMethods.Get, $"/api/{service}/admin/messaging/dead-letters"),
+                ("system.messaging.edit", HttpMethods.Post, $"/api/{service}/admin/messaging/outbox/failed/requeue"),
+                ("system.messaging.edit", HttpMethods.Post, $"/api/{service}/admin/messaging/dead-letters/replay")
+            })
+            .ToArray();
 
     private static Guid StableGuid(string value)
     {

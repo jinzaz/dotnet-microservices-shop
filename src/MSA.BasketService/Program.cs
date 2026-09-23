@@ -1,4 +1,5 @@
 using FluentValidation;
+using MSA.Repositories.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using MSA.BasketService.Application;
@@ -56,6 +57,8 @@ builder.Services.AddMsaApplicationPipeline();
 
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 builder.Services.AddOutbox<BasketDbContext>();
+// Outbox/Inbox 保留期清理，并为运维接口暴露失败消息与卡住的 Saga。
+builder.Services.AddMessagingOperations<BasketDbContext>();
 builder.Services.AddIntegrationEventHandler<ProductChangedIntegrationEvent, ProductChangedHandler>();
 builder.Services.AddIntegrationEventHandler<ProductVariantChangedIntegrationEvent, ProductVariantChangedHandler>();
 builder.Services.AddIntegrationEventHandler<OrderSubmittedIntegrationEvent, OrderSubmittedHandler>();
@@ -105,4 +108,5 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     Predicate = registration => registration.Tags.Contains("ready")
 });
 app.MapBasketEndpoints();
+app.MapMessagingAdminEndpoints("basket", "basket.admin.read", "basket.admin.write");
 app.Run();
