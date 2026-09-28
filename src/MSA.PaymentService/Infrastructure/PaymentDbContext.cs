@@ -1,4 +1,5 @@
 using MediatR;
+using MSA.Persistence.Postgres;
 using Microsoft.EntityFrameworkCore;
 using MSA.PaymentService.Domain;
 using MSA.Repositories.Persistence;
@@ -23,141 +24,63 @@ public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options,
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(PaymentDbContext).Assembly);
     }
 
-    internal Task<int> TryInsertInboxMessageAsync(
-        Guid messageId,
-        string consumer,
-        DateTimeOffset processedOnUtc,
-        CancellationToken cancellationToken) =>
-        Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            INSERT INTO payment_inbox_messages ("MessageId", "Consumer", "ProcessedOnUtc")
-            VALUES ({messageId}, {consumer}, {processedOnUtc})
-            ON CONFLICT ("MessageId", "Consumer") DO NOTHING
-            """,
-            cancellationToken);
-
-    internal async Task<Payment?> LockPaymentByMerchantTradeNoAsync(
+    internal Task<Payment?> LockPaymentByMerchantTradeNoAsync(
         string merchantTradeNo,
-        CancellationToken cancellationToken)
-    {
-        var rows = await Payments
-            .FromSqlInterpolated(
-                $"""
-                SELECT *
-                FROM payment_payments
-                WHERE "MerchantTradeNo" = {merchantTradeNo}
-                FOR UPDATE
-                """)
+        CancellationToken cancellationToken) =>
+        Payments
+            .Where(payment => payment.MerchantTradeNo == merchantTradeNo)
+            .ForUpdate()
             .AsTracking()
-            .ToListAsync(cancellationToken);
-        return rows.SingleOrDefault();
-    }
+            .SingleOrDefaultAsync(cancellationToken);
 
     internal async Task<Payment> LockPaymentAsync(
         Guid paymentId,
-        CancellationToken cancellationToken)
-    {
-        var rows = await Payments
-            .FromSqlInterpolated(
-                $"""
-                SELECT *
-                FROM payment_payments
-                WHERE "Id" = {paymentId}
-                FOR UPDATE
-                """)
+        CancellationToken cancellationToken) =>
+        await Payments
+            .Where(payment => payment.Id == paymentId)
+            .ForUpdate()
             .AsTracking()
-            .ToListAsync(cancellationToken);
-        return rows.SingleOrDefault()
-            ?? throw new InvalidOperationException($"Payment {paymentId} was not found.");
-    }
+            .SingleOrDefaultAsync(cancellationToken)
+        ?? throw new InvalidOperationException($"Payment {paymentId} was not found.");
 
-    internal async Task<Payment?> LockPaymentByOrderIdAsync(
+    internal Task<Payment?> LockPaymentByOrderIdAsync(
         Guid orderId,
-        CancellationToken cancellationToken)
-    {
-        var rows = await Payments
-            .FromSqlInterpolated(
-                $"""
-                SELECT *
-                FROM payment_payments
-                WHERE "OrderId" = {orderId}
-                FOR UPDATE
-                """)
+        CancellationToken cancellationToken) =>
+        Payments
+            .Where(payment => payment.OrderId == orderId)
+            .ForUpdate()
             .AsTracking()
-            .ToListAsync(cancellationToken);
-        return rows.SingleOrDefault();
-    }
+            .SingleOrDefaultAsync(cancellationToken);
 
-    internal async Task<PaymentProviderOperation?> LockProviderOperationAsync(
+    internal Task<PaymentProviderOperation?> LockProviderOperationAsync(
         Guid operationId,
-        CancellationToken cancellationToken)
-    {
-        var rows = await ProviderOperations
-            .FromSqlInterpolated(
-                $"""
-                SELECT *
-                FROM payment_provider_operations
-                WHERE "Id" = {operationId}
-                FOR UPDATE
-                """)
+        CancellationToken cancellationToken) =>
+        ProviderOperations
+            .Where(operation => operation.Id == operationId)
+            .ForUpdate()
             .AsTracking()
-            .ToListAsync(cancellationToken);
-        return rows.SingleOrDefault();
-    }
+            .SingleOrDefaultAsync(cancellationToken);
 
     internal async Task<PaymentRefund> LockRefundAsync(
         Guid refundId,
-        CancellationToken cancellationToken)
-    {
-        var rows = await PaymentRefunds
-            .FromSqlInterpolated(
-                $"""
-                SELECT *
-                FROM payment_refunds
-                WHERE "Id" = {refundId}
-                FOR UPDATE
-                """)
+        CancellationToken cancellationToken) =>
+        await PaymentRefunds
+            .Where(refund => refund.Id == refundId)
+            .ForUpdate()
             .AsTracking()
-            .ToListAsync(cancellationToken);
-        return rows.SingleOrDefault()
-            ?? throw new InvalidOperationException($"Refund {refundId} was not found.");
-    }
+            .SingleOrDefaultAsync(cancellationToken)
+        ?? throw new InvalidOperationException($"Refund {refundId} was not found.");
 
-    internal async Task<PaymentRefund?> LockRefundByRequestIdAsync(
+    internal Task<PaymentRefund?> LockRefundByRequestIdAsync(
         Guid refundRequestId,
-        CancellationToken cancellationToken)
-    {
-        var rows = await PaymentRefunds
-            .FromSqlInterpolated(
-                $"""
-                SELECT *
-                FROM payment_refunds
-                WHERE "RefundRequestId" = {refundRequestId}
-                FOR UPDATE
-                """)
+        CancellationToken cancellationToken) =>
+        PaymentRefunds
+            .Where(refund => refund.RefundRequestId == refundRequestId)
+            .ForUpdate()
             .AsTracking()
-            .ToListAsync(cancellationToken);
-        return rows.SingleOrDefault();
-    }
+            .SingleOrDefaultAsync(cancellationToken);
 
-    internal async Task AcquireOrderTransactionLockAsync(
-        Guid orderId,
-        CancellationToken cancellationToken)
-    {
-        // 按订单维度获取事务级咨询锁，串行化“创建支付、取消、退款”等可能交叉到达的消息。
-        var transaction = Database.CurrentTransaction
-            ?? throw new InvalidOperationException("Payment order locks require an active transaction.");
-        var connection = Database.GetDbConnection();
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
-
-        await using var command = connection.CreateCommand();
-        command.Transaction = transaction.GetDbTransaction();
-        command.CommandText = "SELECT pg_advisory_xact_lock(hashtextextended(@resourceKey, 0));";
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = "resourceKey";
-        parameter.Value = $"payment-order:{orderId:N}";
-        command.Parameters.Add(parameter);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
+    /// <summary>按订单维度加事务级咨询锁，串行化「创建支付、取消、退款」等可能交叉到达的消息。</summary>
+    internal Task AcquireOrderTransactionLockAsync(Guid orderId, CancellationToken cancellationToken) =>
+        this.AcquireTransactionLockAsync($"payment-order:{orderId:N}", cancellationToken);
 }

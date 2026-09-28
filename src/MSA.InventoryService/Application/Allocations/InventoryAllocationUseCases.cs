@@ -299,9 +299,12 @@ internal sealed class GetExpiredInventoryAllocationsQueryHandler(InventoryDbCont
     public async Task<IReadOnlyList<Guid>> Handle(
         GetExpiredInventoryAllocationsQuery request,
         CancellationToken cancellationToken) =>
+        // DateTimeOffset.UtcNow 由 Npgsql 翻译成数据库端的 now()，判定仍然用数据库时间。
         await db.InventoryAllocations
-            .FromSqlInterpolated($"SELECT * FROM inventory_allocations WHERE \"Status\" = 0 AND \"EndsOnUtc\" <= CURRENT_TIMESTAMP ORDER BY \"EndsOnUtc\" LIMIT {request.BatchSize}")
             .AsNoTracking()
+            .Where(value => value.Status == InventoryAllocationStatus.Open && value.EndsOnUtc <= DateTimeOffset.UtcNow)
+            .OrderBy(value => value.EndsOnUtc)
+            .Take(request.BatchSize)
             .Select(value => value.Id)
             .ToArrayAsync(cancellationToken);
 }

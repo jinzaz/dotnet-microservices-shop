@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using MSA.Infrastrucute.Abstractions;
 using MSA.Infrastrucute.Events;
 using MSA.Infrastrucute.Persistence;
+using MSA.Persistence.Postgres;
 using System.Data;
 
 namespace MSA.Infrastrucute;
@@ -13,6 +14,14 @@ public abstract class MSADbContext(DbContextOptions options, IMediator mediator)
     private IDbContextTransaction? _currentTransaction;
     public IDbContextTransaction? CurrentTransaction => _currentTransaction;
     public bool HasActiveTransaction => _currentTransaction is not null;
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+        // 行锁写在 LINQ 里（ForUpdate / ForUpdateSkipLocked），这里统一启用把标签翻译成 SQL 的拦截器，
+        // 免得某个上下文漏配后锁悄悄失效。
+        optionsBuilder.UsePostgresExtensions();
+    }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {

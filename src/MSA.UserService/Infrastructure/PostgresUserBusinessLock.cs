@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using MSA.Persistence.Postgres;
 using MSA.UserService.Domain;
 
 namespace MSA.UserService.Infrastructure;
@@ -9,9 +10,6 @@ public sealed class PostgresUserBusinessLock(UserDbContext db) : IUserBusinessLo
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentException.ThrowIfNullOrWhiteSpace(purpose);
-        var lockKey = $"user:{purpose.Trim()}:{userId.Trim()}";
-        return db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock(hashtextextended({lockKey}, 0))",
-            cancellationToken);
+        return db.AcquireTransactionLockAsync($"user:{purpose.Trim()}:{userId.Trim()}", cancellationToken);
     }
 }

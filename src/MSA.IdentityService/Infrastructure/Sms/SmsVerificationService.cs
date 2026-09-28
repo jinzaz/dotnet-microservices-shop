@@ -1,4 +1,5 @@
 using System.Globalization;
+using MSA.Persistence.Postgres;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.DataProtection;
@@ -278,10 +279,7 @@ internal sealed class SmsVerificationService : ISmsVerificationService
 
     private Task AcquirePhoneLockAsync(string phoneNumber, CancellationToken cancellationToken)
     {
-        var lockKey = $"identity:sms:{phoneNumber}";
-        return _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock(hashtextextended({lockKey}, 0))",
-            cancellationToken);
+        return _db.AcquireTransactionLockAsync($"identity:sms:{phoneNumber}", cancellationToken);
     }
 
     private static string BuildProtectedPayload(Guid messageId, string phoneNumber, string code) =>

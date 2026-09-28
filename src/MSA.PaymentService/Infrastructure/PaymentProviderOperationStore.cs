@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using MSA.Persistence.Postgres;
 using MSA.Contracts;
 using MSA.EventBusOutbox;
 using MSA.PaymentCore;
@@ -49,20 +50,14 @@ internal sealed class PaymentProviderOperationStore(
         try
         {
             var operations = await db.ProviderOperations
-                .FromSqlInterpolated(
-                    $"""
-                    SELECT operation.*
-                    FROM payment_provider_operations AS operation
-                    WHERE
-                        (operation."Status" = {(int)PaymentProviderOperationStatus.Pending}
-                         AND operation."NextAttemptOnUtc" <= {now})
-                        OR
-                        (operation."Status" = {(int)PaymentProviderOperationStatus.Processing}
-                         AND operation."LockedUntilUtc" < {now})
-                    ORDER BY operation."NextAttemptOnUtc", operation."CreatedOnUtc", operation."Id"
-                    LIMIT {batchSize}
-                    FOR UPDATE SKIP LOCKED
-                    """)
+                .Where(operation =>
+                    operation.Status == PaymentProviderOperationStatus.Pending && operation.NextAttemptOnUtc <= now
+                    || operation.Status == PaymentProviderOperationStatus.Processing && operation.LockedUntilUtc < now)
+                .OrderBy(operation => operation.NextAttemptOnUtc)
+                .ThenBy(operation => operation.CreatedOnUtc)
+                .ThenBy(operation => operation.Id)
+                .Take(batchSize)
+                .ForUpdateSkipLocked()
                 .AsTracking()
                 .ToListAsync(cancellationToken);
 

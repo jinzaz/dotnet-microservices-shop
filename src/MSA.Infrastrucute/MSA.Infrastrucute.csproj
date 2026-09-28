@@ -21,6 +21,7 @@
 
 
 	<ItemGroup>
+	  <ProjectReference Include="..\MSA.Persistence.Postgres\MSA.Persistence.Postgres.csproj" />
 	  <ProjectReference Include="..\MSA.EventBusOutbox\MSA.EventBusOutbox.csproj" />
 	</ItemGroup>
 </Project>

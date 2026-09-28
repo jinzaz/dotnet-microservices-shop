@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using MSA.Persistence.Postgres;
 using Microsoft.Extensions.Logging;
 using MSA.Contracts;
 using MSA.EventBus.Abstractions;
@@ -776,7 +777,8 @@ internal static class OrderRowLock
         Guid orderId,
         CancellationToken cancellationToken) =>
         db.Orders
-            .FromSqlInterpolated($"SELECT * FROM order_orders WHERE \"Id\" = {orderId} FOR UPDATE")
+            .Where(order => order.Id == orderId)
+            .ForUpdate()
             .SingleAsync(cancellationToken);
 }
 

@@ -22,7 +22,37 @@ internal static class TestEnvironment
 
     public static string? PostgresConnectionString => Nullable(Configuration["Postgres"]);
 
-    public static bool UsePostgres => PostgresConnectionString is not null;
+    private static bool? _postgresReachable;
+
+    /// <summary>
+    /// 配置了 Postgres 并且真的连得上时才用它。探测一次即可：服务器临时不可达（断网、环境没起）时
+    /// 自动回退到 SQLite，整套用例仍然能跑，只是少了 SKIP LOCKED 这类 PostgreSQL 专有语义。
+    /// </summary>
+    public static bool UsePostgres
+    {
+        get
+        {
+            if (PostgresConnectionString is null)
+                return false;
+            if (_postgresReachable is { } reachable)
+                return reachable;
+
+            try
+            {
+                using var connection = new Npgsql.NpgsqlConnection(
+                    new Npgsql.NpgsqlConnectionStringBuilder(PostgresConnectionString) { Timeout = 5 }.ConnectionString);
+                connection.Open();
+                _postgresReachable = true;
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine($"[tests] Postgres 不可用，本次回退到 SQLite：{exception.Message}");
+                _postgresReachable = false;
+            }
+
+            return _postgresReachable.Value;
+        }
+    }
 
     public static (string HostName, int Port, string UserName, string Password, string VirtualHost)? RabbitMq
     {
@@ -36,6 +66,30 @@ internal static class TestEnvironment
                     Configuration["RabbitMQ:UserName"] ?? "guest",
                     Configuration["RabbitMQ:Password"] ?? "guest",
                     Configuration["RabbitMQ:VirtualHost"] ?? "/");
+        }
+    }
+
+    private static bool? _rabbitReachable;
+
+    /// <summary>broker 不可达时把用例标记为 Inconclusive，而不是让整套测试变红。</summary>
+    public static bool RabbitMqReachable
+    {
+        get
+        {
+            if (RabbitMq is not { } broker)
+                return false;
+            if (_rabbitReachable is { } reachable)
+                return reachable;
+            try
+            {
+                using var probe = new System.Net.Sockets.TcpClient();
+                _rabbitReachable = probe.ConnectAsync(broker.HostName, broker.Port).Wait(TimeSpan.FromSeconds(5));
+            }
+            catch (Exception)
+            {
+                _rabbitReachable = false;
+            }
+            return _rabbitReachable.Value;
         }
     }
 

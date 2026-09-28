@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using MSA.Persistence.Postgres;
 using MSA.BasketService.Application.Abstractions;
 
 namespace MSA.BasketService.Infrastructure;
@@ -10,8 +11,6 @@ public sealed class PostgresBasketMutationLock(BasketDbContext db) : IBasketMuta
         if (!db.HasActiveTransaction)
             throw new InvalidOperationException("Basket mutation lock requires an active transaction.");
 
-        await db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock(hashtextextended({userId.Trim()}, 0))",
-            cancellationToken);
+        await db.AcquireTransactionLockAsync(userId, cancellationToken);
     }
 }

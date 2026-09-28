@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using MSA.Persistence.Postgres;
 using MSA.InventoryService.Domain;
 
 namespace MSA.InventoryService.Infrastructure;
@@ -13,7 +14,8 @@ internal static class InventoryRowLocks
         CancellationToken cancellationToken)
     {
         var reservation = await db.Reservations
-            .FromSqlInterpolated($"SELECT * FROM inventory_reservations WHERE \"Id\" = {reservationId} AND \"OrderId\" = {orderId} FOR UPDATE")
+            .Where(value => value.Id == reservationId && value.OrderId == orderId)
+            .ForUpdate()
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new InvalidOperationException($"Inventory reservation {reservationId} was not found for order {orderId}.");
         await db.Entry(reservation).Collection(value => value.Lines).LoadAsync(cancellationToken);
@@ -25,7 +27,8 @@ internal static class InventoryRowLocks
         Guid allocationId,
         CancellationToken cancellationToken) =>
         db.InventoryAllocations
-            .FromSqlInterpolated($"SELECT * FROM inventory_allocations WHERE \"Id\" = {allocationId} FOR UPDATE")
+            .Where(value => value.Id == allocationId)
+            .ForUpdate()
             .SingleOrDefaultAsync(cancellationToken);
 
     public static async Task<Dictionary<Guid, InventoryAllocation>> LockAllocationsAsync(
@@ -49,6 +52,7 @@ internal static class InventoryRowLocks
         string userId,
         CancellationToken cancellationToken) =>
         db.InventoryAllocationBuyers
-            .FromSqlInterpolated($"SELECT * FROM inventory_allocation_buyers WHERE \"AllocationId\" = {allocationId} AND \"UserId\" = {userId} FOR UPDATE")
+            .Where(value => value.AllocationId == allocationId && value.UserId == userId)
+            .ForUpdate()
             .SingleAsync(cancellationToken);
 }

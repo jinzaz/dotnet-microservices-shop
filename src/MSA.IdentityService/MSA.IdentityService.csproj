@@ -36,6 +36,7 @@
 
 
 	<ItemGroup>
+	  <ProjectReference Include="..\MSA.Persistence.Postgres\MSA.Persistence.Postgres.csproj" />
 	  <ProjectReference Include="..\MSA.Infrastrucute\MSA.Infrastrucute.csproj" />
 	</ItemGroup>
 

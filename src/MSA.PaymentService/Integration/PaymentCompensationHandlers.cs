@@ -25,11 +25,7 @@ internal sealed class CancelPaymentRequestedHandler(
         await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         try
         {
-            if (await db.TryInsertInboxMessageAsync(
-                    integrationEvent.Id,
-                    ConsumerId,
-                    now,
-                    cancellationToken) == 0)
+            if (!await db.TryBeginMessageAsync(integrationEvent.Id, ConsumerId, cancellationToken))
             {
                 await db.RollbackTransactionAsync(cancellationToken);
                 return;
@@ -163,11 +159,7 @@ internal sealed class RefundPaymentRequestedHandler(
         await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         try
         {
-            if (await db.TryInsertInboxMessageAsync(
-                    integrationEvent.Id,
-                    ConsumerId,
-                    now,
-                    cancellationToken) == 0)
+            if (!await db.TryBeginMessageAsync(integrationEvent.Id, ConsumerId, cancellationToken))
             {
                 await db.RollbackTransactionAsync(cancellationToken);
                 return;

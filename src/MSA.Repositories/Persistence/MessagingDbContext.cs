@@ -3,9 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using MSA.EventBusOutbox;
 using MSA.Infrastrucute;
+using MSA.Persistence.Postgres;
 using MSA.Repositories.EntityConfigurations;
 using MSA.Saga;
-using System.Runtime.CompilerServices;
 namespace MSA.Repositories.Persistence;
 
 public abstract class MessagingDbContext(
@@ -14,10 +14,6 @@ public abstract class MessagingDbContext(
     string tablePrefix)
     : MSADbContext(options, mediator), IOutboxStore, ISagaStore, IMessagingOperations
 {
-    private string InboxTableName { get; } = $"{tablePrefix}_inbox_messages";
-    private string OutboxTableName { get; } = $"{tablePrefix}_outbox_messages";
-    private string SagaTableName { get; } = $"{tablePrefix}_saga_states";
-
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<SagaState> SagaStates => Set<SagaState>();
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
@@ -28,38 +24,19 @@ public abstract class MessagingDbContext(
         modelBuilder.ApplyConfiguration(new SagaStateConfiguration(tablePrefix));
         modelBuilder.ApplyConfiguration(new InboxMessageConfiguration(tablePrefix));
     }
-    public async Task<bool> TryBeginMessageAsync(
+    /// <summary>
+    /// Inbox 记录既是消费凭证也是幂等闸门：靠唯一键原子抢占，先查后插在并发下会双双通过。
+    /// 该写入与业务数据、Outbox 共用本地事务，确保「已消费」不会领先于业务结果提交。
+    /// </summary>
+    public Task<bool> TryBeginMessageAsync(
         Guid messageId,
         string consumer,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(consumer);
-
-        // Inbox 记录既是消费凭证也是幂等闸门；利用数据库唯一键原子抢占，避免多副本先查后写的竞态。
-        // 该写入与业务数据、Outbox 共用本地事务，确保“已消费”不会领先于业务结果提交。
-        if (HasActiveTransaction && Database.IsNpgsql())
-        {
-            var sql = FormattableStringFactory.Create($$"""
-                INSERT INTO {{InboxTableName}} ("MessageId", "Consumer", "ProcessedOnUtc")
-                VALUES ({0}, {1}, {2})
-                ON CONFLICT ("MessageId", "Consumer") DO NOTHING;
-                """,
-                messageId,
-                consumer,
-                DateTimeOffset.UtcNow);
-            var affected = await Database.ExecuteSqlAsync(sql, cancellationToken);
-            return affected == 1;
-        }
-
-        if (await InboxMessages.AnyAsync(
-                message => message.MessageId == messageId && message.Consumer == consumer,
-                cancellationToken))
-        {
-            return false;
-        }
-
-        InboxMessages.Add(new InboxMessage(messageId, consumer, DateTimeOffset.UtcNow));
-        return true;
+        return InboxMessages.InsertOnConflictDoNothingAsync(
+            new InboxMessage(messageId, consumer, DateTimeOffset.UtcNow),
+            cancellationToken: cancellationToken);
     }
 
     async Task<IReadOnlyList<FailedOutboxMessageDto>> IMessagingOperations.ListFailedOutboxAsync(
@@ -151,6 +128,9 @@ public abstract class MessagingDbContext(
 
     void IOutboxStore.Add(OutboxMessage message) => OutboxMessages.Add(message);
 
+    /// <summary>
+    /// SKIP LOCKED 让多个发布实例分摊待发消息，租约则让崩溃实例的消息在超时后被别人接管。
+    /// </summary>
     async Task<IReadOnlyList<OutboxMessage>> IOutboxStore.ClaimPendingAsync(
         Guid lockId,
         int batchSize,
@@ -159,9 +139,11 @@ public abstract class MessagingDbContext(
         TimeSpan duration,
         CancellationToken cancellationToken)
     {
-        if (!Database.IsNpgsql())
+        var owned = !HasActiveTransaction;
+        var transaction = owned ? await Database.BeginTransactionAsync(cancellationToken) : null;
+        try
         {
-            var fallbackRows = await OutboxMessages
+            var rows = await OutboxMessages
                 .Where(message =>
                     message.RetryCount < maxRetries
                     && message.NextAttemptOnUtc <= now
@@ -170,49 +152,29 @@ public abstract class MessagingDbContext(
                 .OrderBy(message => message.OccurredOnUtc)
                 .ThenBy(message => message.Id)
                 .Take(batchSize)
+                .ForUpdateSkipLocked()
                 .ToListAsync(cancellationToken);
-            foreach (var row in fallbackRows)
+
+            foreach (var row in rows)
                 row.Claim(lockId, now.Add(duration));
+
             await base.SaveChangesAsync(cancellationToken);
-            return fallbackRows;
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+            return rows;
         }
-
-        // SKIP LOCKED 让多个发布实例分摊待处理消息，租约则允许崩溃实例的消息在超时后重新领取。
-        await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
-        var sql = FormattableStringFactory.Create($$"""
-                SELECT *
-                FROM {{OutboxTableName}}
-                WHERE "RetryCount" < {0}
-                  AND "NextAttemptOnUtc" <= {1}
-                  AND (
-                    "Status" = {2}
-                    OR ("Status" = {3} AND "LockedUntilUtc" < {1})
-                  ) 
-                ORDER BY "OccurredOnUtc", "Id"
-                FOR UPDATE SKIP LOCKED
-                LIMIT {4}
-                """,
-                maxRetries,
-                now,
-                (int)OutboxStatus.Pending,
-                (int)OutboxStatus.Processing,
-                batchSize);
-        var rows = await OutboxMessages
-            .FromSql(sql)
-            .ToListAsync(cancellationToken);
-
-        foreach (var row in rows)
-            row.Claim(lockId, now.Add(duration));
-
-        await base.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return rows;
+        finally
+        {
+            if (transaction is not null)
+                await transaction.DisposeAsync();
+        }
     }
 
     Task IOutboxStore.SaveChangesAsync(CancellationToken ct) => base.SaveChangesAsync(ct);
     void ISagaStore.Add(SagaState state) => SagaStates.Add(state);
     Task<SagaState?> ISagaStore.FindAsync(Guid id, CancellationToken ct) => SagaStates.SingleOrDefaultAsync(x => x.CorrelationId == id, ct);
 
+    /// <summary>Saga 超时任务沿用同一套租约模型，保证同一流程不会被多个实例并发补偿。</summary>
     async Task<IReadOnlyList<SagaState>> ISagaStore.ClaimDueTimeoutsAsync(
         Guid lockId,
         int batchSize,
@@ -220,9 +182,11 @@ public abstract class MessagingDbContext(
         TimeSpan duration,
         CancellationToken cancellationToken)
     {
-        if (!Database.IsNpgsql())
+        var owned = !HasActiveTransaction;
+        var transaction = owned ? await Database.BeginTransactionAsync(cancellationToken) : null;
+        try
         {
-            var fallbackRows = await SagaStates
+            var rows = await SagaStates
                 .Where(saga =>
                     (saga.Status == SagaStatus.Running || saga.Status == SagaStatus.Compensating)
                     && saga.TimeoutOnUtc <= now
@@ -230,39 +194,22 @@ public abstract class MessagingDbContext(
                 .OrderBy(saga => saga.TimeoutOnUtc)
                 .ThenBy(saga => saga.CorrelationId)
                 .Take(batchSize)
+                .ForUpdateSkipLocked()
                 .ToListAsync(cancellationToken);
-            foreach (var row in fallbackRows)
+
+            foreach (var row in rows)
                 row.ClaimTimeout(lockId, now.Add(duration), now);
+
             await base.SaveChangesAsync(cancellationToken);
-            return fallbackRows;
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+            return rows;
         }
-
-        // Saga 超时任务沿用相同的租约模型，保证同一流程不会被多个实例并发补偿。
-        await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
-        var sql = FormattableStringFactory.Create($$"""
-                SELECT *
-                FROM {{SagaTableName}}
-                WHERE "Status" IN ({0}, {1})
-                  AND "TimeoutOnUtc" <= {2}
-                  AND ("TimeoutLockId" IS NULL OR "TimeoutLockedUntilUtc" < {2})
-                ORDER BY "TimeoutOnUtc", "CorrelationId"
-                FOR UPDATE SKIP LOCKED
-                LIMIT {3}
-                """,
-                (int)SagaStatus.Running,
-                (int)SagaStatus.Compensating,
-                now,
-                batchSize);
-        var rows = await SagaStates
-            .FromSql(sql)
-            .ToListAsync(cancellationToken);
-
-        foreach (var row in rows)
-            row.ClaimTimeout(lockId, now.Add(duration), now);
-
-        await base.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return rows;
+        finally
+        {
+            if (transaction is not null)
+                await transaction.DisposeAsync();
+        }
     }
 
     Task ISagaStore.SaveChangesAsync(CancellationToken ct) => base.SaveChangesAsync(ct);

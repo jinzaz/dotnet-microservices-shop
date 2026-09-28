@@ -28,12 +28,7 @@ internal sealed class PaymentRequestedHandler(
         await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         try
         {
-            var inboxRows = await db.TryInsertInboxMessageAsync(
-                integrationEvent.Id,
-                ConsumerId,
-                now,
-                cancellationToken);
-            if (inboxRows == 0)
+            if (!await db.TryBeginMessageAsync(integrationEvent.Id, ConsumerId, cancellationToken))
             {
                 await db.RollbackTransactionAsync(cancellationToken);
                 return;

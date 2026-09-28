@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using MSA.Persistence.Postgres;
 using MSA.CatalogService.Application;
 using MSA.CatalogService.Application.Abstractions;
 using MSA.CatalogService.Domain;
@@ -11,9 +12,10 @@ internal sealed class CouponCampaignStore(CatalogDbContext db) : ICouponCampaign
     {
         if (!db.HasActiveTransaction)
             throw new InvalidOperationException("Coupon campaign writes require an active transaction.");
-        return (await db.CouponCampaigns
-            .FromSqlInterpolated($"SELECT * FROM catalog_coupon_campaigns WHERE \"Id\" = {id} FOR UPDATE")
-            .ToListAsync(cancellationToken)).SingleOrDefault();
+        return await db.CouponCampaigns
+            .Where(campaign => campaign.Id == id)
+            .ForUpdate()
+            .SingleOrDefaultAsync(cancellationToken);
     }
 
     async Task<CouponClaimCounts> ICouponCampaignRepository.CountClaimsAsync(

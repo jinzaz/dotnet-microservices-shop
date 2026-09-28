@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using MSA.Persistence.Postgres;
 using Microsoft.Extensions.Options;
 using MSA.Contracts;
 using MSA.EventBusOutbox;
@@ -89,7 +90,8 @@ internal sealed class InventoryReservationExpiryService(
         try
         {
             var reservation = await db.Reservations
-                .FromSqlInterpolated($"SELECT * FROM inventory_reservations WHERE \"Id\" = {reservationId} FOR UPDATE")
+                .Where(value => value.Id == reservationId)
+                .ForUpdate()
                 .SingleOrDefaultAsync(cancellationToken);
             if (reservation is null)
             {

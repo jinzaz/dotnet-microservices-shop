@@ -73,6 +73,8 @@ public sealed class RabbitMqDeliveryTests
     {
         if (TestEnvironment.RabbitMq is null)
             Assert.Inconclusive("未配置 RabbitMQ（testsettings.json 或 MSA_TEST_RABBITMQ__HostName），跳过 broker 集成测试。");
+        if (!TestEnvironment.RabbitMqReachable)
+            Assert.Inconclusive("RabbitMQ 当前不可达，跳过 broker 集成测试。");
         var run = Guid.NewGuid().ToString("N")[..8];
         _queue = $"{TestEnvironment.QueuePrefix}.dtx.{run}";
         _exchange = $"{TestEnvironment.QueuePrefix}.dtx.events.{run}";

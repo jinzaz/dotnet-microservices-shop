@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using MSA.Persistence.Postgres;
 using MSA.CatalogService.Application;
 using MSA.CatalogService.Application.Abstractions;
 using MSA.CatalogService.Domain;
@@ -43,9 +44,10 @@ internal sealed class CatalogStore(CatalogDbContext db, TimeProvider clock) :
             throw new InvalidOperationException("Product writes require an active transaction.");
 
         // 先锁定 SPU 再读取子项，避免并发 SKU/媒体操作基于同一个旧版本更新父商品。
-        var product = (await db.Products
-            .FromSqlInterpolated($"SELECT * FROM catalog_products WHERE \"Id\" = {id} FOR UPDATE")
-            .ToListAsync(cancellationToken)).SingleOrDefault();
+        var product = await db.Products
+            .Where(value => value.Id == id)
+            .ForUpdate()
+            .SingleOrDefaultAsync(cancellationToken);
         if (product is null)
             return null;
 

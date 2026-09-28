@@ -1,8 +1,6 @@
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using MSA.InventoryService.Application;
 using MSA.InventoryService.Domain;
-using System.Data;
+using MSA.Persistence.Postgres;
 
 namespace MSA.InventoryService.Infrastructure;
 
@@ -39,38 +37,7 @@ internal sealed class PostgresInventoryTransactionLock(InventoryDbContext db) : 
         CancellationToken cancellationToken) =>
         AcquireAsync([$"inventory-allocation-buyer:{allocationId:N}:{userId}"], cancellationToken);
 
-    private async Task AcquireAsync(
-        IEnumerable<string> resourceKeys,
-        CancellationToken cancellationToken)
-    {
-        var keys = resourceKeys
-            .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-        if (keys.Length == 0)
-            return;
-
-        var transaction = db.Database.CurrentTransaction
-            ?? throw new InvalidOperationException("Inventory locks require an active database transaction.");
-        var connection = db.Database.GetDbConnection();
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
-
-        await using var command = connection.CreateCommand();
-        command.Transaction = transaction.GetDbTransaction();
-        command.CommandText = """
-            SELECT pg_advisory_xact_lock(hashtextextended(value, 0))
-            FROM unnest(@resourceKeys) AS keys(value)
-            ORDER BY value;
-            """;
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = "resourceKeys";
-        parameter.Value = keys;
-        command.Parameters.Add(parameter);
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-        }
-    }
+    /// <summary>键去重并按固定顺序加锁：顺序一致才不会两个事务互相等待。</summary>
+    private Task AcquireAsync(IEnumerable<string> resourceKeys, CancellationToken cancellationToken) =>
+        db.AcquireTransactionLocksAsync(resourceKeys, cancellationToken);
 }

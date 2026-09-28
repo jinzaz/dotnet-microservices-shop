@@ -21,6 +21,7 @@
 	<ItemGroup>
 	  <ProjectReference Include="..\MSA.Infrastrucute\MSA.Infrastrucute.csproj" />
 	  <ProjectReference Include="..\MSA.EventBusOutbox\MSA.EventBusOutbox.csproj" />
+	  <ProjectReference Include="..\MSA.Persistence.Postgres\MSA.Persistence.Postgres.csproj" />
 	  <ProjectReference Include="..\MSA.Saga\MSA.Saga.csproj" />
 	</ItemGroup>
 </Project>

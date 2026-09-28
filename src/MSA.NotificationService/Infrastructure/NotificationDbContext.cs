@@ -1,4 +1,5 @@
 using MediatR;
+using MSA.Persistence.Postgres;
 using Microsoft.EntityFrameworkCore;
 using MSA.NotificationService.Domain;
 using MSA.Repositories.Persistence;
@@ -18,9 +19,10 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
             throw new InvalidOperationException("Notification retry requires an active transaction.");
 
         // 串行化管理员重试，避免两个请求用同一旧版本更新通知状态。
-        return (await Notifications
-            .FromSqlInterpolated($"SELECT * FROM notification_notifications WHERE \"Id\" = {id} FOR UPDATE")
-            .ToListAsync(cancellationToken)).SingleOrDefault();
+        return await Notifications
+            .Where(notification => notification.Id == id)
+            .ForUpdate()
+            .SingleOrDefaultAsync(cancellationToken);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

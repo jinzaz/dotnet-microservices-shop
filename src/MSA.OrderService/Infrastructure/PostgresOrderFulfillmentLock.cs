@@ -1,30 +1,15 @@
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using MSA.OrderService.Application;
-using System.Data;
+using MSA.Persistence.Postgres;
 
 namespace MSA.OrderService.Infrastructure;
 
 internal sealed class PostgresOrderFulfillmentLock(OrderDbContext db) : IOrderFulfillmentLock
 {
-    public async Task AcquireAsync(Guid orderId, CancellationToken cancellationToken)
+    /// <summary>同一订单的履约推进串行执行，避免两个管理员操作基于同一旧状态提交。</summary>
+    public Task AcquireAsync(Guid orderId, CancellationToken cancellationToken)
     {
         if (orderId == Guid.Empty)
             throw new ArgumentException("Order id is required.", nameof(orderId));
-
-        var transaction = db.Database.CurrentTransaction
-            ?? throw new InvalidOperationException("Fulfillment locks require an active database transaction.");
-        var connection = db.Database.GetDbConnection();
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
-
-        await using var command = connection.CreateCommand();
-        command.Transaction = transaction.GetDbTransaction();
-        command.CommandText = "SELECT pg_advisory_xact_lock(hashtextextended(@resourceKey, 0));";
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = "resourceKey";
-        parameter.Value = $"order-fulfillment:{orderId:N}";
-        command.Parameters.Add(parameter);
-        await command.ExecuteScalarAsync(cancellationToken);
+        return db.AcquireTransactionLockAsync($"order-fulfillment:{orderId:N}", cancellationToken);
     }
 }

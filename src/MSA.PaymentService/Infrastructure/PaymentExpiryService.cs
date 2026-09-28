@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using MSA.Persistence.Postgres;
 using Microsoft.Extensions.Options;
 using MSA.Contracts;
 using MSA.EventBusOutbox;
@@ -45,16 +46,11 @@ internal sealed class PaymentExpiryService(
         try
         {
             var payments = await db.Payments
-                .FromSqlInterpolated(
-                    $"""
-                    SELECT payment.*
-                    FROM payment_payments AS payment
-                    WHERE payment."Status" = {(int)PaymentStatus.Pending}
-                      AND payment."ExpiresOnUtc" <= {now}
-                    ORDER BY payment."ExpiresOnUtc", payment."Id"
-                    LIMIT {batchSize}
-                    FOR UPDATE SKIP LOCKED
-                    """)
+                .Where(payment => payment.Status == PaymentStatus.Pending && payment.ExpiresOnUtc <= now)
+                .OrderBy(payment => payment.ExpiresOnUtc)
+                .ThenBy(payment => payment.Id)
+                .Take(batchSize)
+                .ForUpdateSkipLocked()
                 .AsTracking()
                 .ToListAsync(cancellationToken);
 
