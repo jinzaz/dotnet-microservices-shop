@@ -77,7 +77,12 @@ public sealed record OrderDto(
     DateTimeOffset UpdatedOnUtc,
     DateTimeOffset? ShippedOnUtc,
     DateTimeOffset? InTransitOnUtc,
-    DateTimeOffset? DeliveredOnUtc);
+    DateTimeOffset? DeliveredOnUtc,
+    /// <summary>
+    /// 支付服务此刻的状态。订单自身的状态要等支付成功事件送达才会变，
+    /// 这一项让「刚付完、事件还在路上」的订单也能显示正确结果；问不到时为 null。
+    /// </summary>
+    string? LivePaymentStatus = null);
 
 public sealed record GetOrderQuery(
     Guid OrderId,

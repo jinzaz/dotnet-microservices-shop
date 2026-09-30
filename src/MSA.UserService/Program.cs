@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using MSA.Grpc;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
 using MSA.UserService.Application;
 using MSA.UserService.Application.Addresses;
 using MSA.UserService.Domain;
+using MSA.UserService.Grpc;
 using MSA.UserService.Infrastructure;
 using MSA.UserService.Middleware;
 using OpenIddict.Validation.AspNetCore;
@@ -26,6 +28,8 @@ builder.Services.AddScoped<IUserBusinessLock, PostgresUserBusinessLock>();
 builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.AddControllers();
+// 服务间实时调用：收货地址的权威读取走 gRPC，策略沿用现有的 user-api（scope user / resource user-api）。
+builder.Services.AddMsaGrpcServer(builder.Environment.IsDevelopment());
 builder.Services.AddOpenApi();
 builder.Services.AddExceptionHandler<UserApiExceptionHandler>();
 builder.Services.AddProblemDetails();
@@ -60,4 +64,5 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealthChecks("/health");
 app.MapControllers();
+app.MapMsaGrpcService<UserAddressGrpcService>("user-api");
 app.Run();

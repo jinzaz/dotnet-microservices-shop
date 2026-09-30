@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package msa.user.v1;
+
+option csharp_namespace = "MSA.Grpc.Contracts.User";
+
+// 收货地址的权威来源。下单时只带地址 id，收货信息由用户服务返回，
+// 既能确认地址确实属于下单人，也避免客户端改写收件人与电话。
+service UserAddressQuery {
+  rpc GetAddress (GetAddressRequest) returns (GetAddressResponse);
+}
+
+message GetAddressRequest {
+  string user_id = 1;
+  string address_id = 2;
+}
+
+message GetAddressResponse {
+  // 地址不存在或不属于该用户时为 false：两种情况对调用方是同一个结论。
+  bool found = 1;
+  string recipient_name = 2;
+  string phone_number = 3;
+  string country_code = 4;
+  string province = 5;
+  string city = 6;
+  string district = 7;
+  string street = 8;
+  string postal_code = 9;
+}

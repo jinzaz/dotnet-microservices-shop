@@ -1,4 +1,6 @@
 using FluentValidation;
+using MSA.Grpc;
+using MSA.CatalogService.Grpc;
 using MSA.Repositories.Persistence;
 using Microsoft.EntityFrameworkCore;
 using MSA.CatalogService.Application;
@@ -67,6 +69,8 @@ builder.Services.AddProblemDetails();
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddHealthChecks();
+// 服务间实时调用：同一套 OpenIddict scope / resource，策略与 REST 一致。
+builder.Services.AddMsaGrpcServer(builder.Environment.IsDevelopment());
 
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
@@ -100,5 +104,7 @@ app.UseAuthorization();
 app.MapHealthChecks("/health");
 app.MapCatalogEndpoints();
 app.MapCatalogAdminEndpoints();
+app.MapMsaGrpcService<CatalogPricingGrpcService>("catalog-api");
+app.MapMsaGrpcService<CouponQueryGrpcService>("catalog-api");
 app.MapMessagingAdminEndpoints("catalog", "catalog.admin.read", "catalog.admin.write");
 app.Run();

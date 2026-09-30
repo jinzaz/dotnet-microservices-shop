@@ -4,6 +4,7 @@ using MSA.Contracts;
 using MSA.EventBus.Abstractions;
 using MSA.EventBusOutbox;
 using MSA.PaymentCore;
+using MSA.PaymentService.Application.Realtime;
 using MSA.PaymentService.Domain;
 using MSA.PaymentService.Infrastructure;
 using System.Text.Json;
@@ -14,6 +15,7 @@ internal sealed class PaymentRequestedHandler(
     PaymentDbContext db,
     IOutboxStore outbox,
     TimeProvider clock,
+    OrderPaymentPrecheck precheck,
     IOptions<PaymentProcessingOptions> configured)
     : IIntegrationEventHandler<PaymentRequestedIntegrationEvent>
 {
@@ -25,6 +27,13 @@ internal sealed class PaymentRequestedHandler(
     {
         var channel = ParseChannel(integrationEvent.PaymentMethod);
         var now = clock.GetUtcNow();
+        // 先核对再开事务：跨服务调用不该占着数据库事务和订单锁。
+        var rejection = await precheck.RejectAsync(
+            integrationEvent.OrderId,
+            integrationEvent.Amount,
+            integrationEvent.Currency,
+            integrationEvent.PricingSnapshotHash,
+            cancellationToken);
         await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -70,7 +79,21 @@ internal sealed class PaymentRequestedHandler(
                     .SingleOrDefaultAsync(
                         intent => intent.OrderId == integrationEvent.OrderId,
                         cancellationToken);
-                if (cancellationIntent is not null)
+                if (rejection is not null)
+                {
+                    // 订单此刻的事实与事件不一致：不要把这笔钱收进来，直接判失败让 Saga 去补偿。
+                    var previousStatus = payment.Status;
+                    payment.Fail(rejection);
+                    db.PaymentStatusHistory.Add(PaymentStatusHistory.Record(
+                        payment.Id,
+                        previousStatus,
+                        payment.Status,
+                        "OrderConfirmationRejected",
+                        now,
+                        rejection));
+                    PublishFailed(payment, rejection, now);
+                }
+                else if (cancellationIntent is not null)
                 {
                     var previousStatus = payment.Status;
                     payment.RequestCancellation(cancellationIntent.Reason);
@@ -96,16 +119,7 @@ internal sealed class PaymentRequestedHandler(
                         "PaymentRequestExpired",
                         now,
                         reason));
-                    var failed = new PaymentFailedIntegrationEvent
-                    {
-                        OrderId = payment.OrderId,
-                        PaymentId = payment.Id,
-                        Reason = reason
-                    };
-                    outbox.Add(OutboxMessage.Create(
-                        failed.GetType().AssemblyQualifiedName!,
-                        JsonSerializer.Serialize(failed, failed.GetType()),
-                        now));
+                    PublishFailed(payment, reason, now);
                 }
                 else
                 {
@@ -149,6 +163,20 @@ internal sealed class PaymentRequestedHandler(
             await db.RollbackTransactionAsync(cancellationToken);
             throw;
         }
+    }
+
+    private void PublishFailed(Payment payment, string reason, DateTimeOffset now)
+    {
+        var failed = new PaymentFailedIntegrationEvent
+        {
+            OrderId = payment.OrderId,
+            PaymentId = payment.Id,
+            Reason = reason
+        };
+        outbox.Add(OutboxMessage.Create(
+            failed.GetType().AssemblyQualifiedName!,
+            JsonSerializer.Serialize(failed, failed.GetType()),
+            now));
     }
 
     private static PaymentChannel ParseChannel(string value)

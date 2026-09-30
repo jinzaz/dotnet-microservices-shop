@@ -20,5 +20,7 @@
     <ProjectReference Include="../../src/MSA.OrderService/MSA.OrderService.csproj" />
     <ProjectReference Include="../../src/MSA.InventoryService/MSA.InventoryService.csproj" />
     <ProjectReference Include="../../src/MSA.BasketService/MSA.BasketService.csproj" />
+    <ProjectReference Include="../../src/MSA.PaymentService/MSA.PaymentService.csproj" />
+    <ProjectReference Include="../../src/MSA.UserService/MSA.UserService.csproj" />
   </ItemGroup>
 </Project>

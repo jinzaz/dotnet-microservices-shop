@@ -13,6 +13,8 @@ using MSA.Contracts;
 using MSA.EventBus.DependencyInjection;
 using MSA.EventBusRabbitMQ;
 using MSA.EventBusOutbox.Extensions;
+using MSA.Grpc;
+using MSA.Grpc.Contracts.Catalog;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
 using OpenIddict.Validation.AspNetCore;
@@ -32,6 +34,9 @@ builder.Services.AddScoped<IBasketProductCatalog>(services => services.GetRequir
 builder.Services.AddScoped<IBasketReadService>(services => services.GetRequiredService<BasketStore>());
 builder.Services.AddScoped<IBasketMutationLock, PostgresBasketMutationLock>();
 builder.Services.AddSingleton(TimeProvider.System);
+// 结算页的价格以目录此刻为准：机器身份走 client_credentials，scope 沿用现有的 catalog。
+builder.Services.AddMsaServiceAuthentication(builder.Configuration.GetSection(ServiceAuthenticationOptions.SectionName));
+builder.Services.AddMsaCatalogPriceAuthority(builder.Configuration.GetSection("GrpcClients:Catalog"));
 
 builder.Services.AddOptions<BasketOptions>()
     .Bind(builder.Configuration.GetSection(BasketOptions.SectionName))

@@ -4,6 +4,8 @@ using Microsoft.Extensions.Options;
 using MSA.Contracts;
 using MSA.EventBusOutbox;
 using MSA.OrderService.Application.Pricing;
+using MSA.Grpc.Contracts.Catalog;
+using MSA.OrderService.Application.Realtime;
 using MSA.OrderService.Domain;
 using MSA.OrderService.Infrastructure;
 using MSA.Saga;
@@ -17,6 +19,10 @@ internal sealed class CreateOrderCommandHandler(
     IOrderSubmissionLock submissionLock,
     IOrderPricingService pricing,
     ICouponRedemptionStore couponRedemptions,
+    ICatalogPriceAuthority priceAuthority,
+    IInventoryAvailabilityGateway availability,
+    ICouponAuthority couponAuthority,
+    IUserAddressAuthority addresses,
     IOutboxStore outbox,
     ISagaStore sagas,
     IOptions<OrderCheckoutOptions> options,
@@ -27,7 +33,8 @@ internal sealed class CreateOrderCommandHandler(
         var idempotencyKey = request.IdempotencyKey.Trim();
         var couponCodes = request.CouponCodes ?? [];
         var walletCouponIds = request.WalletCouponIds ?? [];
-        var shippingAddress = request.ShippingAddress.ToSnapshot();
+        // 地址先定稿再算指纹：收货信息以用户服务为准，指纹因此不受客户端改写收件人/电话的影响。
+        var shippingAddress = await ResolveShippingAddressAsync(request, cancellationToken);
         var fingerprint = OrderRequestFingerprint.Create(
             request.UserId,
             request.PaymentMethod,
@@ -147,6 +154,10 @@ internal sealed class CreateOrderCommandHandler(
             }
         }
 
+        // 结算价以目录此刻的权威数据为准：投影是最终一致的，改价或下架可能还没同步过来。
+        products = await ConfirmPricesAsync(products, now, cancellationToken);
+        await EnsureAvailableAsync(requestedItems, request.UserId, cancellationToken);
+
         var currencies = products.Values
             .Select(product => product.Currency)
             .Distinct(StringComparer.Ordinal)
@@ -164,6 +175,7 @@ internal sealed class CreateOrderCommandHandler(
             CouponSelection.From(couponCodes, walletCouponIds),
             now,
             cancellationToken);
+        await ConfirmCouponsAsync(price.Coupons, request.UserId, cancellationToken);
 
         var orderId = Guid.NewGuid();
         var order = new Order(
@@ -219,6 +231,122 @@ internal sealed class CreateOrderCommandHandler(
         return order.Id;
     }
 
+    /// <summary>
+    /// 用目录的实时判定替换投影快照。下游不可用时按配置决定：默认拒单，
+    /// 宁可让用户重试，也不要用可能过期的价格成交。
+    /// </summary>
+    private async Task<Dictionary<string, OrderProductProjection>> ConfirmPricesAsync(
+        Dictionary<string, OrderProductProjection> projected,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var confirmation = await priceAuthority.ConfirmAsync(projected.Keys.ToArray(), cancellationToken);
+        if (confirmation is null)
+        {
+            if (options.Value.RequireRealtimePriceConfirmation)
+                throw new InvalidOperationException("The catalog could not confirm the final prices; please try again.");
+            return projected;
+        }
+
+        var confirmed = new Dictionary<string, OrderProductProjection>(projected.Count, StringComparer.Ordinal);
+        foreach (var sku in projected.Keys)
+        {
+            if (!confirmation.Items.TryGetValue(sku, out var authority) || !authority.IsActive)
+                throw new InvalidOperationException("One or more products are unavailable.");
+            confirmed[sku] = authority.ToPricingSnapshot(now);
+        }
+        return confirmed;
+    }
+
+    /// <summary>
+    /// 下单前问一次库存：不占用，只是把注定失败的请求挡在建单之前，
+    /// 省掉「建单 → 库存拒绝 → 取消」这一圈，用户也能立刻得到明确原因。
+    /// 问不到就放行，真正的把关仍然在 Saga 的预占里。
+    /// </summary>
+    private async Task EnsureAvailableAsync(
+        IReadOnlyList<CreateOrderItem> items,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var lines = items
+            .Select(item => new AvailabilityRequestLine(item.Sku, item.Quantity, item.OfferId))
+            .ToArray();
+        var snapshot = await availability.CheckAsync(lines, userId, cancellationToken);
+        if (snapshot is null || snapshot.AllAvailable)
+            return;
+
+        var insufficient = snapshot.Lines.First(line => !line.Sufficient);
+        throw new InvalidOperationException(insufficient.Reason switch
+        {
+            "OfferClosed" => $"Offer is not accepting orders for SKU '{insufficient.Sku}'.",
+            "OfferLimitExceeded" => $"Offer purchase limit is exceeded for SKU '{insufficient.Sku}'.",
+            "OfferSoldOut" => $"Offer inventory is sold out for SKU '{insufficient.Sku}'.",
+            _ => $"Insufficient inventory for SKU '{insufficient.Sku}'."
+        });
+    }
+
+    /// <summary>
+    /// 只带地址 id 时向用户服务取权威收货信息：既确认地址属于下单人，也避免客户端改写收件人与电话。
+    /// 问不到就按提交上来的用——地址本来就由前端带过来，不值得为此拒单。
+    /// </summary>
+    private async Task<ShippingAddressSnapshot> ResolveShippingAddressAsync(
+        CreateOrderCommand request,
+        CancellationToken cancellationToken)
+    {
+        var submitted = request.ShippingAddress.ToSnapshot();
+        if (submitted.SourceAddressId is not Guid addressId)
+            return submitted;
+
+        var lookup = await addresses.GetAsync(request.UserId, addressId, cancellationToken);
+        if (lookup is null)
+            return submitted;
+        if (!lookup.Found || lookup.Address is null)
+            throw new InvalidOperationException("The shipping address does not belong to this user.");
+
+        var address = lookup.Address;
+        return new ShippingAddressSnapshot(
+            addressId,
+            address.RecipientName,
+            address.PhoneNumber,
+            address.CountryCode,
+            address.Province,
+            address.City,
+            address.District,
+            address.Street,
+            null,
+            address.PostalCode);
+    }
+
+    /// <summary>
+    /// 券的作废与改期变化快，投影可能还没同步；成交前向目录确认一次。
+    /// 问不到就按投影的结论走——配额与限领仍由本地的领用记录把关。
+    /// </summary>
+    private async Task ConfirmCouponsAsync(
+        IReadOnlyList<AppliedCoupon> coupons,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        if (coupons.Count == 0)
+            return;
+
+        var confirmation = await couponAuthority.ConfirmAsync(
+            coupons.Select(coupon => coupon.CouponId).ToArray(),
+            userId,
+            cancellationToken);
+        if (confirmation is null)
+            return;
+
+        foreach (var coupon in coupons)
+        {
+            if (confirmation.Items.TryGetValue(coupon.CouponId, out var state) && state.Usable)
+                continue;
+            throw new CouponRejectedException(
+                CouponRejectionReason.NotAvailable,
+                $"Coupon is no longer usable ({state?.Reason ?? "Unknown"}).",
+                coupon.CouponId);
+        }
+    }
+
     private void PublishOrderSubmitted(Order order)
     {
         var integrationEvent = new OrderSubmittedIntegrationEvent
@@ -251,4 +379,10 @@ public sealed class OrderCheckoutOptions
 {
     public const string SectionName = "OrderCheckout";
     public TimeSpan PaymentWindow { get; set; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// 目录确认不到价格时是否拒单。默认拒单：宁可让用户重试，也不要用可能过期的价格成交。
+    /// 如果更看重下单成功率，可以关掉它退回按投影定价。
+    /// </summary>
+    public bool RequireRealtimePriceConfirmation { get; set; } = true;
 }

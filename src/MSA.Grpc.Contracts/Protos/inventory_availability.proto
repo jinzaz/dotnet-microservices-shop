@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package msa.inventory.v1;
+
+option csharp_namespace = "MSA.Grpc.Contracts.Inventory";
+
+// 库存的实时可售查询。下单前先问一次，可以在创建订单之前就挡住必然失败的请求，
+// 而不是先建单、等库存服务异步拒绝后再取消。它只做「读」，真正的占用仍然走 Saga。
+service InventoryAvailability {
+  rpc CheckAvailability (CheckAvailabilityRequest) returns (CheckAvailabilityResponse);
+  // 某个订单的预占现状，供后台详情页显示「库存到底占上没有」。
+  rpc GetOrderReservation (GetOrderReservationRequest) returns (GetOrderReservationResponse);
+}
+
+message AvailabilityRequestItem {
+  string sku = 1;
+  int32 quantity = 2;
+  // 活动配额标识，留空表示普通库存。
+  string offer_id = 3;
+}
+
+message CheckAvailabilityRequest {
+  repeated AvailabilityRequestItem items = 1;
+  string user_id = 2;
+}
+
+message AvailabilityResult {
+  string sku = 1;
+  int32 available = 2;
+  bool sufficient = 3;
+  // 不足时的原因，例如 InsufficientStock / OfferClosed / OfferLimitExceeded。
+  string reason = 4;
+}
+
+message CheckAvailabilityResponse {
+  bool all_available = 1;
+  repeated AvailabilityResult results = 2;
+}
+
+message GetOrderReservationRequest {
+  string order_id = 1;
+}
+
+message ReservationLine {
+  string sku = 1;
+  int32 quantity = 2;
+  string offer_id = 3;
+}
+
+message GetOrderReservationResponse {
+  bool found = 1;
+  string reservation_id = 2;
+  // Reserved / Committed / Released
+  string status = 3;
+  string created_on_utc = 4;
+  string expires_on_utc = 5;
+  repeated ReservationLine lines = 6;
+}

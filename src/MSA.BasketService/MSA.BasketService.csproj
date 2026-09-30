@@ -22,6 +22,8 @@
     <ProjectReference Include="..\MSA.Contracts\MSA.Contracts.csproj" />
     <ProjectReference Include="..\MSA.EventBusOutbox\MSA.EventBusOutbox.csproj" />
     <ProjectReference Include="..\MSA.EventBusRabbitMQ\MSA.EventBusRabbitMQ.csproj" />
+    <ProjectReference Include="..\MSA.Grpc\MSA.Grpc.csproj" />
+    <ProjectReference Include="..\MSA.Grpc.Contracts\MSA.Grpc.Contracts.csproj" />
     <ProjectReference Include="..\MSA.Infrastrucute\MSA.Infrastrucute.csproj" />
     <ProjectReference Include="..\MSA.Repositories\MSA.Repositories.csproj" />
   </ItemGroup>

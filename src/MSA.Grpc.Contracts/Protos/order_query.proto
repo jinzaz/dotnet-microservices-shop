@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package msa.order.v1;
+
+option csharp_namespace = "MSA.Grpc.Contracts.Order";
+
+// 订单的实时快照。支付在建单收款前用它核对金额与定价快照（事件里的金额可能已经过期或被改写），
+// 后台详情页用它和支付、库存一起并行取数。
+service OrderQuery {
+  rpc GetOrderSnapshot (GetOrderSnapshotRequest) returns (GetOrderSnapshotResponse);
+}
+
+message GetOrderSnapshotRequest {
+  string order_id = 1;
+}
+
+message GetOrderSnapshotResponse {
+  bool found = 1;
+  string order_id = 2;
+  string order_number = 3;
+  string user_id = 4;
+  // 金额用字符串传递：protobuf 没有十进制类型，double 会引入精度误差。
+  string amount = 5;
+  string subtotal_amount = 6;
+  string discount_amount = 7;
+  string currency = 8;
+  string status = 9;
+  string fulfillment_status = 10;
+  string payment_method = 11;
+  string pricing_snapshot_id = 12;
+  string pricing_snapshot_hash = 13;
+  string reservation_id = 14;
+  string payment_id = 15;
+  string payment_due_on_utc = 16;
+  string carrier_name = 17;
+  string tracking_number = 18;
+}

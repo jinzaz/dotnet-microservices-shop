@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package msa.payment.v1;
+
+option csharp_namespace = "MSA.Grpc.Contracts.Payment";
+
+// 支付状态的实时查询。订单详情在「待支付」时用它兜底：
+// 用户可能刚付完，支付成功事件还在投递路上，页面不该继续显示未支付。
+service PaymentQuery {
+  rpc GetOrderPayment (GetOrderPaymentRequest) returns (GetOrderPaymentResponse);
+}
+
+message GetOrderPaymentRequest {
+  string order_id = 1;
+}
+
+message GetOrderPaymentResponse {
+  bool found = 1;
+  string payment_id = 2;
+  // Pending / Succeeded / Failed / Refunded 等支付状态名。
+  string status = 3;
+  string amount = 4;
+  string currency = 5;
+  string channel = 6;
+  string payment_url = 7;
+  // RFC3339 时间字符串，留空表示没有值。
+  string expires_on_utc = 8;
+}

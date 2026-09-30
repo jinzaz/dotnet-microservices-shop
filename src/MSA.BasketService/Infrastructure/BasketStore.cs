@@ -2,10 +2,14 @@ using Microsoft.EntityFrameworkCore;
 using MSA.BasketService.Application;
 using MSA.BasketService.Application.Abstractions;
 using MSA.BasketService.Domain;
+using MSA.Grpc.Contracts.Catalog;
 
 namespace MSA.BasketService.Infrastructure;
 
-public sealed class BasketStore(BasketDbContext db, TimeProvider clock) :
+public sealed class BasketStore(
+    BasketDbContext db,
+    ICatalogPriceAuthority priceAuthority,
+    TimeProvider clock) :
     IBasketRepository,
     IBasketProductCatalog,
     IBasketReadService
@@ -52,10 +56,15 @@ public sealed class BasketStore(BasketDbContext db, TimeProvider clock) :
             .Where(value => variantIds.Contains(value.VariantId))
             .ToDictionaryAsync(value => value.VariantId, cancellationToken);
         var now = clock.GetUtcNow();
+        // 结算页看到的价格要和下单时一致：投影是最终一致的，改价与下架可能还没同步过来。
+        // 问不到就用投影 —— 购物车本来就是预览，不该因为下游抖动而打不开。
+        var confirmation = await priceAuthority.ConfirmAsync(
+            basket.Items.Select(value => value.Sku).Distinct(StringComparer.Ordinal).ToArray(),
+            cancellationToken);
         var items = basket.Items
             .OrderBy(value => value.AddedOnUtc)
             .ThenBy(value => value.Sku, StringComparer.Ordinal)
-            .Select(item => MapItem(item, snapshots.GetValueOrDefault(item.VariantId), now))
+            .Select(item => MapItem(item, snapshots.GetValueOrDefault(item.VariantId), confirmation, now))
             .ToArray();
         var totals = items
             .Where(item => item.IsAvailable)
@@ -81,23 +90,30 @@ public sealed class BasketStore(BasketDbContext db, TimeProvider clock) :
             basket.UpdatedOnUtc);
     }
 
+    /// <param name="confirmation">
+    /// 目录此刻的权威判定；null 表示这次问不到，此时退回投影。
+    /// 确认到了但这个 SKU 不在其中，说明目录已经没有它了 —— 按不可售处理。
+    /// </param>
     private static BasketItemDto MapItem(
         BasketItem item,
         BasketProductSnapshot? current,
+        PriceConfirmation? confirmation,
         DateTimeOffset now)
     {
-        var isAvailable = current is not null
-            && current.IsAvailable
-            && current.EffectiveOnUtc <= now;
-        var productName = current?.ProductName ?? item.ProductNameAtSelection;
-        var variantName = current?.VariantName ?? item.VariantNameAtSelection;
-        var attributesJson = current?.AttributesJson ?? item.VariantAttributesJsonAtSelection;
-        var unitPrice = current?.Price ?? item.UnitPriceAtSelection;
-        var currency = current?.Currency ?? item.CurrencyAtSelection;
-        var revision = current?.SourceRevision ?? item.ProductRevisionAtSelection;
-        var priceChanged = current is null
-            || current.Price != item.UnitPriceAtSelection
-            || !string.Equals(current.Currency, item.CurrencyAtSelection, StringComparison.Ordinal);
+        var authority = confirmation?.Items.GetValueOrDefault(item.Sku);
+        var isAvailable = confirmation is not null
+            ? authority is { IsActive: true }
+            : current is not null && current.IsAvailable && current.EffectiveOnUtc <= now;
+        var productName = authority?.ProductName ?? current?.ProductName ?? item.ProductNameAtSelection;
+        var variantName = authority?.VariantName ?? current?.VariantName ?? item.VariantNameAtSelection;
+        var attributesJson = authority?.AttributesJson ?? current?.AttributesJson ?? item.VariantAttributesJsonAtSelection;
+        var unitPrice = authority?.Price ?? current?.Price ?? item.UnitPriceAtSelection;
+        var currency = authority?.Currency ?? current?.Currency ?? item.CurrencyAtSelection;
+        var revision = authority?.Revision ?? current?.SourceRevision ?? item.ProductRevisionAtSelection;
+        // 完全问不到这个商品（既没有权威判定也没有投影）也算「和选购时不一样」，提示用户重新确认。
+        var priceChanged = (authority is null && current is null)
+            || unitPrice != item.UnitPriceAtSelection
+            || !string.Equals(currency, item.CurrencyAtSelection, StringComparison.Ordinal);
 
         return new BasketItemDto(
             item.ProductId,

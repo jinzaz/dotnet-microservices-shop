@@ -50,6 +50,13 @@ type OrderDetail = {
   fulfillmentHistory: Array<{ fromStatus?: string; toStatus: string; note?: string; actor: string; occurredOnUtc: string }>;
 };
 
+type OrderOverview = {
+  payment?: { paymentId: string; status: string; amount: number; currency: string; channel: string; expiresOnUtc?: string };
+  reservation?: { reservationId: string; status: string; expiresOnUtc?: string; lines: Array<{ sku: string; quantity: number; offerId?: string }> };
+  // 这次没问到的下游：显示「暂不可用」而不是「没有」。
+  unavailable: string[];
+};
+
 type FulfillmentResult = { orderId: string; status: string; changed: boolean; carrierName?: string; trackingNumber?: string; updatedOnUtc: string };
 type Action = 'ship' | 'in-transit' | 'delivered';
 type FulfillmentEditor = { id: string; orderNumber: string; recipientName: string; amount: number; currency: string; fulfillmentStatus: string; action: Action };
@@ -96,6 +103,12 @@ export default function OrdersPage() {
   const detailQuery = useQuery({
     queryKey: ['orders', 'detail', detailOrderId],
     queryFn: () => api<OrderDetail>(`/api/order/admin/orders/${detailOrderId}`),
+    enabled: Boolean(detailOrderId) && canQuery,
+  });
+  // 支付与库存预占由 BFF 并行取回，一次请求拿全，页面不用再跳到支付页确认。
+  const overviewQuery = useQuery({
+    queryKey: ['orders', 'overview', detailOrderId],
+    queryFn: () => api<OrderOverview>(`/bff/orders/${detailOrderId}/overview`),
     enabled: Boolean(detailOrderId) && canQuery,
   });
   const mutation = useMutation({
@@ -187,12 +200,12 @@ export default function OrdersPage() {
     <Modal open={Boolean(detailOrderId)} wide title={detailQuery.data?.orderNumber ?? '订单详情'} description="订单商品、配送地址与履约时间线" onClose={() => setDetailOrderId('')}>
       {detailQuery.isPending ? <Loading label="正在读取订单详情" /> : null}
       {detailQuery.isError ? <div className="modal-form"><ErrorNotice error={detailQuery.error} onRetry={() => void detailQuery.refetch()} /></div> : null}
-      {detailQuery.data ? <OrderDetailPanel order={detailQuery.data} canEdit={canEdit} canViewPayment={can('payment.transactions.query')} onAdvance={() => openFulfillment({ ...detailQuery.data!, recipientName: detailQuery.data!.shippingAddress.recipientName })} /> : null}
+      {detailQuery.data ? <OrderDetailPanel order={detailQuery.data} overview={overviewQuery.data} canEdit={canEdit} canViewPayment={can('payment.transactions.query')} onAdvance={() => openFulfillment({ ...detailQuery.data!, recipientName: detailQuery.data!.shippingAddress.recipientName })} /> : null}
     </Modal>
   </div>;
 }
 
-function OrderDetailPanel({ order, canEdit, canViewPayment, onAdvance }: { order: OrderDetail; canEdit: boolean; canViewPayment: boolean; onAdvance: () => void }) {
+function OrderDetailPanel({ order, overview, canEdit, canViewPayment, onAdvance }: { order: OrderDetail; overview?: OrderOverview; canEdit: boolean; canViewPayment: boolean; onAdvance: () => void }) {
   const address = order.shippingAddress;
   const action = nextAction(order.fulfillmentStatus);
   const fullAddress = `${address.province}${address.city}${address.district}${address.streetLine1}${address.streetLine2 ?? ''}`;
@@ -207,6 +220,9 @@ function OrderDetailPanel({ order, canEdit, canViewPayment, onAdvance }: { order
       <span className="mono">{order.id}<CopyButton value={order.id} label="复制订单 ID" /></span>
     </div>
     {order.trackingNumber ? <section><h3>物流信息</h3><p className="cell-with-copy">{order.carrierName} · <span className="mono">{order.trackingNumber}</span><CopyButton value={order.trackingNumber} label="复制运单号" /></p></section> : null}
+    {overview?.payment ? <section><h3>支付</h3><p className="cell-with-copy"><Status>{overview.payment.status}</Status> {formatMoney(overview.payment.amount, overview.payment.currency)} · {overview.payment.channel}<CopyButton value={overview.payment.paymentId} label="复制支付单号" /></p>{overview.payment.expiresOnUtc ? <small>支付有效期至 {formatDate(overview.payment.expiresOnUtc)}</small> : null}</section> : null}
+    {overview?.reservation ? <section><h3>库存预占</h3><p><Status>{overview.reservation.status}</Status> {overview.reservation.lines.map((line) => `${line.sku} × ${line.quantity}`).join('、')}</p>{overview.reservation.expiresOnUtc ? <small>预占到 {formatDate(overview.reservation.expiresOnUtc)}</small> : null}</section> : null}
+    {overview?.unavailable.length ? <p className="muted-copy">以下信息暂时读不到：{overview.unavailable.join('、')}。</p> : null}
     <section><h3>商品明细</h3><div className="compact-list">{order.lines.map((line) => <article key={`${line.sku}-${line.offerId ?? ''}`}>
       <div><strong>{line.productName}</strong><small>{line.variantName} · {line.sku}{line.offerId ? ' · 活动价' : ''}</small></div>
       <span>{formatMoney(line.unitPrice, order.currency)} × {line.quantity}</span><strong>{formatMoney(line.lineAmount, order.currency)}</strong>

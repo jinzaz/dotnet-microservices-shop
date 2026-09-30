@@ -1,4 +1,6 @@
 using FluentValidation;
+using MSA.Grpc;
+using MSA.InventoryService.Grpc;
 using MSA.Repositories.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -56,6 +58,7 @@ builder.Services.AddHostedService<InventoryAllocationExpiryService>();
 builder.Services.AddStackExchangeRedisCache(options =>
     options.Configuration = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379");
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
+builder.Services.AddMsaGrpcServer(builder.Environment.IsDevelopment());
 builder.Services.AddOutbox<InventoryDbContext>();
 // 兜底释放到期未支付的预占，避免释放消息丢失时库存被永久锁死。
 builder.Services.AddHostedService<InventoryReservationExpiryService>();
@@ -113,6 +116,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = registration => registration.Tags.Contains("ready")
 });
+app.MapMsaGrpcService<InventoryAvailabilityGrpcService>("inventory-api");
 app.MapInventoryEndpoints();
 app.MapInventoryAdminEndpoints();
 app.MapMessagingAdminEndpoints("inventory", "inventory.admin.read", "inventory.admin.write");

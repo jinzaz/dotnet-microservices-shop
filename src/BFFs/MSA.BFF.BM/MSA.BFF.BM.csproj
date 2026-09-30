@@ -17,6 +17,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MSA.BFF.Common\MSA.BFF.Common.csproj" />
+    <ProjectReference Include="..\..\MSA.Grpc\MSA.Grpc.csproj" />
+    <ProjectReference Include="..\..\MSA.Grpc.Contracts\MSA.Grpc.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

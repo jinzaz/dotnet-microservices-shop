@@ -1,4 +1,9 @@
 using Essensoft.Paylinks.Alipay.Client.Extensions;
+using MSA.Grpc;
+using MSA.Grpc.Contracts.Order;
+using MSA.PaymentService.Application.Realtime;
+using MSA.PaymentService.Grpc;
+using MSA.PaymentService.Infrastructure.Grpc;
 using MSA.Repositories.Persistence;
 using Essensoft.Paylinks.WeChatPay.Client.Extensions;
 using Microsoft.EntityFrameworkCore;
@@ -42,6 +47,12 @@ builder.Services.AddScoped<IPaymentNotificationVerifier, WeChatPayNotificationVe
 builder.Services.AddScoped<PaymentGatewayResolver>();
 builder.Services.AddScoped<PaymentProviderOperationStore>();
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
+builder.Services.AddMsaGrpcServer(builder.Environment.IsDevelopment());
+// 建单收款前向订单核对金额与定价快照：事件是可信的，但可能已经过期。
+builder.Services.AddMsaServiceAuthentication(builder.Configuration.GetSection(ServiceAuthenticationOptions.SectionName));
+builder.Services.AddMsaGrpcClient<OrderQuery.OrderQueryClient>(builder.Configuration.GetSection("GrpcClients:Order"));
+builder.Services.AddScoped<IOrderAuthority, OrderAuthorityGateway>();
+builder.Services.AddScoped<OrderPaymentPrecheck>();
 builder.Services.AddOutbox<PaymentDbContext>();
 // Outbox/Inbox 保留期清理，并为运维接口暴露失败消息与卡住的 Saga。
 builder.Services.AddMessagingOperations<PaymentDbContext>();
@@ -81,6 +92,7 @@ app.UseExceptionHandler();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealthChecks("/health");
+app.MapMsaGrpcService<PaymentQueryGrpcService>("payment-api");
 app.MapPaymentApiEndpoints();
 app.MapPaymentAdminEndpoints();
 app.MapMessagingAdminEndpoints("payment", "payment.admin.read", "payment.admin.write");

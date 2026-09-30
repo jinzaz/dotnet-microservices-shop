@@ -1,13 +1,26 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using MSA.OrderService.Application.Realtime;
+using MSA.OrderService.Domain;
 using MSA.OrderService.Infrastructure;
 
 namespace MSA.OrderService.Application.GetOrder;
 
-internal sealed class GetOrderQueryHandler(OrderDbContext db)
+internal sealed class GetOrderQueryHandler(OrderDbContext db, IPaymentStatusGateway payments)
     : IRequestHandler<GetOrderQuery, OrderDto?>
 {
-    public Task<OrderDto?> Handle(GetOrderQuery request, CancellationToken cancellationToken) =>
+    public async Task<OrderDto?> Handle(GetOrderQuery request, CancellationToken cancellationToken)
+    {
+        var order = await LoadAsync(request, cancellationToken);
+        if (order is null || order.Status != nameof(OrderStatus.AwaitingPayment))
+            return order;
+
+        // 只在「等待支付」时问一次支付服务：其余状态已经由事件落定，没必要多一次跨服务调用。
+        var payment = await payments.GetAsync(order.Id, cancellationToken);
+        return payment is null ? order : order with { LivePaymentStatus = payment.Status };
+    }
+
+    private Task<OrderDto?> LoadAsync(GetOrderQuery request, CancellationToken cancellationToken) =>
         db.Orders
             .AsNoTracking()
             .Where(order =>

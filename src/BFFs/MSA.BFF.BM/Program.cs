@@ -6,6 +6,10 @@ using MSA.BFF.BM.Authorization;
 using MSA.BFF.BM.Endpoints;
 using MSA.BFF.BM.ObjectStorage;
 using MSA.BFF.Common;
+using MSA.Grpc;
+using MSA.Grpc.Contracts.Inventory;
+using MSA.Grpc.Contracts.Order;
+using MSA.Grpc.Contracts.Payment;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,6 +54,11 @@ builder.Services.AddOptions<ObjectStorageOptions>()
         "ObjectStorage must define a valid endpoint, distinct public/private buckets, and credentials.")
     .ValidateOnStart();
 builder.Services.AddSingleton<S3ObjectStorage>();
+// 后台详情页的一次取数：并行问订单、支付、库存，走 BFF 自己的机器身份（scope order / payment / inventory）。
+builder.Services.AddMsaServiceAuthentication(builder.Configuration.GetSection(ServiceAuthenticationOptions.SectionName));
+builder.Services.AddMsaGrpcClient<OrderQuery.OrderQueryClient>(builder.Configuration.GetSection("GrpcClients:Order"));
+builder.Services.AddMsaGrpcClient<PaymentQuery.PaymentQueryClient>(builder.Configuration.GetSection("GrpcClients:Payment"));
+builder.Services.AddMsaGrpcClient<InventoryAvailability.InventoryAvailabilityClient>(builder.Configuration.GetSection("GrpcClients:Inventory"));
 builder.Services.AddScoped<IAuthorizationHandler, PbacProxyAuthorizationHandler>();
 builder.Services.AddScoped<IAuthorizationHandler, PbacPermissionAuthorizationHandler>();
 builder.Services.AddAuthorization(options =>
@@ -93,6 +102,7 @@ app.UseBffAntiforgery();
 app.MapBffEndpoints();
 app.MapPbacEndpoints();
 app.MapObjectStorageEndpoints();
+app.MapOrderOverviewEndpoints();
 app.MapReverseProxy().RequireAuthorization(PbacDefaults.ProxyPolicy);
 
 app.Run();

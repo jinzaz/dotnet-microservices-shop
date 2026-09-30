@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package msa.catalog.v1;
+
+option csharp_namespace = "MSA.Grpc.Contracts.Catalog";
+
+// 商品目录的实时价格权威。订单在报价与下单时用它确认「最终价格」，
+// 而不是只依赖本地投影——投影是最终一致的，改价与下架都可能还没同步到。
+service CatalogPricing {
+  rpc ConfirmPrices (ConfirmPricesRequest) returns (ConfirmPricesResponse);
+}
+
+message ConfirmPricesRequest {
+  repeated string skus = 1;
+}
+
+message ConfirmedSku {
+  string sku = 1;
+  string product_id = 2;
+  string variant_id = 3;
+  string product_name = 4;
+  string variant_name = 5;
+  // 金额用字符串传递：protobuf 没有十进制类型，double 会引入精度误差。
+  string price = 6;
+  string currency = 7;
+  bool is_active = 8;
+  int64 revision = 9;
+  string category_id = 10;
+  string attributes_json = 11;
+}
+
+message ConfirmPricesResponse {
+  repeated ConfirmedSku items = 1;
+  // 目录里不存在的 SKU：调用方据此判定商品已下架或输入有误。
+  repeated string unknown_skus = 2;
+}

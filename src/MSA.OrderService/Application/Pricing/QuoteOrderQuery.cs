@@ -2,6 +2,8 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using MSA.Contracts;
 using MSA.Infrastrucute.Mediator;
+using MSA.Grpc.Contracts.Catalog;
+using MSA.OrderService.Application.Realtime;
 using MSA.OrderService.Domain;
 using MSA.OrderService.Infrastructure;
 using System.Text.Json;
@@ -66,6 +68,7 @@ public sealed record OrderQuoteDto(
 internal sealed class QuoteOrderQueryHandler(
     OrderDbContext db,
     IOrderPricingService pricing,
+    ICatalogPriceAuthority priceAuthority,
     TimeProvider clock) : IRequestHandler<QuoteOrderQuery, OrderQuoteDto>
 {
     private sealed record CouponRequest(string Key, string? Code, Guid? WalletId);
@@ -81,6 +84,19 @@ internal sealed class QuoteOrderQueryHandler(
             .AsNoTracking()
             .Where(product => skus.Contains(product.Sku) && product.IsActive && product.UpdatedOnUtc <= now)
             .ToDictionaryAsync(product => product.Sku, StringComparer.Ordinal, cancellationToken);
+        // 报价是预览：能确认就用权威价格，问不到就用投影，不要因为下游抖动让用户看不到价格。
+        var confirmation = await priceAuthority.ConfirmAsync(skus, cancellationToken);
+        if (confirmation is not null)
+        {
+            foreach (var sku in products.Keys.ToArray())
+            {
+                if (confirmation.Items.TryGetValue(sku, out var authority) && authority.IsActive)
+                    products[sku] = authority.ToPricingSnapshot(now);
+                else
+                    products.Remove(sku);
+            }
+        }
+
         var unavailable = skus.Where(sku => !products.ContainsKey(sku)).ToArray();
         var currency = products.Values.Select(product => product.Currency).Distinct(StringComparer.Ordinal).ToArray();
         var items = products.Values

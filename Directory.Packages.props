@@ -55,5 +55,11 @@
     <PackageVersion Include="Essensoft.Paylinks.WeChatPay.Payments" Version="5.0.4" />
     <PackageVersion Include="Quartz.Extensions.Hosting" Version="3.9.0" />
     <PackageVersion Include="AWSSDK.S3" Version="4.0.101.4" />
+    <PackageVersion Include="Grpc.AspNetCore" Version="2.71.0" />
+    <PackageVersion Include="Grpc.AspNetCore.Server" Version="2.71.0" />
+    <PackageVersion Include="Grpc.Net.Client" Version="2.71.0" />
+    <PackageVersion Include="Grpc.Net.ClientFactory" Version="2.71.0" />
+    <PackageVersion Include="Grpc.Tools" Version="2.71.0" />
+    <PackageVersion Include="Google.Protobuf" Version="3.30.2" />
   </ItemGroup>
 </Project>

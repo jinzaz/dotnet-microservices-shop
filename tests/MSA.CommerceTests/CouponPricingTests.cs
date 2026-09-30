@@ -1,4 +1,6 @@
 using System.Text.Json;
+using MSA.Grpc.Contracts.Catalog;
+using MSA.OrderService.Application.Realtime;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -96,7 +98,14 @@ public sealed class CouponPricingTests
     private static OrderPricingService Pricing(OrderDbContext db) =>
         new(db, [new MinimumOrderAmountRule(), new MinimumItemQuantityRule()], [new PercentageOffBenefit(), new FixedAmountOffBenefit()]);
 
-    private static QuoteOrderQueryHandler Handler(OrderDbContext db) => new(db, Pricing(db), new TestClock(Now));
+    /// <summary>目录问不到时报价退回投影，这些用例正是跑在这条降级路径上。</summary>
+    private static ICatalogPriceAuthority OfflineCatalog() =>
+        Mock.Of<ICatalogPriceAuthority>(authority =>
+            authority.ConfirmAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>())
+                == Task.FromResult<PriceConfirmation?>(null));
+
+    private static QuoteOrderQueryHandler Handler(OrderDbContext db) =>
+        new(db, Pricing(db), OfflineCatalog(), new TestClock(Now));
 
     private async Task<OrderDbContext> SeedAsync(bool consumedWalletRedemption = false, bool publicRedemption = false)
     {

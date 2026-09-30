@@ -1,4 +1,12 @@
 using FluentValidation;
+using MSA.Grpc;
+using MSA.Grpc.Contracts.Catalog;
+using MSA.Grpc.Contracts.Inventory;
+using MSA.Grpc.Contracts.Payment;
+using MSA.Grpc.Contracts.User;
+using MSA.OrderService.Application.Realtime;
+using MSA.OrderService.Grpc;
+using MSA.OrderService.Infrastructure.Grpc;
 using MSA.Repositories.Persistence;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -84,6 +92,21 @@ builder.Services.AddRateLimiter(options =>
 });
 
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
+// 服务间实时调用：机器身份走 OpenIddict client_credentials，scope 沿用现有的 catalog / inventory / payment。
+builder.Services.AddMsaServiceAuthentication(builder.Configuration.GetSection(ServiceAuthenticationOptions.SectionName));
+builder.Services.AddMsaCatalogPriceAuthority(builder.Configuration.GetSection("GrpcClients:Catalog"));
+// 券的确认与价格确认同一个目录端点，复用同一段配置（地址、scope、超时）。
+builder.Services.AddMsaGrpcClient<CouponQuery.CouponQueryClient>(builder.Configuration.GetSection("GrpcClients:Catalog"));
+builder.Services.AddMsaGrpcClient<InventoryAvailability.InventoryAvailabilityClient>(builder.Configuration.GetSection("GrpcClients:Inventory"));
+builder.Services.AddMsaGrpcClient<PaymentQuery.PaymentQueryClient>(builder.Configuration.GetSection("GrpcClients:Payment"));
+builder.Services.AddMsaGrpcClient<UserAddressQuery.UserAddressQueryClient>(builder.Configuration.GetSection("GrpcClients:User"));
+builder.Services.AddScoped<IInventoryAvailabilityGateway, InventoryAvailabilityGateway>();
+builder.Services.AddScoped<IPaymentStatusGateway, PaymentStatusGateway>();
+builder.Services.AddScoped<ICouponAuthority, CouponAuthorityGateway>();
+builder.Services.AddScoped<IUserAddressAuthority, UserAddressAuthorityGateway>();
+// 订单自己也对外提供实时快照（支付核对金额、后台聚合详情）。
+builder.Services.AddMsaGrpcServer(builder.Environment.IsDevelopment());
+
 builder.Services.AddOutbox<OrderDbContext>();
 // Outbox/Inbox 保留期清理，并为运维接口暴露失败消息与卡住的 Saga。
 builder.Services.AddMessagingOperations<OrderDbContext>();
@@ -160,5 +183,6 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     Predicate = registration => registration.Tags.Contains("ready")
 });
 app.MapControllers();
+app.MapMsaGrpcService<OrderQueryGrpcService>("order-api");
 
 app.Run();

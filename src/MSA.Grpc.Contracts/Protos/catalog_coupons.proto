@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package msa.catalog.v1;
+
+option csharp_namespace = "MSA.Grpc.Contracts.Catalog";
+
+// 券的实时状态权威。订单侧的券投影是最终一致的，抢券、作废、改有效期变化很快，
+// 下单前确认一次，避免用一张刚被作废的券成交。
+// 配额余量不在这里：券的消耗计数落在订单库，仍由订单本地把关。
+service CouponQuery {
+  rpc ConfirmCoupons (ConfirmCouponsRequest) returns (ConfirmCouponsResponse);
+}
+
+message ConfirmCouponsRequest {
+  repeated string coupon_ids = 1;
+  // 归属型券要按持有人判定，所以把下单人一起带上。
+  string user_id = 2;
+}
+
+message ConfirmedCoupon {
+  string coupon_id = 1;
+  bool usable = 2;
+  // 不可用的原因：Unknown / Inactive / Expired / NotStarted / AssignedToAnotherUser / PromotionInactive
+  string reason = 3;
+  string status = 4;
+  string promotion_id = 5;
+}
+
+message ConfirmCouponsResponse {
+  repeated ConfirmedCoupon items = 1;
+}
