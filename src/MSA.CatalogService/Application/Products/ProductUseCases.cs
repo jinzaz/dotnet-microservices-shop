@@ -3,6 +3,7 @@ using MediatR;
 using MSA.CatalogService.Application.Abstractions;
 using MSA.CatalogService.Domain;
 using MSA.Infrastrucute.Mediator;
+using MSA.Redis;
 
 namespace MSA.CatalogService.Application;
 
@@ -219,11 +220,16 @@ internal sealed class ArchiveProductHandler(
     }
 }
 
-internal sealed class GetProductHandler(ICatalogReadService reads)
+/// <summary>前台商品详情走 Cache Aside（一级 + Redis），任何商品变更提交后失效；后台详情永远直读。</summary>
+internal sealed class GetProductHandler(ICatalogReadService reads, ICacheStore cache)
     : IRequestHandler<GetProductQuery, ProductDto?>
 {
     public Task<ProductDto?> Handle(GetProductQuery request, CancellationToken cancellationToken) =>
-        reads.GetProductAsync(request.Id, publicOnly: true, cancellationToken);
+        cache.GetOrLoadAsync(
+            CatalogCacheKeys.Product(request.Id),
+            token => reads.GetProductAsync(request.Id, publicOnly: true, token),
+            CatalogCachePolicies.ProductDetail,
+            cancellationToken);
 }
 
 internal sealed class GetAdminProductHandler(ICatalogReadService reads)
@@ -233,10 +239,31 @@ internal sealed class GetAdminProductHandler(ICatalogReadService reads)
         reads.GetProductAsync(request.Id, publicOnly: false, cancellationToken);
 }
 
-internal sealed class ListProductsHandler(ICatalogReadService reads)
+/// <summary>
+/// 前台列表：浏览类请求（首页、分类的前几页）命中率高，缓存起来；带搜索词或翻到很深的请求是长尾，直读。
+/// 列表键里带命名空间代际，任何商品变更提交后整体作废，不需要知道变更影响了哪几页。
+/// </summary>
+internal sealed class ListProductsHandler(ICatalogReadService reads, ICacheStore cache)
     : IRequestHandler<ListProductsQuery, PagedResult<ProductDto>>
 {
-    public Task<PagedResult<ProductDto>> Handle(ListProductsQuery request, CancellationToken cancellationToken) =>
+    private const int CachedDepth = 200;
+
+    public async Task<PagedResult<ProductDto>> Handle(ListProductsQuery request, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(request.Search) || request.Skip >= CachedDepth)
+            return await LoadAsync(request, cancellationToken);
+
+        var generation = await cache.NamespaceAsync(CatalogCacheKeys.ProductLists, cancellationToken);
+        var key = $"{generation}:{request.CategoryId?.ToString("N") ?? "all"}:{request.Skip}:{request.Take}";
+        return await cache.GetOrLoadAsync(
+                   key,
+                   async token => await LoadAsync(request, token),
+                   CatalogCachePolicies.ProductList,
+                   cancellationToken)
+               ?? await LoadAsync(request, cancellationToken);
+    }
+
+    private Task<PagedResult<ProductDto>> LoadAsync(ListProductsQuery request, CancellationToken cancellationToken) =>
         reads.ListProductsAsync(
             request.Skip,
             request.Take,

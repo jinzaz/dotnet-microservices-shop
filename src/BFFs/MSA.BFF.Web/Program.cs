@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using MSA.BFF.Common;
 using MSA.BFF.Web;
+using MSA.Grpc;
+using MSA.Grpc.Contracts.Inventory;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,6 +25,9 @@ builder.Services.AddBffOpenIddictClient<BffWebDbContext>(
     builder.Environment,
     typeof(Program).Assembly);
 builder.Services.AddBffReverseProxy(builder.Configuration.GetSection("ReverseProxy"));
+// 秒杀余量推流：BFF 用自己的机器身份（scope inventory）订阅库存服务的 gRPC 流，再以 SSE 转给浏览器。
+builder.Services.AddMsaServiceAuthentication(builder.Configuration.GetSection(ServiceAuthenticationOptions.SectionName));
+builder.Services.AddMsaGrpcClient<InventoryAvailability.InventoryAvailabilityClient>(builder.Configuration.GetSection("GrpcClients:Inventory"));
 
 var app = builder.Build();
 
@@ -43,6 +48,7 @@ app.UseAuthorization();
 app.UseBffAntiforgery();
 
 app.MapBffEndpoints();
+app.MapFlashSaleStreamEndpoints();
 app.MapReverseProxy();
 
 app.Run();

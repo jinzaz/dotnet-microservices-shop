@@ -10,6 +10,8 @@ service InventoryAvailability {
   rpc CheckAvailability (CheckAvailabilityRequest) returns (CheckAvailabilityResponse);
   // 某个订单的预占现状，供后台详情页显示「库存到底占上没有」。
   rpc GetOrderReservation (GetOrderReservationRequest) returns (GetOrderReservationResponse);
+  // 秒杀余量推流：先推一次当前快照，之后余量或状态一变就再推。服务端合并突发变化，不会每扣一件推一次。
+  rpc WatchSkuOffers (WatchSkuOffersRequest) returns (stream SkuOffersSnapshot);
 }
 
 message AvailabilityRequestItem {
@@ -55,4 +57,26 @@ message GetOrderReservationResponse {
   string created_on_utc = 4;
   string expires_on_utc = 5;
   repeated ReservationLine lines = 6;
+}
+
+message WatchSkuOffersRequest {
+  string sku = 1;
+}
+
+message SkuOffer {
+  string allocation_id = 1;
+  string offer_id = 2;
+  // Scheduled / Active / SoldOut / Expired
+  string state = 3;
+  int32 total_quantity = 4;
+  int32 available_quantity = 5;
+  int32 per_user_limit = 6;
+  string starts_on_utc = 7;
+  string ends_on_utc = 8;
+}
+
+message SkuOffersSnapshot {
+  string sku = 1;
+  repeated SkuOffer offers = 2;
+  string as_of_utc = 3;
 }

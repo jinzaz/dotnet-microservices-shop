@@ -40,7 +40,6 @@ public sealed class AdjustStockCommandValidator : AbstractValidator<AdjustStockC
 internal sealed class AdjustStockCommandHandler(
     InventoryDbContext db,
     IInventoryTransactionLock transactionLock,
-    InventoryCacheInvalidator cache,
     TimeProvider clock) : IRequestHandler<AdjustStockCommand, AdjustStockResult>
 {
     public async Task<AdjustStockResult> Handle(
@@ -106,7 +105,6 @@ internal sealed class AdjustStockCommandHandler(
             requestHash);
         db.StockMovements.Add(movement);
 
-        cache.StockChanged(sku);
         return ToResult(movement, replayed: false);
     }
 

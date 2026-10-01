@@ -26,7 +26,9 @@ public enum CouponClaimRejection
     SoldOut,
     DailySoldOut,
     UserLimitReached,
-    UserDailyLimitReached
+    UserDailyLimitReached,
+    /// <summary>同一个人在同一场活动上已有一个领取请求在处理（连点或脚本并发），这一次直接拒绝。</summary>
+    InProgress
 }
 
 /// <summary>A claim was refused for a business reason the shopper can understand; mapped to 409 with a reason code.</summary>

@@ -2,11 +2,12 @@
   <ItemGroup>
     <PackageReference Include="MediatR" /><PackageReference Include="FluentValidation" /><PackageReference Include="Microsoft.EntityFrameworkCore" /><PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" /><PackageReference Include="OpenTelemetry.Extensions.Hosting" /><PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" /><PackageReference Include="OpenTelemetry.Instrumentation.Http" /><PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" /><PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" /><PackageReference Include="OpenTelemetry.Instrumentation.Http" /><PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
     <PackageReference Include="OpenIddict.Validation.AspNetCore" /><PackageReference Include="OpenIddict.Validation.SystemNetHttp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MSA.Grpc\MSA.Grpc.csproj" />
+    <ProjectReference Include="..\MSA.Redis\MSA.Redis.csproj" />
     <ProjectReference Include="..\MSA.Grpc.Contracts\MSA.Grpc.Contracts.csproj" />
     <ProjectReference Include="..\MSA.Contracts\MSA.Contracts.csproj" /><ProjectReference Include="..\MSA.EventBusOutbox\MSA.EventBusOutbox.csproj" /><ProjectReference Include="..\MSA.EventBusRabbitMQ\MSA.EventBusRabbitMQ.csproj" /><ProjectReference Include="..\MSA.Infrastrucute\MSA.Infrastrucute.csproj" /><ProjectReference Include="..\MSA.Saga\MSA.Saga.csproj" /><ProjectReference Include="..\MSA.Repositories\MSA.Repositories.csproj" />
   </ItemGroup>

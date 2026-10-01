@@ -93,5 +93,33 @@ internal static class TestEnvironment
         }
     }
 
+    /// <summary>测试专用的逻辑库（15），每个用例再用随机键前缀隔开，用完即删。</summary>
+    public static string? RedisConnectionString => Nullable(Configuration["Redis"]);
+
+    private static bool? _redisReachable;
+
+    public static bool RedisReachable
+    {
+        get
+        {
+            if (RedisConnectionString is null)
+                return false;
+            if (_redisReachable is { } reachable)
+                return reachable;
+            try
+            {
+                var options = StackExchange.Redis.ConfigurationOptions.Parse(RedisConnectionString);
+                options.ConnectTimeout = 5000;
+                using var probe = StackExchange.Redis.ConnectionMultiplexer.Connect(options);
+                _redisReachable = probe.IsConnected;
+            }
+            catch (Exception)
+            {
+                _redisReachable = false;
+            }
+            return _redisReachable.Value;
+        }
+    }
+
     private static string? Nullable(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 }

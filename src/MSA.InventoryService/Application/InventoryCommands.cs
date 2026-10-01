@@ -1,7 +1,6 @@
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using MSA.Infrastrucute.Mediator;
 using MSA.InventoryService.Domain;
@@ -24,7 +23,6 @@ public sealed class AddStockValidator : AbstractValidator<AddStockCommand>
 internal sealed class AddStockHandler(
     InventoryDbContext db,
     IInventoryTransactionLock transactionLock,
-    InventoryCacheInvalidator cache,
     TimeProvider clock) : IRequestHandler<AddStockCommand, Guid>
 {
     public async Task<Guid> Handle(AddStockCommand request, CancellationToken cancellationToken)
@@ -53,7 +51,6 @@ internal sealed class AddStockHandler(
             "Stock added through the compatibility endpoint.",
             clock.GetUtcNow()));
 
-        cache.StockChanged(sku);
         return item.Id;
     }
 }
@@ -63,56 +60,13 @@ public sealed record GetInventoryAvailabilityQuery(string Sku) : IQuery<Inventor
 /// <summary>Current durable inventory view for a SKU.</summary>
 public sealed record InventoryAvailabilityDto(string Sku, int OnHand, int Reserved, int Available, long Version);
 
-internal sealed class GetInventoryAvailabilityHandler(
-    InventoryDbContext db,
-    IDistributedCache cache,
-    ILogger<GetInventoryAvailabilityHandler> logger) : IRequestHandler<GetInventoryAvailabilityQuery, InventoryAvailabilityDto?>
+internal sealed class GetInventoryAvailabilityHandler(InventoryReadModel reads)
+    : IRequestHandler<GetInventoryAvailabilityQuery, InventoryAvailabilityDto?>
 {
-    public async Task<InventoryAvailabilityDto?> Handle(
+    public Task<InventoryAvailabilityDto?> Handle(
         GetInventoryAvailabilityQuery request,
-        CancellationToken cancellationToken)
-    {
-        var sku = StockItem.NormalizeSku(request.Sku);
-        var key = InventoryCacheKeys.Stock(sku);
-        try
-        {
-            var cached = await cache.GetStringAsync(key, cancellationToken);
-            if (cached is not null)
-                return JsonSerializer.Deserialize<InventoryAvailabilityDto>(cached);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            logger.LogWarning(exception, "Inventory cache read failed for {Sku}; using PostgreSQL.", sku);
-        }
-
-        var value = await db.StockItems
-            .AsNoTracking()
-            .Where(item => item.Sku == sku)
-            .Select(item => new InventoryAvailabilityDto(
-                item.Sku,
-                item.OnHand,
-                item.Reserved,
-                item.OnHand - item.Reserved,
-                item.Version))
-            .SingleOrDefaultAsync(cancellationToken);
-        if (value is null)
-            return null;
-
-        try
-        {
-            await cache.SetStringAsync(
-                key,
-                JsonSerializer.Serialize(value),
-                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(15) },
-                cancellationToken);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            logger.LogWarning(exception, "Inventory cache write failed for {Sku}.", sku);
-        }
-
-        return value;
-    }
+        CancellationToken cancellationToken) =>
+        reads.StockAsync(StockItem.NormalizeSku(request.Sku), cancellationToken);
 }
 
 public sealed record ListInventoryStockQuery(

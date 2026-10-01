@@ -1,3 +1,4 @@
+using MSA.Redis;
 using Essensoft.Paylinks.Alipay.Client.Extensions;
 using MSA.Grpc;
 using MSA.Grpc.Contracts.Order;
@@ -27,7 +28,11 @@ var connectionString = builder.Configuration.GetConnectionString("Postgresql");
 if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
 
-builder.Services.AddDbContext<PaymentDbContext>(options => options.UseNpgsql(connectionString));
+builder.Services.AddMsaRedis(builder.Configuration, "payment");
+builder.Services.AddMsaCacheInvalidation(PaymentCacheKeys.Configure);
+builder.Services.AddDbContext<PaymentDbContext>((services, options) => options
+    .UseNpgsql(connectionString)
+    .UseMsaCacheInvalidation(services));
 builder.Services.AddScoped<MSADbContext>(services => services.GetRequiredService<PaymentDbContext>());
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddOptions<PaymentProcessingOptions>()

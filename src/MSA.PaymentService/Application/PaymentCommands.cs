@@ -1,3 +1,4 @@
+using MSA.Redis;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using MSA.Contracts;
@@ -151,27 +152,54 @@ public sealed record PaymentDto(
     string? PaymentUrl,
     DateTimeOffset ExpiresOnUtc);
 
-internal sealed class GetPaymentByOrderHandler(PaymentDbContext db)
+/// <summary>
+/// 支付页等待期间每 3 秒轮询一次这里。按订单缓存（连同归属人，归属校验在内存里做），
+/// 支付单任何一次落库（创建、回调成功、过期、取消）提交后失效，所以轮询到的状态不会比数据库慢。
+/// 还没建支付单时的「没有」也缓存 —— 支付单一创建就被失效规则清掉。
+/// </summary>
+internal sealed class GetPaymentByOrderHandler(PaymentDbContext db, ICacheStore cache)
     : IRequestHandler<GetPaymentByOrderQuery, PaymentDto?>
 {
-    public Task<PaymentDto?> Handle(
+    private static readonly CachePolicy Policy = new(TimeSpan.FromSeconds(30));
+
+    public async Task<PaymentDto?> Handle(
         GetPaymentByOrderQuery request,
-        CancellationToken cancellationToken) =>
-        db.Payments
-            .AsNoTracking()
-            .Where(value =>
-                value.OrderId == request.OrderId
-                && (request.CanReadAll || value.UserId == request.UserId))
-            .Select(value => new PaymentDto(
-                value.Id,
-                value.OrderId,
-                value.Amount,
-                value.Currency,
-                value.Channel.ToString(),
-                value.Status.ToString(),
-                value.PaymentUrl,
-                value.ExpiresOnUtc))
-            .SingleOrDefaultAsync(cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        var owned = await cache.GetOrLoadAsync(
+            PaymentCacheKeys.ByOrder(request.OrderId),
+            token => db.Payments
+                .AsNoTracking()
+                .Where(value => value.OrderId == request.OrderId)
+                .Select(value => new OwnedPayment(
+                    value.UserId,
+                    new PaymentDto(
+                        value.Id,
+                        value.OrderId,
+                        value.Amount,
+                        value.Currency,
+                        value.Channel.ToString(),
+                        value.Status.ToString(),
+                        value.PaymentUrl,
+                        value.ExpiresOnUtc)))
+                .SingleOrDefaultAsync(token),
+            Policy,
+            cancellationToken);
+        return owned is not null && (request.CanReadAll || owned.UserId == request.UserId)
+            ? owned.Payment
+            : null;
+    }
+
+    internal sealed record OwnedPayment(string UserId, PaymentDto Payment);
+}
+
+/// <summary>支付服务的缓存键；服务前缀（<c>payment</c>）由 MSA.Redis 统一加。</summary>
+public static class PaymentCacheKeys
+{
+    public static string ByOrder(Guid orderId) => $"payment-by-order:{orderId:N}";
+
+    public static void Configure(CacheInvalidationRules rules) =>
+        rules.On<Payment>((payment, change) => change.Key(ByOrder(payment.OrderId)));
 }
 
 public sealed record ListPaymentsQuery(

@@ -1,3 +1,4 @@
+using MSA.Redis;
 using System.Text.Json;
 using Grpc.Core;
 using MediatR;
@@ -565,9 +566,9 @@ public sealed class CheckoutFlowTests
             if (!online())
                 throw new RpcException(new Status(StatusCode.Unavailable, "catalog is unreachable"));
             var service = new CatalogGrpc.CatalogPricingGrpcService(
-                Sender<CatalogApp.ConfirmSkuPricesQuery, CatalogApp.ConfirmedSkuPrices>(
-                    new CatalogApp.ConfirmSkuPricesQueryHandler(catalog)));
-            return Call(service.ConfirmPrices(request, Context(cancellationToken)));
+                InProcessGrpc.Sender<CatalogApp.ConfirmSkuPricesQuery, CatalogApp.ConfirmedSkuPrices>(
+                    new CatalogApp.ConfirmSkuPricesQueryHandler(catalog, NullCacheStore.Instance)));
+            return InProcessGrpc.Call(service.ConfirmPrices(request, InProcessGrpc.Context(cancellationToken)));
         }
     }
 
@@ -581,9 +582,9 @@ public sealed class CheckoutFlowTests
             CancellationToken cancellationToken = default)
         {
             var service = new CatalogGrpc.CouponQueryGrpcService(
-                Sender<CatalogApp.ConfirmCouponsQuery, CatalogApp.ConfirmedCoupons>(
+                InProcessGrpc.Sender<CatalogApp.ConfirmCouponsQuery, CatalogApp.ConfirmedCoupons>(
                     new CatalogApp.ConfirmCouponsQueryHandler(catalog, clock)));
-            return Call(service.ConfirmCoupons(request, Context(cancellationToken)));
+            return InProcessGrpc.Call(service.ConfirmCoupons(request, InProcessGrpc.Context(cancellationToken)));
         }
     }
 
@@ -597,9 +598,13 @@ public sealed class CheckoutFlowTests
             CancellationToken cancellationToken = default)
         {
             var service = new InventoryGrpc.InventoryAvailabilityGrpcService(
-                Sender<InventoryApp.CheckAvailabilityQuery, InventoryApp.AvailabilitySnapshot>(
-                    new InventoryApp.CheckAvailabilityQueryHandler(inventory, clock)));
-            return Call(service.CheckAvailability(request, Context(cancellationToken)));
+                InProcessGrpc.Sender<InventoryApp.CheckAvailabilityQuery, InventoryApp.AvailabilitySnapshot>(
+                    new InventoryApp.CheckAvailabilityQueryHandler(
+                        new InventoryApp.InventoryReadModel(inventory, NullCacheStore.Instance, clock), inventory, clock)),
+                new InMemoryChangeFeed(),
+                Microsoft.Extensions.Options.Options.Create(new InventoryGrpc.OfferStreamOptions()),
+                Logger<InventoryGrpc.InventoryAvailabilityGrpcService>());
+            return InProcessGrpc.Call(service.CheckAvailability(request, InProcessGrpc.Context(cancellationToken)));
         }
     }
 
@@ -615,9 +620,9 @@ public sealed class CheckoutFlowTests
             if (!online())
                 throw new RpcException(new Status(StatusCode.DeadlineExceeded, "payment is slow"));
             var service = new PaymentGrpc.PaymentQueryGrpcService(
-                Sender<PaymentApp.GetPaymentByOrderQuery, PaymentApp.PaymentDto?>(
-                    new PaymentApp.GetPaymentByOrderHandler(payments)));
-            return Call(service.GetOrderPayment(request, Context(cancellationToken)));
+                InProcessGrpc.Sender<PaymentApp.GetPaymentByOrderQuery, PaymentApp.PaymentDto?>(
+                    new PaymentApp.GetPaymentByOrderHandler(payments, NullCacheStore.Instance)));
+            return InProcessGrpc.Call(service.GetOrderPayment(request, InProcessGrpc.Context(cancellationToken)));
         }
     }
 
@@ -631,9 +636,9 @@ public sealed class CheckoutFlowTests
             CancellationToken cancellationToken = default)
         {
             var service = new UserGrpc.UserAddressGrpcService(
-                Sender<UserApp.Addresses.GetUserAddressQuery, UserApp.UserAddressResponse?>(
+                InProcessGrpc.Sender<UserApp.Addresses.GetUserAddressQuery, UserApp.UserAddressResponse?>(
                     new UserApp.Addresses.GetUserAddressQueryHandler(new UserInfra.UserStore(users))));
-            return Call(service.GetAddress(request, Context(cancellationToken)));
+            return InProcessGrpc.Call(service.GetAddress(request, InProcessGrpc.Context(cancellationToken)));
         }
     }
 
@@ -646,43 +651,8 @@ public sealed class CheckoutFlowTests
             CancellationToken cancellationToken = default)
         {
             var service = new OrderGrpc.OrderQueryGrpcService(
-                Sender<GetOrderSnapshotQuery, OrderSnapshotDto?>(new GetOrderSnapshotQueryHandler(orders)));
-            return Call(service.GetOrderSnapshot(request, Context(cancellationToken)));
+                InProcessGrpc.Sender<GetOrderSnapshotQuery, OrderSnapshotDto?>(new GetOrderSnapshotQueryHandler(orders)));
+            return InProcessGrpc.Call(service.GetOrderSnapshot(request, InProcessGrpc.Context(cancellationToken)));
         }
-    }
-
-    private static ISender Sender<TRequest, TResponse>(IRequestHandler<TRequest, TResponse> handler)
-        where TRequest : IRequest<TResponse>
-    {
-        var sender = new Mock<ISender>();
-        sender
-            .Setup(value => value.Send(It.IsAny<TRequest>(), It.IsAny<CancellationToken>()))
-            .Returns((TRequest request, CancellationToken cancellationToken) => handler.Handle(request, cancellationToken));
-        return sender.Object;
-    }
-
-    private static AsyncUnaryCall<TResponse> Call<TResponse>(Task<TResponse> response) =>
-        new(response, Task.FromResult(new Metadata()), () => Status.DefaultSuccess, () => new Metadata(), () => { });
-
-    private static ServerCallContext Context(CancellationToken cancellationToken) => new FlowCallContext(cancellationToken);
-
-    /// <summary>服务端只用到 CancellationToken，其余成员给出最小可用实现即可。</summary>
-    private sealed class FlowCallContext(CancellationToken cancellationToken) : ServerCallContext
-    {
-        protected override string MethodCore => "flow";
-        protected override string HostCore => "in-process";
-        protected override string PeerCore => "in-process";
-        protected override DateTime DeadlineCore => DateTime.UtcNow.AddSeconds(30);
-        protected override Metadata RequestHeadersCore { get; } = [];
-        protected override CancellationToken CancellationTokenCore => cancellationToken;
-        protected override Metadata ResponseTrailersCore { get; } = [];
-        protected override Status StatusCore { get; set; } = Status.DefaultSuccess;
-        protected override WriteOptions? WriteOptionsCore { get; set; }
-        protected override AuthContext AuthContextCore { get; } = new(null, new Dictionary<string, List<AuthProperty>>());
-
-        protected override ContextPropagationToken CreatePropagationTokenCore(ContextPropagationOptions? options) =>
-            throw new NotSupportedException();
-
-        protected override Task WriteResponseHeadersAsyncCore(Metadata responseHeaders) => Task.CompletedTask;
     }
 }

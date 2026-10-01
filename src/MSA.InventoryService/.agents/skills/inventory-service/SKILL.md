@@ -13,4 +13,4 @@ Start allocation stock with one atomic PostgreSQL counter. Add generic allocatio
 
 Consume order, release, and commit events through the service-local Inbox. Persist stock/reservation changes plus response events in one PostgreSQL transaction and Outbox. Duplicate delivery must be a no-op.
 
-Redis availability entries are short-lived read caches under `inventory:availability:{sku}`. Database concurrency rules prevent overselling; Redis is never used to authorize a reservation.
+Redis holds read caches through `MSA.Redis`: `{inventory:availability:{sku}}`, `{inventory:allocation:{id}}` and `{inventory:offers:{sku}}` (keys defined in `InventoryCacheKeys`). They are evicted after commit by the EF interceptor, never by handler code, and allocation commits also publish `offers-changed:{sku}` for the flash-sale stream (`WatchSkuOffers`). Database concurrency rules prevent overselling; Redis is never used to authorize a reservation.

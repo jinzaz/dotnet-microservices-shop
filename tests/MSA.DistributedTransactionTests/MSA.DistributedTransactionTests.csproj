@@ -24,6 +24,7 @@
     <ProjectReference Include="../../src/MSA.Infrastrucute/MSA.Infrastrucute.csproj" />
     <ProjectReference Include="../../src/MSA.Repositories/MSA.Repositories.csproj" />
     <ProjectReference Include="../../src/MSA.Saga/MSA.Saga.csproj" />
+    <ProjectReference Include="../../src/MSA.Redis/MSA.Redis.csproj" />
   </ItemGroup>
 
   <ItemGroup>

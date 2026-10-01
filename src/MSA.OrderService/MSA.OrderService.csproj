@@ -28,6 +28,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\MSA.Grpc\MSA.Grpc.csproj" />
+		<ProjectReference Include="..\MSA.Redis\MSA.Redis.csproj" />
 		<ProjectReference Include="..\MSA.Grpc.Contracts\MSA.Grpc.Contracts.csproj" />
 		<ProjectReference Include="..\MSA.EventBus\MSA.EventBus.csproj" />
 		<ProjectReference Include="..\MSA.EventBusOutbox\MSA.EventBusOutbox.csproj" />

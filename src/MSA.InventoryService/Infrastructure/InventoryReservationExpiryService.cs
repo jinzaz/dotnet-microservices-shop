@@ -62,15 +62,12 @@ internal sealed class InventoryReservationExpiryService(
         {
             using var scope = scopes.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
-            var cache = scope.ServiceProvider.GetRequiredService<InventoryCacheInvalidator>();
             try
             {
-                await ReleaseAsync(scope.ServiceProvider, db, cache, reservationId, clock.GetUtcNow(), cancellationToken);
-                await cache.FlushAsync();
+                await ReleaseAsync(scope.ServiceProvider, db, reservationId, clock.GetUtcNow(), cancellationToken);
             }
             catch (Exception exception)
             {
-                cache.Discard();
                 logger.LogError(exception, "Releasing expired reservation {ReservationId} failed.", reservationId);
             }
         }
@@ -79,7 +76,6 @@ internal sealed class InventoryReservationExpiryService(
     private async Task ReleaseAsync(
         IServiceProvider services,
         InventoryDbContext db,
-        InventoryCacheInvalidator cache,
         Guid reservationId,
         DateTimeOffset now,
         CancellationToken cancellationToken)
@@ -107,7 +103,7 @@ internal sealed class InventoryReservationExpiryService(
                 return;
             }
 
-            await InventoryRelease.ApplyAsync(db, transactionLock, cache, reservation, Reason, now, cancellationToken);
+            await InventoryRelease.ApplyAsync(db, transactionLock, reservation, Reason, now, cancellationToken);
             reservation.TryRelease(now, Reason);
             // 通知订单侧，让还在补偿中的 Saga 能够收敛。
             outbox.AddIntegrationEvent(new InventoryReleasedIntegrationEvent

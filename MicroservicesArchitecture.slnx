@@ -22,6 +22,7 @@
     <Project Path="src/MSA.Grpc/MSA.Grpc.csproj" />
     <Project Path="src/MSA.Grpc.Contracts/MSA.Grpc.Contracts.csproj" />
     <Project Path="src/MSA.Persistence.Postgres/MSA.Persistence.Postgres.csproj" />
+    <Project Path="src/MSA.Redis/MSA.Redis.csproj" />
     <Project Path="src/MSA.Repositories/MSA.Repositories.csproj" Id="cacbc4f0-9817-44b5-b24d-73279cb64d9d" />
     <Project Path="src/MSA.Saga/MSA.Saga.csproj" Id="4629570d-3908-4595-8dcc-b9df0efdfec2" />
   </Folder>

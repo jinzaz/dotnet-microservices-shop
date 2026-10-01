@@ -1,3 +1,4 @@
+using MSA.Redis;
 using Microsoft.EntityFrameworkCore;
 using MSA.Contracts;
 using MSA.OrderService.Domain;
@@ -105,8 +106,17 @@ public sealed record OrderPricingResult(
 public sealed class OrderPricingService(
     OrderDbContext db,
     IEnumerable<IPromotionRuleEvaluator> ruleEvaluators,
-    IEnumerable<IPromotionBenefitCalculator> benefitCalculators) : IOrderPricingService
+    IEnumerable<IPromotionBenefitCalculator> benefitCalculators,
+    ICacheStore? cache = null) : IOrderPricingService
 {
+    /// <summary>
+    /// 生效中的促销是所有报价与下单共享的一小份热数据（一次报价会按候选券逐个试算，每次都要读），
+    /// 整份缓存，按时间与券在内存里筛。促销投影一落库，提交后失效。
+    /// 这是成交依据，不开一级缓存：旧值可见的时间只有提交到失效之间的毫秒级。
+    /// </summary>
+    internal const string ActivePromotionsKey = "promotions:active";
+    private static readonly CachePolicy ActivePromotionsPolicy = new(TimeSpan.FromMinutes(5));
+
     private readonly IReadOnlyDictionary<string, IPromotionRuleEvaluator> _rules =
         ruleEvaluators.ToDictionary(item => item.RuleType, StringComparer.OrdinalIgnoreCase);
     private readonly IReadOnlyDictionary<string, IPromotionBenefitCalculator> _benefits =
@@ -135,16 +145,14 @@ public sealed class OrderPricingService(
 
         var couponByPromotion = coupons.ToDictionary(coupon => coupon.PromotionId);
         var couponPromotionIds = couponByPromotion.Keys.ToArray();
-        var promotions = await db.PromotionProjections
-            .AsNoTracking()
+        var promotions = (await LoadActivePromotionsAsync(now, cancellationToken))
             .Where(promotion =>
                 promotion.StartsOnUtc <= now
                 && promotion.EndsOnUtc > now
-                && promotion.Status == "Active"
                 && (promotion.TriggerType == "Automatic" || couponPromotionIds.Contains(promotion.Id)))
             .OrderByDescending(promotion => promotion.Priority)
             .ThenBy(promotion => promotion.Id)
-            .ToArrayAsync(cancellationToken);
+            .ToArray();
 
         var loadedCouponPromotionIds = promotions
             .Where(promotion => string.Equals(promotion.TriggerType, "Coupon", StringComparison.OrdinalIgnoreCase))
@@ -249,6 +257,19 @@ public sealed class OrderPricingService(
         {
             Opportunities = opportunities
         };
+    }
+
+    private async Task<PromotionProjection[]> LoadActivePromotionsAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        Task<PromotionProjection[]> Load(CancellationToken token) => db.PromotionProjections
+            .AsNoTracking()
+            .Where(promotion => promotion.Status == "Active" && promotion.EndsOnUtc > now)
+            .ToArrayAsync(token);
+
+        return cache is null
+            ? await Load(cancellationToken)
+            : await cache.GetOrLoadAsync<PromotionProjection[]>(
+                  ActivePromotionsKey, async token => await Load(token), ActivePromotionsPolicy, cancellationToken) ?? [];
     }
 
     private async Task<CouponProjection[]> ResolveCouponsAsync(

@@ -30,6 +30,7 @@ const rejectionMessages: Record<string, string> = {
   NotStarted: '还没到开抢时间',
   Ended: '领券活动已结束',
   Unavailable: '这张券暂时不可领取',
+  InProgress: '正在为你领取，请勿重复点击',
 };
 
 /** Claims a coupon; anonymous shoppers are sent to login and come back to the same page. */

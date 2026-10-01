@@ -1,5 +1,6 @@
 using FluentValidation;
 using MSA.Grpc;
+using MSA.Redis;
 using MSA.InventoryService.Grpc;
 using MSA.Repositories.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -26,10 +27,15 @@ var postgresql = builder.Configuration.GetConnectionString("Postgresql");
 if (string.IsNullOrWhiteSpace(postgresql))
     throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
 
-builder.Services.AddDbContext<InventoryDbContext>(options => options.UseNpgsql(postgresql));
+// 提交后失效：库存与配额的每次落库都在事务提交之后清掉读模型缓存，并通知秒杀余量订阅者。
+builder.Services.AddMsaRedis(builder.Configuration, "inventory");
+builder.Services.AddMsaCacheInvalidation(InventoryCacheKeys.Configure);
+builder.Services.AddDbContext<InventoryDbContext>((services, options) => options
+    .UseNpgsql(postgresql)
+    .UseMsaCacheInvalidation(services));
 builder.Services.AddScoped<MSADbContext>(services => services.GetRequiredService<InventoryDbContext>());
 builder.Services.AddScoped<IInventoryTransactionLock, PostgresInventoryTransactionLock>();
-builder.Services.AddScoped<InventoryCacheInvalidator>();
+builder.Services.AddScoped<InventoryReadModel>();
 builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.AddMediatR(configuration =>
@@ -37,8 +43,6 @@ builder.Services.AddMediatR(configuration =>
 builder.Services.AddScoped<IValidator<AddStockCommand>, AddStockValidator>();
 builder.Services.AddScoped<IValidator<AdjustStockCommand>, AdjustStockCommandValidator>();
 builder.Services.AddScoped<IValidator<CreateInventoryAllocationCommand>, CreateInventoryAllocationValidator>();
-// Must wrap TransactionBehavior: read-model eviction is only safe after the command commits.
-builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(InventoryCacheInvalidationBehavior<,>));
 builder.Services.AddMsaApplicationPipeline();
 
 builder.Services.AddOptions<InventoryReservationOptions>()
@@ -55,8 +59,11 @@ builder.Services.AddOptions<InventoryAllocationOptions>()
     .ValidateOnStart();
 builder.Services.AddHostedService<InventoryAllocationExpiryService>();
 
-builder.Services.AddStackExchangeRedisCache(options =>
-    options.Configuration = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379");
+builder.Services.AddOptions<OfferStreamOptions>()
+    .Bind(builder.Configuration.GetSection(OfferStreamOptions.SectionName))
+    .Validate(options => options.CoalesceWindow >= TimeSpan.Zero && options.RefreshInterval > TimeSpan.Zero,
+        "OfferStream timings must be positive.")
+    .ValidateOnStart();
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 builder.Services.AddMsaGrpcServer(builder.Environment.IsDevelopment());
 builder.Services.AddOutbox<InventoryDbContext>();

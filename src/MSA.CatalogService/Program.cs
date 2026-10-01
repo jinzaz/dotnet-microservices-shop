@@ -1,5 +1,6 @@
 using FluentValidation;
 using MSA.Grpc;
+using MSA.Redis;
 using MSA.CatalogService.Grpc;
 using MSA.Repositories.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -23,13 +24,18 @@ var postgresql = builder.Configuration.GetConnectionString("Postgresql");
 if (string.IsNullOrWhiteSpace(postgresql))
     throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
 
-var redis = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379";
-
-builder.Services.AddDbContext<CatalogDbContext>(options => options.UseNpgsql(postgresql));
+// 商品详情、列表、价格确认走 Cache Aside；商品、规格、图片、活动一落库，提交后按规则失效。
+builder.Services.AddMsaRedis(builder.Configuration, "catalog");
+builder.Services.AddMsaCacheInvalidation(CatalogCacheKeys.Configure);
+builder.Services.AddDbContext<CatalogDbContext>((services, options) => options
+    .UseNpgsql(postgresql)
+    .UseMsaCacheInvalidation(services));
 builder.Services.AddScoped<MSADbContext>(services => services.GetRequiredService<CatalogDbContext>());
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddMediatR(configuration =>
     configuration.RegisterServicesFromAssemblyContaining<CreateDraftProductCommand>());
+// 抢券闸门要包在事务外面：抢光标记在提交之后写，在途锁覆盖整个事务。所以先于应用管道注册。
+builder.Services.AddTransient<IPipelineBehavior<ClaimCouponCommand, CouponClaimResultDto>, CouponClaimGate>();
 builder.Services.AddMsaApplicationPipeline();
 
 builder.Services.AddScoped<CatalogStore>();
@@ -58,7 +64,6 @@ builder.Services.AddScoped<IValidator<CreateCouponBatchCommand>, CreateCouponBat
 builder.Services.AddScoped<IValidator<CreateCouponCampaignCommand>, CreateCouponCampaignValidator>();
 builder.Services.AddScoped<IValidator<ReviseCouponCampaignCommand>, ReviseCouponCampaignValidator>();
 
-builder.Services.AddStackExchangeRedisCache(options => options.Configuration = redis);
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 builder.Services.AddOutbox<CatalogDbContext>();
 // Outbox/Inbox 保留期清理，并为运维接口暴露失败消息与卡住的 Saga。

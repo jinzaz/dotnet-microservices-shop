@@ -10,12 +10,12 @@ using MSA.InventoryService.Infrastructure;
 namespace MSA.InventoryService.Integration;
 
 /// <summary>
-/// Inbox de-duplication, one local transaction and post-commit cache eviction for every inventory message.
+/// Inbox de-duplication and one local transaction for every inventory message.
+/// Read-model caches are evicted after commit by the EF interceptor (see Program.cs cache rules).
 /// </summary>
 internal abstract class InventoryIntegrationEventHandler<TEvent>(
     InventoryDbContext db,
     IOutboxStore outbox,
-    InventoryCacheInvalidator cache,
     string consumerId) : IIntegrationEventHandler<TEvent>
     where TEvent : IntegrationEvent
 {
@@ -35,16 +35,12 @@ internal abstract class InventoryIntegrationEventHandler<TEvent>(
         }
         catch
         {
-            cache.Discard();
             await db.RollbackTransactionAsync(cancellationToken);
             throw;
         }
-
-        await cache.FlushAsync();
     }
 
     protected InventoryDbContext Db => db;
-    protected InventoryCacheInvalidator Cache => cache;
 
     protected abstract Task HandleCoreAsync(TEvent integrationEvent, CancellationToken cancellationToken);
 
@@ -55,10 +51,9 @@ internal sealed class OrderSubmittedHandler(
     InventoryDbContext db,
     IOutboxStore outbox,
     IInventoryTransactionLock transactionLock,
-    InventoryCacheInvalidator cache,
     IOptions<InventoryReservationOptions> reservationOptions,
     TimeProvider clock)
-    : InventoryIntegrationEventHandler<OrderSubmittedIntegrationEvent>(db, outbox, cache, "inventory.order-submitted.v2")
+    : InventoryIntegrationEventHandler<OrderSubmittedIntegrationEvent>(db, outbox, "inventory.order-submitted.v2")
 {
     protected override async Task HandleCoreAsync(
         OrderSubmittedIntegrationEvent integrationEvent,
@@ -241,11 +236,6 @@ internal sealed class OrderSubmittedHandler(
             occurredOnUtc,
             ResolveExpiry(integrationEvent.PaymentDueOnUtc, occurredOnUtc, lifetime));
         Db.Reservations.Add(reservation);
-
-        foreach (var line in requested)
-            Cache.StockChanged(line.Sku);
-        foreach (var (_, allocation, _) in allocations)
-            Cache.AllocationChanged(allocation.Id);
         return ReservationAttempt.Accepted(reservation);
     }
 
@@ -299,9 +289,8 @@ internal sealed class ReleaseInventoryHandler(
     InventoryDbContext db,
     IOutboxStore outbox,
     IInventoryTransactionLock transactionLock,
-    InventoryCacheInvalidator cache,
     TimeProvider clock)
-    : InventoryIntegrationEventHandler<ReleaseInventoryIntegrationEvent>(db, outbox, cache, "inventory.release-requested.v2")
+    : InventoryIntegrationEventHandler<ReleaseInventoryIntegrationEvent>(db, outbox, "inventory.release-requested.v2")
 {
     protected override async Task HandleCoreAsync(
         ReleaseInventoryIntegrationEvent integrationEvent,
@@ -335,7 +324,7 @@ internal sealed class ReleaseInventoryHandler(
         string reason,
         DateTimeOffset now,
         CancellationToken cancellationToken) =>
-        InventoryRelease.ApplyAsync(Db, transactionLock, Cache, reservation, reason, now, cancellationToken);
+        InventoryRelease.ApplyAsync(Db, transactionLock, reservation, reason, now, cancellationToken);
 }
 
 /// <summary>
@@ -346,14 +335,13 @@ internal static class InventoryRelease
     public static async Task ApplyAsync(
         InventoryDbContext db,
         IInventoryTransactionLock transactionLock,
-        InventoryCacheInvalidator cache,
-        InventoryReservation reservation,
+            InventoryReservation reservation,
         string reason,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         var (stock, allocations) = await InventoryReservationBalances.LockAsync(
-            db, transactionLock, cache, reservation, cancellationToken);
+            db, transactionLock, reservation, cancellationToken);
 
         foreach (var line in reservation.Lines)
         {
@@ -387,9 +375,8 @@ internal sealed class CommitInventoryHandler(
     InventoryDbContext db,
     IOutboxStore outbox,
     IInventoryTransactionLock transactionLock,
-    InventoryCacheInvalidator cache,
     TimeProvider clock)
-    : InventoryIntegrationEventHandler<CommitInventoryIntegrationEvent>(db, outbox, cache, "inventory.commit-requested.v2")
+    : InventoryIntegrationEventHandler<CommitInventoryIntegrationEvent>(db, outbox, "inventory.commit-requested.v2")
 {
     protected override async Task HandleCoreAsync(
         CommitInventoryIntegrationEvent integrationEvent,
@@ -423,7 +410,7 @@ internal sealed class CommitInventoryHandler(
         CancellationToken cancellationToken)
     {
         var (stock, allocations) = await InventoryReservationBalances.LockAsync(
-            Db, transactionLock, Cache, reservation, cancellationToken);
+            Db, transactionLock, reservation, cancellationToken);
 
         foreach (var line in reservation.Lines)
         {
@@ -455,8 +442,7 @@ internal static class InventoryReservationBalances
     public static async Task<(Dictionary<string, StockItem> Stock, Dictionary<Guid, InventoryAllocation> Allocations)> LockAsync(
         InventoryDbContext db,
         IInventoryTransactionLock transactionLock,
-        InventoryCacheInvalidator cache,
-        InventoryReservation reservation,
+            InventoryReservation reservation,
         CancellationToken cancellationToken)
     {
         var skus = reservation.Lines.Select(line => line.Sku).Distinct(StringComparer.Ordinal).ToArray();
@@ -468,11 +454,6 @@ internal static class InventoryReservationBalances
             db,
             reservation.Lines.Where(line => line.AllocationId.HasValue).Select(line => line.AllocationId!.Value),
             cancellationToken);
-
-        foreach (var sku in skus)
-            cache.StockChanged(sku);
-        foreach (var allocationId in allocations.Keys)
-            cache.AllocationChanged(allocationId);
         return (stock, allocations);
     }
 

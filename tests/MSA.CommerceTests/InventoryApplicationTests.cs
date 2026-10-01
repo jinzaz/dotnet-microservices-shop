@@ -1,6 +1,3 @@
-using Microsoft.Extensions.Caching.Distributed;
-using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using MSA.Contracts;
@@ -54,52 +51,6 @@ public sealed class InventoryApplicationTests
         Assert.AreEqual(
             InventoryRequestHasher.Compute(Submitted(orderId, [new("sku-b", 1, 5m, OfferId: offer), new("SKU-A", 1, 5m)])),
             InventoryRequestHasher.Compute(Submitted(orderId, [new("SKU-A", 1, 5m), new("SKU-B", 1, 5m, OfferId: offer)])));
-    }
-
-    [TestMethod]
-    public async Task CacheInvalidator_EvictsQueuedKeysOnlyWhenFlushed()
-    {
-        var cache = NewCache();
-        var allocationId = Guid.NewGuid();
-        await cache.SetStringAsync(InventoryCacheKeys.Stock("SKU-1"), "stale", TestContext.CancellationToken);
-        await cache.SetStringAsync(InventoryCacheKeys.Allocation(allocationId), "stale", TestContext.CancellationToken);
-        var invalidator = new InventoryCacheInvalidator(cache, NullLogger<InventoryCacheInvalidator>.Instance);
-
-        invalidator.StockChanged(" sku-1 ");
-        invalidator.AllocationChanged(allocationId);
-        Assert.AreEqual("stale", await cache.GetStringAsync(InventoryCacheKeys.Stock("SKU-1"), TestContext.CancellationToken), "Eviction must wait for commit.");
-
-        await invalidator.FlushAsync();
-
-        Assert.IsNull(await cache.GetStringAsync(InventoryCacheKeys.Stock("SKU-1"), TestContext.CancellationToken));
-        Assert.IsNull(await cache.GetStringAsync(InventoryCacheKeys.Allocation(allocationId), TestContext.CancellationToken));
-    }
-
-    [TestMethod]
-    public async Task CacheInvalidationBehavior_FlushesAfterSuccessAndDiscardsAfterFailure()
-    {
-        var cache = NewCache();
-        await cache.SetStringAsync(InventoryCacheKeys.Stock("SKU-OK"), "stale", TestContext.CancellationToken);
-        await cache.SetStringAsync(InventoryCacheKeys.Stock("SKU-FAIL"), "current", TestContext.CancellationToken);
-        var invalidator = new InventoryCacheInvalidator(cache, NullLogger<InventoryCacheInvalidator>.Instance);
-        var behavior = new InventoryCacheInvalidationBehavior<object, int>(invalidator);
-
-        var response = await behavior.Handle(new object(), _ =>
-        {
-            invalidator.StockChanged("SKU-OK");
-            return Task.FromResult(42);
-        }, CancellationToken.None);
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => behavior.Handle(new object(), _ =>
-        {
-            invalidator.StockChanged("SKU-FAIL");
-            throw new InvalidOperationException("rolled back");
-        }, CancellationToken.None));
-        await invalidator.FlushAsync();
-
-        Assert.AreEqual(42, response);
-        Assert.IsNull(await cache.GetStringAsync(InventoryCacheKeys.Stock("SKU-OK"), TestContext.CancellationToken));
-        Assert.AreEqual("current", await cache.GetStringAsync(InventoryCacheKeys.Stock("SKU-FAIL"), TestContext.CancellationToken),
-            "A rolled-back command must not evict entries it never changed.");
     }
 
     [TestMethod]
@@ -183,9 +134,6 @@ public sealed class InventoryApplicationTests
             new[] { nameof(AdjustStockCommand.QuantityDelta), nameof(AdjustStockCommand.IdempotencyKey) },
             result.Errors.Select(error => error.PropertyName).ToArray());
     }
-
-    private static IDistributedCache NewCache() =>
-        new MemoryDistributedCache(Microsoft.Extensions.Options.Options.Create(new MemoryDistributedCacheOptions()));
 
     private static OrderSubmittedIntegrationEvent Submitted(
         Guid orderId,

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="StackExchange.Redis" />
+    <!-- 提交后失效依赖 EF 的保存/事务拦截点：失效时机属于持久化，缓存库负责把两边接起来。 -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MSA.DistributedTransactionTests" />
+    <InternalsVisibleTo Include="MSA.CommerceTests" />
+  </ItemGroup>
+
+</Project>

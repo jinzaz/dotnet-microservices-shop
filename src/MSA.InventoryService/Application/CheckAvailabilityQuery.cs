@@ -20,7 +20,10 @@ public sealed record AvailabilitySnapshot(bool AllAvailable, IReadOnlyList<Avail
 public sealed record CheckAvailabilityQuery(IReadOnlyList<AvailabilityRequestLine> Lines, string? UserId)
     : IQuery<AvailabilitySnapshot>;
 
-internal sealed class CheckAvailabilityQueryHandler(InventoryDbContext db, TimeProvider clock)
+internal sealed class CheckAvailabilityQueryHandler(
+    InventoryReadModel reads,
+    InventoryDbContext db,
+    TimeProvider clock)
     : IRequestHandler<CheckAvailabilityQuery, AvailabilitySnapshot>
 {
     public const int MaximumLines = 100;
@@ -36,55 +39,54 @@ internal sealed class CheckAvailabilityQueryHandler(InventoryDbContext db, TimeP
         if (lines.Length > MaximumLines)
             throw new ArgumentException($"At most {MaximumLines} lines can be checked in one call.", nameof(request));
 
-        var now = clock.GetUtcNow();
+        // 库存余额与配额都走读模型缓存：秒杀开抢时这条预检每秒被调用成千上万次，不能每次都打到数据库。
+        // 预检允许毫秒级的旧值，真正的把关在预占事务里。
         var skus = lines.Select(line => line.Sku).Distinct(StringComparer.Ordinal).ToArray();
-        var stock = await db.StockItems
-            .AsNoTracking()
-            .Where(item => skus.Contains(item.Sku))
-            .ToDictionaryAsync(item => item.Sku, StringComparer.Ordinal, cancellationToken);
+        var stock = await reads.StocksAsync(skus, cancellationToken);
+        var offeredSkus = lines.Where(line => line.OfferId.HasValue).Select(line => line.Sku).Distinct(StringComparer.Ordinal);
+        var offers = new List<Allocations.InventoryAllocationDto>();
+        foreach (var sku in offeredSkus)
+            offers.AddRange(await reads.OffersAsync(sku, cancellationToken));
 
-        var offerIds = lines.Where(line => line.OfferId.HasValue).Select(line => line.OfferId!.Value).Distinct().ToArray();
-        var allocations = offerIds.Length == 0
-            ? []
-            : await db.InventoryAllocations
-                .AsNoTracking()
-                .Where(allocation => offerIds.Contains(allocation.OfferId) && skus.Contains(allocation.Sku))
-                .ToArrayAsync(cancellationToken);
-        var buyers = offerIds.Length == 0 || string.IsNullOrWhiteSpace(request.UserId)
+        var allocationIds = offers.Select(offer => offer.AllocationId).ToArray();
+        // 每人限购是按人计的，不进共享缓存，只查这一个人。
+        var buyers = offers.Count == 0 || string.IsNullOrWhiteSpace(request.UserId)
             ? []
             : await db.InventoryAllocationBuyers
                 .AsNoTracking()
-                .Where(buyer => allocations.Select(allocation => allocation.Id).Contains(buyer.AllocationId)
+                .Where(buyer => allocationIds.Contains(buyer.AllocationId)
                     && buyer.UserId == request.UserId)
                 .ToArrayAsync(cancellationToken);
 
-        var results = lines.Select(line => Evaluate(line, stock, allocations, buyers, now)).ToArray();
+        var now = clock.GetUtcNow();
+        var results = lines.Select(line => Evaluate(line, stock, offers, buyers, now)).ToArray();
         return new AvailabilitySnapshot(results.All(result => result.Sufficient), results);
     }
 
     private static AvailabilityLineResult Evaluate(
         AvailabilityRequestLine line,
-        IReadOnlyDictionary<string, StockItem> stock,
-        IReadOnlyList<InventoryAllocation> allocations,
+        IReadOnlyDictionary<string, InventoryAvailabilityDto> stock,
+        IReadOnlyList<Allocations.InventoryAllocationDto> offers,
         IReadOnlyList<InventoryAllocationBuyer> buyers,
         DateTimeOffset now)
     {
         if (line.OfferId is Guid offerId)
         {
-            var allocation = allocations.SingleOrDefault(value => value.OfferId == offerId && value.Sku == line.Sku);
-            if (allocation is null)
-                return new AvailabilityLineResult(line.Sku, 0, false, "OfferNotFound");
-            if (!allocation.AcceptsOrders(now))
-                return new AvailabilityLineResult(line.Sku, allocation.AvailableQuantity, false, "OfferClosed");
+            var offer = offers.SingleOrDefault(value => value.OfferId == offerId && value.Sku == line.Sku);
+            // 读模型只保留未关闭的配额：不在其中就是已关闭（或从未存在，订单侧的投影预检会先挡掉那种）。
+            if (offer is null)
+                return new AvailabilityLineResult(line.Sku, 0, false, "OfferClosed");
+            if (offer.State == "Closed" || now < offer.StartsOnUtc || now >= offer.EndsOnUtc)
+                return new AvailabilityLineResult(line.Sku, offer.AvailableQuantity, false, "OfferClosed");
 
-            var buyer = buyers.SingleOrDefault(value => value.AllocationId == allocation.Id);
+            var buyer = buyers.SingleOrDefault(value => value.AllocationId == offer.AllocationId);
             var used = buyer is null ? 0 : buyer.ReservedQuantity + buyer.SoldQuantity;
-            if ((long)used + line.Quantity > allocation.PerUserLimit)
-                return new AvailabilityLineResult(line.Sku, allocation.AvailableQuantity, false, "OfferLimitExceeded");
+            if ((long)used + line.Quantity > offer.PerUserLimit)
+                return new AvailabilityLineResult(line.Sku, offer.AvailableQuantity, false, "OfferLimitExceeded");
 
-            return allocation.AvailableQuantity >= line.Quantity
-                ? new AvailabilityLineResult(line.Sku, allocation.AvailableQuantity, true, null)
-                : new AvailabilityLineResult(line.Sku, allocation.AvailableQuantity, false, "OfferSoldOut");
+            return offer.AvailableQuantity >= line.Quantity
+                ? new AvailabilityLineResult(line.Sku, offer.AvailableQuantity, true, null)
+                : new AvailabilityLineResult(line.Sku, offer.AvailableQuantity, false, "OfferSoldOut");
         }
 
         if (!stock.TryGetValue(line.Sku, out var item))

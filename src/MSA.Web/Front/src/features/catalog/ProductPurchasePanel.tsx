@@ -10,6 +10,7 @@ import { Icon } from '../../shared/ui/Icon';
 import { useToast } from '../../shared/ui/Toast';
 import { formatMoney } from '../../shared/utils/format';
 import { getInventoryAvailability } from './inventory-api';
+import { FlashSaleBadge } from './FlashSaleBadge';
 import type { ProductDetail, ProductSku } from './product-detail-types';
 import { RatingStars } from './RatingStars';
 import { describePromotion } from '../promotions/describe';
@@ -119,6 +120,7 @@ export function ProductPurchasePanel({ product, onSkuChange }: { product: Produc
         </a>
       ) : null}
       <strong className="product-price">{formatMoney(selectedSku.price, selectedSku.currency)}</strong>
+      {demoMode ? null : <FlashSaleBadge sku={selectedSku.sku} />}
 
       {product.promotions.length ? (
         <ul className="product-promotions" aria-label="可享优惠">

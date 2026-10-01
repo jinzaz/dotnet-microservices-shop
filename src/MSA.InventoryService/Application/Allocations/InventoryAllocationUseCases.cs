@@ -1,7 +1,7 @@
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Distributed;
+using MSA.Redis;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MSA.Contracts;
@@ -42,7 +42,6 @@ internal sealed class CreateInventoryAllocationHandler(
     InventoryDbContext db,
     IInventoryTransactionLock transactionLock,
     IOutboxStore outbox,
-    InventoryCacheInvalidator cache,
     TimeProvider clock) : IRequestHandler<CreateInventoryAllocationCommand, Guid>
 {
     public async Task<Guid> Handle(
@@ -92,7 +91,6 @@ internal sealed class CreateInventoryAllocationHandler(
             EndsOnUtc = allocation.EndsOnUtc,
             PerUserLimit = allocation.PerUserLimit
         });
-        cache.StockChanged(sku);
         return allocation.Id;
     }
 }
@@ -106,7 +104,6 @@ internal sealed class CloseInventoryAllocationHandler(
     InventoryDbContext db,
     IInventoryTransactionLock transactionLock,
     IOutboxStore outbox,
-    InventoryCacheInvalidator cache,
     TimeProvider clock) : IRequestHandler<CloseInventoryAllocationCommand, CloseInventoryAllocationResult>
 {
     public async Task<CloseInventoryAllocationResult> Handle(
@@ -150,8 +147,6 @@ internal sealed class CloseInventoryAllocationHandler(
             Sku = allocation.Sku,
             ClosedOnUtc = now
         });
-        cache.StockChanged(allocation.Sku);
-        cache.AllocationChanged(allocation.Id);
         return new CloseInventoryAllocationResult(true, true, released);
     }
 }
@@ -187,51 +182,39 @@ public sealed record InventoryAllocationPage(
 
 internal sealed class GetInventoryAllocationQueryHandler(
     InventoryDbContext db,
-    IDistributedCache cache,
+    ICacheStore cache,
     IOptions<InventoryAllocationOptions> options,
-    TimeProvider clock,
-    ILogger<GetInventoryAllocationQueryHandler> logger)
+    TimeProvider clock)
     : IRequestHandler<GetInventoryAllocationQuery, InventoryAllocationDto?>
 {
     public async Task<InventoryAllocationDto?> Handle(
         GetInventoryAllocationQuery request,
         CancellationToken cancellationToken)
     {
-        var cacheKey = InventoryCacheKeys.Allocation(request.AllocationId);
-        try
-        {
-            var cached = await cache.GetStringAsync(cacheKey, cancellationToken);
-            if (cached is not null)
-                return JsonSerializer.Deserialize<InventoryAllocationDto>(cached);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            logger.LogWarning(exception, "Allocation cache read failed for {AllocationId}; using PostgreSQL.", request.AllocationId);
-        }
-
-        var allocation = await db.InventoryAllocations
-            .AsNoTracking()
-            .SingleOrDefaultAsync(value => value.Id == request.AllocationId, cancellationToken);
-        if (allocation is null)
-            return null;
-        var result = ToDto(allocation, clock.GetUtcNow());
-        try
-        {
-            await cache.SetStringAsync(
-                cacheKey,
-                JsonSerializer.Serialize(result),
-                new DistributedCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = options.Value.AvailabilityCacheDuration
-                },
-                cancellationToken);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            logger.LogWarning(exception, "Allocation cache write failed for {AllocationId}.", request.AllocationId);
-        }
-        return result;
+        var cached = await cache.GetOrLoadAsync(
+            InventoryCacheKeys.Allocation(request.AllocationId),
+            async token =>
+            {
+                var allocation = await db.InventoryAllocations
+                    .AsNoTracking()
+                    .SingleOrDefaultAsync(value => value.Id == request.AllocationId, token);
+                return allocation is null ? null : ToDto(allocation, clock.GetUtcNow());
+            },
+            new CachePolicy(options.Value.AvailabilityCacheDuration),
+            cancellationToken);
+        return cached is null ? null : AtTime(cached, clock.GetUtcNow());
     }
+
+    /// <summary>缓存里的状态是写入那一刻算的；开始、结束这类随时间变化的状态按读取时刻重算。</summary>
+    internal static InventoryAllocationDto AtTime(InventoryAllocationDto value, DateTimeOffset now) =>
+        value with
+        {
+            State = value.State == "Closed" ? "Closed"
+                : now < value.StartsOnUtc ? "Scheduled"
+                : now >= value.EndsOnUtc ? "Expired"
+                : value.AvailableQuantity == 0 ? "SoldOut"
+                : "Active"
+        };
 
     internal static InventoryAllocationDto ToDto(InventoryAllocation value, DateTimeOffset now) =>
         new(
@@ -315,4 +298,14 @@ public sealed class InventoryAllocationOptions
     public TimeSpan AvailabilityCacheDuration { get; set; } = TimeSpan.FromSeconds(2);
     public TimeSpan ExpiryScanInterval { get; set; } = TimeSpan.FromSeconds(5);
     public int ExpiryBatchSize { get; set; } = 100;
+}
+
+/// <summary>某个 SKU 当前的限量配额（秒杀）快照：商品页角标与余量推流都读它。</summary>
+public sealed record GetSkuOffersQuery(string Sku) : IQuery<IReadOnlyList<InventoryAllocationDto>>;
+
+internal sealed class GetSkuOffersQueryHandler(InventoryReadModel reads)
+    : IRequestHandler<GetSkuOffersQuery, IReadOnlyList<InventoryAllocationDto>>
+{
+    public Task<IReadOnlyList<InventoryAllocationDto>> Handle(GetSkuOffersQuery request, CancellationToken cancellationToken) =>
+        reads.OffersAsync(StockItem.NormalizeSku(request.Sku), cancellationToken);
 }

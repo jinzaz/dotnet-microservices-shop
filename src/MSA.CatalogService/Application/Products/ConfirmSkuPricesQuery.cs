@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using MSA.CatalogService.Domain;
 using MSA.CatalogService.Infrastructure;
 using MSA.Infrastrucute.Mediator;
+using MSA.Redis;
 
 namespace MSA.CatalogService.Application;
 
@@ -30,7 +31,11 @@ public sealed record ConfirmedSkuPrices(
 /// </summary>
 public sealed record ConfirmSkuPricesQuery(IReadOnlyList<string> Skus) : IQuery<ConfirmedSkuPrices>;
 
-internal sealed class ConfirmSkuPricesQueryHandler(CatalogDbContext db)
+/// <remarks>
+/// 购物车每次打开、订单每次报价与下单都会来问，按 SKU 缓存，商品任何变更提交后逐个失效。
+/// 不存在的 SKU 也缓存为空，拿随机 SKU 刷接口不会打穿到数据库。
+/// </remarks>
+internal sealed class ConfirmSkuPricesQueryHandler(CatalogDbContext db, ICacheStore cache)
     : IRequestHandler<ConfirmSkuPricesQuery, ConfirmedSkuPrices>
 {
     public const int MaximumSkus = 200;
@@ -47,9 +52,26 @@ internal sealed class ConfirmSkuPricesQueryHandler(CatalogDbContext db)
         if (requested.Length > MaximumSkus)
             throw new ArgumentException($"At most {MaximumSkus} SKUs can be confirmed in one call.", nameof(request));
 
-        var rows = await db.ProductVariants
+        var cached = await cache.GetOrLoadManyAsync<ConfirmedSkuDto>(
+            requested.Select(CatalogCacheKeys.Price).ToArray(),
+            async (missingKeys, token) =>
+            {
+                var missing = requested.Where(sku => missingKeys.Contains(CatalogCacheKeys.Price(sku))).ToArray();
+                var loaded = await LoadAsync(missing, token);
+                return loaded.ToDictionary(row => CatalogCacheKeys.Price(ProductVariant.NormalizeSku(row.Sku)), StringComparer.Ordinal);
+            },
+            CatalogCachePolicies.Price,
+            cancellationToken);
+        var rows = cached.Values.ToArray();
+
+        var found = rows.Select(row => ProductVariant.NormalizeSku(row.Sku)).ToHashSet(StringComparer.Ordinal);
+        return new ConfirmedSkuPrices(rows, requested.Where(sku => !found.Contains(sku)).ToArray());
+    }
+
+    private Task<ConfirmedSkuDto[]> LoadAsync(string[] skus, CancellationToken cancellationToken) =>
+        db.ProductVariants
             .AsNoTracking()
-            .Where(variant => requested.Contains(variant.NormalizedSku))
+            .Where(variant => skus.Contains(variant.NormalizedSku))
             .Join(
                 db.Products.AsNoTracking(),
                 variant => variant.ProductId,
@@ -68,8 +90,4 @@ internal sealed class ConfirmSkuPricesQueryHandler(CatalogDbContext db)
                     product.CategoryId,
                     variant.AttributesJson))
             .ToArrayAsync(cancellationToken);
-
-        var found = rows.Select(row => ProductVariant.NormalizeSku(row.Sku)).ToHashSet(StringComparer.Ordinal);
-        return new ConfirmedSkuPrices(rows, requested.Where(sku => !found.Contains(sku)).ToArray());
-    }
 }

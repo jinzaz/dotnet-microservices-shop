@@ -1,3 +1,4 @@
+using MSA.Redis;
 using FluentValidation;
 using MSA.Grpc;
 using MSA.Grpc.Contracts.Catalog;
@@ -48,7 +49,13 @@ builder.Services.AddHealthChecks()
 var connectionString = builder.Configuration.GetConnectionString("Postgresql");
 if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
-builder.Services.AddDbContext<OrderDbContext>(options => options.UseNpgsql(connectionString));
+// 生效促销整份缓存；促销投影一落库（集成事件处理器里），提交后失效。
+builder.Services.AddMsaRedis(builder.Configuration, "order");
+builder.Services.AddMsaCacheInvalidation(rules => rules
+    .On<PromotionProjection>((_, change) => change.Key(OrderPricingService.ActivePromotionsKey)));
+builder.Services.AddDbContext<OrderDbContext>((services, options) => options
+    .UseNpgsql(connectionString)
+    .UseMsaCacheInvalidation(services));
 builder.Services.AddScoped<MSADbContext>(services => services.GetRequiredService<OrderDbContext>());
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddScoped<IOrderSubmissionLock, PostgresOrderSubmissionLock>();
