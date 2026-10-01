@@ -1,7 +1,7 @@
+using MSA.Observability;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MSA.Infrastrucute.Extensions;
-using OpenTelemetry.Resources;
 using Quartz;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -45,11 +45,8 @@ builder.Services.AddMsaApiAuthorization(
     IdentityServiceConstants.Resources.Auth,
     IdentityServiceConstants.Scopes.AuthAdminRead,
     IdentityServiceConstants.Scopes.AuthAdminWrite);
-builder.Services.AddOpenTelemetry().WithTracing(tracing => tracing
-    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(builder.Environment.ApplicationName))
-    .AddAspNetCoreInstrumentation()
-    .AddHttpClientInstrumentation()
-    .AddOtlpExporter());
+// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
+builder.AddMsaObservability();
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();

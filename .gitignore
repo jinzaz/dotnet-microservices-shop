@@ -361,3 +361,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# docker compose：本地口令与生成的开发证书不入库
+docker/.env
+docker/certs/

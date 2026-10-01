@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using MSA.BFF.Common.Auth;
 using MSA.BFF.Common.Middleware;
+using MSA.Shared;
 using OpenIddict.Client;
 using OpenIddict.Client.AspNetCore;
 using Quartz;
@@ -161,15 +162,8 @@ public static class BffServiceCollectionExtensions
                 }
                 else
                 {
-                    var path = configuration["Certificates:Path"];
-                    var password = configuration["Certificates:Password"];
-                    if (string.IsNullOrWhiteSpace(path))
-                    {
-                        throw new InvalidOperationException(
-                            "A production OpenIddict client certificate is required.");
-                    }
-
-                    var certificate = X509CertificateLoader.LoadPkcs12FromFile(path, password);
+                    // 签名 / 加密 OIDC state token 的证书：生产环境只从环境变量读取。
+                    var certificate = OpenIddictCertificateEnvironment.Load();
                     options
                         .AddEncryptionCertificate(certificate)
                         .AddSigningCertificate(certificate);

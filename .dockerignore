@@ -28,3 +28,5 @@ README.md
 !.git/config
 !.git/packed-refs
 !.git/refs/heads/**
+# 镜像里用 sdk:10.0 自带的 SDK 构建；global.json 锁定的是本机的预览版 SDK，镜像里没有。
+global.json

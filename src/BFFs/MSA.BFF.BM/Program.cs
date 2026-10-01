@@ -1,3 +1,4 @@
+using MSA.Observability;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +13,8 @@ using MSA.Grpc.Contracts.Order;
 using MSA.Grpc.Contracts.Payment;
 
 var builder = WebApplication.CreateBuilder(args);
+// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
+builder.AddMsaObservability();
 
 var postgresql = builder.Configuration.GetConnectionString("Postgresql")
     ?? throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");

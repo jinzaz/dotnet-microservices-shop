@@ -1,6 +1,6 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
-using System.Security.Cryptography.X509Certificates;
+using MSA.Shared;
 using Microsoft.AspNetCore.WebUtilities;
 using OpenIddict.Validation.AspNetCore;
 
@@ -160,11 +160,8 @@ internal static class ServiceCollection
                 }
                 else
                 {
-                    var path = configuration["Certificates:Path"];
-                    var password = configuration["Certificates:Password"];
-                    if (string.IsNullOrWhiteSpace(path))
-                        throw new InvalidOperationException("A production OpenIddict certificate is required.");
-                    var certificate = X509CertificateLoader.LoadPkcs12FromFile(path, password);
+                    // 签名 / 加密令牌的证书：生产环境只从环境变量读取。
+                    var certificate = OpenIddictCertificateEnvironment.Load();
                     options.AddEncryptionCertificate(certificate).AddSigningCertificate(certificate);
                 }
 

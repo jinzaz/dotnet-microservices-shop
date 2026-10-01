@@ -17,6 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\MSA.Observability\MSA.Observability.csproj" />
     <ProjectReference Include="..\MSA.Grpc\MSA.Grpc.csproj" />
     <ProjectReference Include="..\MSA.Grpc.Contracts\MSA.Grpc.Contracts.csproj" />
     <ProjectReference Include="..\MSA.Persistence.Postgres\MSA.Persistence.Postgres.csproj" />

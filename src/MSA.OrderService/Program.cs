@@ -1,3 +1,4 @@
+using MSA.Observability;
 using MSA.Redis;
 using FluentValidation;
 using MSA.Grpc;
@@ -28,8 +29,6 @@ using MSA.OrderService.Infrastructure;
 using MSA.OrderService.Integration;
 using MSA.OrderService.Middleware;
 using MSA.Saga.Extensions;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
 using System.Security.Claims;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -154,16 +153,8 @@ builder.Services.AddMsaApiAuthorization(
     "order.admin.read",
     "order.admin.write");
 
-builder.Services.AddOpenTelemetry().WithTracing(tracing =>
-{
-    tracing
-        .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(builder.Environment.ApplicationName))
-        .AddAspNetCoreInstrumentation()
-        .AddHttpClientInstrumentation()
-        .AddOtlpExporter();
-    if (builder.Configuration.GetValue<bool>("OpenTelemetry:EnableConsoleExporter"))
-        tracing.AddConsoleExporter();
-});
+// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
+builder.AddMsaObservability();
 
 var app = builder.Build();
 

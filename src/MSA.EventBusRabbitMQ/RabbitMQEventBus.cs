@@ -74,7 +74,8 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
 
         await _pipeline.Execute(async () =>
         {
-            using var activity = _activitySource.StartActivity(activityName, ActivityKind.Client);
+            // 按消息语义约定标成 Producer/Consumer，链路视图里才会把发布和消费连成一条异步调用。
+            using var activity = _activitySource.StartActivity(activityName, ActivityKind.Producer);
 
             // Depending on Sampling (and whether a listener is registered or not), the activity above may not be created.
             // If it is created, then propagate its context. If it is not created, the propagate the Current context, if any.
@@ -226,7 +227,7 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
         // https://github.com/open-telemetry/semantic-conventions/blob/main/docs/messaging/messaging-spans.md
         var activityName = $"{eventArgs.RoutingKey} receive";
 
-        using var activity = _activitySource.StartActivity(activityName, ActivityKind.Client, parentContext.ActivityContext);
+        using var activity = _activitySource.StartActivity(activityName, ActivityKind.Consumer, parentContext.ActivityContext);
 
         SetActivityContext(activity, eventArgs.RoutingKey, "receive");
 

@@ -1,3 +1,4 @@
+using MSA.Observability;
 using FluentValidation;
 using MSA.Grpc;
 using MSA.Redis;
@@ -15,8 +16,6 @@ using MSA.EventBusOutbox.Extensions;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
 using OpenIddict.Validation.AspNetCore;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -90,11 +89,8 @@ builder.Services.AddMsaApiAuthorization(
     "catalog.admin.read",
     "catalog.admin.write");
 
-builder.Services.AddOpenTelemetry().WithTracing(tracing => tracing
-    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(builder.Environment.ApplicationName))
-    .AddAspNetCoreInstrumentation()
-    .AddHttpClientInstrumentation()
-    .AddOtlpExporter());
+// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
+builder.AddMsaObservability();
 
 var app = builder.Build();
 if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))

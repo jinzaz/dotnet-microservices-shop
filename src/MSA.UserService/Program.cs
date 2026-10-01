@@ -1,3 +1,4 @@
+using MSA.Observability;
 using Microsoft.EntityFrameworkCore;
 using MSA.Grpc;
 using MSA.Infrastrucute;
@@ -11,6 +12,8 @@ using MSA.UserService.Middleware;
 using OpenIddict.Validation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
+// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
+builder.AddMsaObservability();
 var postgresql = builder.Configuration.GetConnectionString("Postgresql");
 if (string.IsNullOrWhiteSpace(postgresql))
     throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");

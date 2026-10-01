@@ -1,3 +1,4 @@
+using MSA.Observability;
 using Microsoft.EntityFrameworkCore;
 using MSA.BFF.Common;
 using MSA.BFF.Web;
@@ -5,6 +6,8 @@ using MSA.Grpc;
 using MSA.Grpc.Contracts.Inventory;
 
 var builder = WebApplication.CreateBuilder(args);
+// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
+builder.AddMsaObservability();
 
 var postgresql = builder.Configuration.GetConnectionString("Postgresql")
     ?? throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");

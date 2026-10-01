@@ -1,3 +1,4 @@
+using MSA.Observability;
 using FluentValidation;
 using MSA.Repositories.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -18,8 +19,6 @@ using MSA.Grpc.Contracts.Catalog;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
 using OpenIddict.Validation.AspNetCore;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 var postgresql = builder.Configuration.GetConnectionString("Postgresql");
@@ -87,11 +86,8 @@ builder.Services.AddExceptionHandler<BasketApiExceptionHandler>();
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks()
     .AddCheck<BasketDatabaseHealthCheck>("postgresql", tags: ["ready"]);
-builder.Services.AddOpenTelemetry().WithTracing(tracing => tracing
-    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(builder.Environment.ApplicationName))
-    .AddAspNetCoreInstrumentation()
-    .AddHttpClientInstrumentation()
-    .AddOtlpExporter());
+// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
+builder.AddMsaObservability();
 
 var app = builder.Build();
 if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))

@@ -1,0 +1,33 @@
+# API 网关（YARP）：BFF 的 /api/* 都经它转发到各业务服务。
+# 域名：gateway.${MSA_DOMAIN}（容器之间也走这个名字，网络别名指向本容器）。
+# 公共部分（TLS 证书、OTLP、Issuer、环境）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
+services:
+  msa-gateway:
+    extends:
+      file: ../../base/dotnet-service.yaml
+      service: dotnet-service
+    # 镜像由 scripts/build-images.* 构建并推送到 Harbor（清单见 images.txt），这里只拉取。
+    image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/api-gateway:${MSA_IMAGE_TAG:-latest}
+    pull_policy: ${MSA_PULL_POLICY:-missing}
+    container_name: msa-gateway
+    ports:
+      - "10000:10000"
+    environment:
+      ASPNETCORE_URLS: "https://+:10000"
+      ReverseProxy__Clusters__order-stable__Destinations__order-1__Address: "https://order.${MSA_DOMAIN}:10001/"
+      ReverseProxy__Clusters__identity__Destinations__identity-1__Address: "https://identity.${MSA_DOMAIN}:10002/"
+      ReverseProxy__Clusters__user__Destinations__user-1__Address: "https://user.${MSA_DOMAIN}:10010/"
+      ReverseProxy__Clusters__basket__Destinations__basket-1__Address: "https://basket.${MSA_DOMAIN}:10007/"
+      ReverseProxy__Clusters__catalog__Destinations__catalog-1__Address: "https://catalog.${MSA_DOMAIN}:10003/"
+      ReverseProxy__Clusters__inventory__Destinations__inventory-1__Address: "https://inventory.${MSA_DOMAIN}:10004/"
+      ReverseProxy__Clusters__payment__Destinations__payment-1__Address: "https://payment.${MSA_DOMAIN}:10005/"
+      ReverseProxy__Clusters__notification__Destinations__notification-1__Address: "https://notification.${MSA_DOMAIN}:10006/"
+    networks:
+      backend:
+        aliases:
+          - gateway.${MSA_DOMAIN}
+
+networks:
+  backend:
+    name: dotnet-infra_backend
+    external: true

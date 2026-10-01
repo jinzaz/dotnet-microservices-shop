@@ -24,4 +24,7 @@
 		<PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
 		<PackageReference Include="OpenTelemetry.Exporter.Console" />
 	</ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MSA.Observability\MSA.Observability.csproj" />
+  </ItemGroup>
 </Project>

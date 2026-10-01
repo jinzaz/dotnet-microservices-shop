@@ -1,3 +1,4 @@
+using MSA.Observability;
 using MediatR;
 using MSA.Repositories.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -11,8 +12,6 @@ using MSA.NotificationService.Application;
 using MSA.NotificationService.Domain;
 using MSA.NotificationService.Infrastructure;
 using MSA.NotificationService.Integration;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
 using System.Security.Claims;
 using System.Text.Json.Serialization;
 using OpenIddict.Validation.AspNetCore;
@@ -50,11 +49,8 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddHealthChecks();
 builder.Services.AddProblemDetails();
-builder.Services.AddOpenTelemetry().WithTracing(tracing => tracing
-    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(builder.Environment.ApplicationName))
-    .AddAspNetCoreInstrumentation()
-    .AddHttpClientInstrumentation()
-    .AddOtlpExporter());
+// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
+builder.AddMsaObservability();
 
 var app = builder.Build();
 if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))

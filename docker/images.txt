@@ -1,0 +1,13 @@
+# 镜像清单：构建脚本（scripts/build-images.*）按它构建与推送，compose 文件里的镜像名与它一一对应。
+# 格式：<镜像名> <Dockerfile 路径（相对仓库根目录）>；构建上下文统一是仓库根目录。
+api-gateway           src/MSA.ApiGateway/Dockerfile
+identity-service      src/MSA.IdentityService/Dockerfile
+user-service          src/MSA.UserService/Dockerfile
+catalog-service       src/MSA.CatalogService/Dockerfile
+inventory-service     src/MSA.InventoryService/Dockerfile
+basket-service        src/MSA.BasketService/Dockerfile
+order-service         src/MSA.OrderService/Dockerfile
+payment-service       src/MSA.PaymentService/Dockerfile
+notification-service  src/MSA.NotificationService/Dockerfile
+bff-web               src/BFFs/MSA.BFF.Web/Dockerfile
+bff-bm                src/BFFs/MSA.BFF.BM/Dockerfile

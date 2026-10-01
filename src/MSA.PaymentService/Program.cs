@@ -1,3 +1,4 @@
+using MSA.Observability;
 using MSA.Redis;
 using Essensoft.Paylinks.Alipay.Client.Extensions;
 using MSA.Grpc;
@@ -20,8 +21,6 @@ using MSA.PaymentService.Endpoints;
 using MSA.PaymentService.Infrastructure;
 using MSA.PaymentService.Integration;
 using OpenIddict.Validation.AspNetCore;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("Postgresql");
@@ -80,11 +79,8 @@ builder.Services.AddMsaApiAuthorization(
     "payment.admin.write");
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
-builder.Services.AddOpenTelemetry().WithTracing(tracing => tracing
-    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(builder.Environment.ApplicationName))
-    .AddAspNetCoreInstrumentation()
-    .AddHttpClientInstrumentation()
-    .AddOtlpExporter());
+// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
+builder.AddMsaObservability();
 
 var app = builder.Build();
 if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
