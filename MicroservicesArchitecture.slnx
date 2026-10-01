@@ -1,5 +1,40 @@
 <Solution>
   <Folder Name="/0.Root/" />
+  <Folder Name="/0.Root/docker/">
+    <File Path="docker/.env.example" />
+    <File Path="docker/compose.yaml" />
+    <File Path="docker/images.txt" />
+    <File Path="docker/README.md" />
+  </Folder>
+  <Folder Name="/0.Root/docker/base/">
+    <File Path="docker/base/dotnet-service.yaml" />
+  </Folder>
+  <Folder Name="/0.Root/docker/scripts/">
+    <File Path="docker/scripts/build-images.ps1" />
+    <File Path="docker/scripts/build-images.sh" />
+    <File Path="docker/scripts/new-openiddict-certs.ps1" />
+    <File Path="docker/scripts/new-openiddict-certs.sh" />
+  </Folder>
+  <Folder Name="/0.Root/docker/services/" />
+  <Folder Name="/0.Root/docker/services/commerce/">
+    <File Path="docker/services/commerce/basket.yaml" />
+    <File Path="docker/services/commerce/catalog.yaml" />
+    <File Path="docker/services/commerce/inventory.yaml" />
+    <File Path="docker/services/commerce/order.yaml" />
+    <File Path="docker/services/commerce/payment.yaml" />
+  </Folder>
+  <Folder Name="/0.Root/docker/services/edge/">
+    <File Path="docker/services/edge/bff-bm.yaml" />
+    <File Path="docker/services/edge/bff-web.yaml" />
+    <File Path="docker/services/edge/gateway.yaml" />
+  </Folder>
+  <Folder Name="/0.Root/docker/services/identity/">
+    <File Path="docker/services/identity/identity.yaml" />
+    <File Path="docker/services/identity/user.yaml" />
+  </Folder>
+  <Folder Name="/0.Root/docker/services/platform/">
+    <File Path="docker/services/platform/notification.yaml" />
+  </Folder>
   <Folder Name="/1.Doc/" />
   <Folder Name="/2.Src/" />
   <Folder Name="/2.Src/0.Root/">
@@ -17,12 +52,12 @@
     <Project Path="src/MSA.EventBus/MSA.EventBus.csproj" Id="95fde12a-5ab9-4184-aace-8dff777978a8" />
     <Project Path="src/MSA.EventBusOutbox/MSA.EventBusOutbox.csproj" Id="bff37e24-c0f0-4a51-94ed-89a6ca9952a6" />
     <Project Path="src/MSA.EventBusRabbitMQ/MSA.EventBusRabbitMQ.csproj" Id="5c0d2a49-07fa-44c2-bcd9-945f629472a4" />
-    <Project Path="src/MSA.Infrastrucute/MSA.Infrastrucute.csproj" Id="6e631722-bfd4-4246-aa72-1c0c4a870747" />
-    <Project Path="src/MSA.PaymentCore/MSA.PaymentCore.csproj" />
-    <Project Path="src/MSA.Grpc/MSA.Grpc.csproj" />
     <Project Path="src/MSA.Grpc.Contracts/MSA.Grpc.Contracts.csproj" />
-    <Project Path="src/MSA.Persistence.Postgres/MSA.Persistence.Postgres.csproj" />
+    <Project Path="src/MSA.Grpc/MSA.Grpc.csproj" />
+    <Project Path="src/MSA.Infrastrucute/MSA.Infrastrucute.csproj" Id="6e631722-bfd4-4246-aa72-1c0c4a870747" />
     <Project Path="src/MSA.Observability/MSA.Observability.csproj" />
+    <Project Path="src/MSA.PaymentCore/MSA.PaymentCore.csproj" />
+    <Project Path="src/MSA.Persistence.Postgres/MSA.Persistence.Postgres.csproj" />
     <Project Path="src/MSA.Redis/MSA.Redis.csproj" />
     <Project Path="src/MSA.Repositories/MSA.Repositories.csproj" Id="cacbc4f0-9817-44b5-b24d-73279cb64d9d" />
     <Project Path="src/MSA.Saga/MSA.Saga.csproj" Id="4629570d-3908-4595-8dcc-b9df0efdfec2" />
