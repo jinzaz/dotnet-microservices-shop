@@ -26,8 +26,14 @@ services:
       backend:
         aliases:
           - gateway.${MSA_DOMAIN}
+      frontend:  
+        aliases:
+          - gateway.${MSA_DOMAIN}
 
 networks:
   backend:
     name: dotnet-infra_backend
+    external: true
+  frontend:
+    name: dotnet-infra_frontend
     external: true

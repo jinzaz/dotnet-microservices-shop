@@ -22,6 +22,7 @@
     <File Path="docker/services/commerce/inventory.yaml" />
     <File Path="docker/services/commerce/order.yaml" />
     <File Path="docker/services/commerce/payment.yaml" />
+    <File Path="docker/services/identity/user.yaml" />
   </Folder>
   <Folder Name="/0.Root/docker/services/edge/">
     <File Path="docker/services/edge/bff-bm.yaml" />
@@ -30,7 +31,6 @@
   </Folder>
   <Folder Name="/0.Root/docker/services/identity/">
     <File Path="docker/services/identity/identity.yaml" />
-    <File Path="docker/services/identity/user.yaml" />
   </Folder>
   <Folder Name="/0.Root/docker/services/platform/">
     <File Path="docker/services/platform/notification.yaml" />

@@ -26,11 +26,11 @@ services:
     volumes:
       - ../../certs/bff-web-openiddict.pfx:/certs/openiddict.pfx:ro
     networks:
-      backend:
+      frontend:
         aliases:
           - bff-web.${MSA_DOMAIN}
 
 networks:
-  backend:
-    name: dotnet-infra_backend
+  frontend:
+    name: dotnet-infra_frontend
     external: true
