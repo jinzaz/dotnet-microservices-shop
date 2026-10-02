@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using MSA.Common;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -55,6 +56,7 @@ public abstract class BaseDesignTimeDbContextFactory<TDbContext>
             .AddJsonFile(
                 $"appsettings.{environment}.json",
                 optional: true)
+            .AddMsaEnvironment()
             .Build();
     }
 

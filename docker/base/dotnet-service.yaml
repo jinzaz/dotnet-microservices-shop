@@ -13,3 +13,22 @@ services:
       Database__MigrateOnStartup: ${MSA_MIGRATE_ON_STARTUP:-false}
       # 链路、指标、日志统一发往这个 OTLP（gRPC）端点。
       OpenTelemetry__OtlpEndpoint: ${MSA_OTLP_ENDPOINT}
+
+  # 用到 PostgreSQL / Redis / RabbitMQ 的服务（除网关外的全部）。变量名与本地开发的 msa.env 相同，
+  # 应用启动时由 MSA.Common.MsaEnvironment 合并进各自的连接串与 RabbitMQ 配置（库名、Redis 库号、队列名在镜像的 appsettings.json 里）。
+  dotnet-infra-service:
+    extends:
+      service: dotnet-service
+    environment:
+      INFRA_POSTGRES_HOST: ${INFRA_POSTGRES_HOST}
+      INFRA_POSTGRES_PORT: ${INFRA_POSTGRES_PORT:-5432}
+      INFRA_POSTGRES_USER: ${INFRA_POSTGRES_USER}
+      INFRA_POSTGRES_PASSWORD: ${INFRA_POSTGRES_PASSWORD}
+      INFRA_REDIS_HOST: ${INFRA_REDIS_HOST}
+      INFRA_REDIS_PORT: ${INFRA_REDIS_PORT:-6379}
+      INFRA_REDIS_PASSWORD: ${INFRA_REDIS_PASSWORD}
+      INFRA_RABBITMQ_HOST: ${INFRA_RABBITMQ_HOST}
+      INFRA_RABBITMQ_PORT: ${INFRA_RABBITMQ_PORT:-5672}
+      INFRA_RABBITMQ_USER: ${INFRA_RABBITMQ_USER}
+      INFRA_RABBITMQ_PASSWORD: ${INFRA_RABBITMQ_PASSWORD}
+      INFRA_RABBITMQ_VHOST: ${INFRA_RABBITMQ_VHOST}

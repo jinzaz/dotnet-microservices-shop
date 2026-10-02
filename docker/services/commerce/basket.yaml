@@ -1,24 +1,19 @@
 # 购物车；结算页价格向目录实时确认。
 # 只在 dotnet-infra_backend 网络内访问（不映射端口）：容器名 msa-basket，监听 8080（HTTP）。
-# 公共部分（环境、Issuer、OTLP、转发头）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
+# 公共部分（环境、Issuer、OTLP、转发头、PostgreSQL / Redis / RabbitMQ 地址与口令）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
 services:
   msa-basket:
     extends:
       file: ../../base/dotnet-service.yaml
-      service: dotnet-service
+      service: dotnet-infra-service
     # 镜像由 scripts/build-images.* 构建并推送到 Harbor（清单见 images.txt），这里只拉取。
     image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/basket-service:${MSA_IMAGE_TAG:-latest}
     pull_policy: ${MSA_PULL_POLICY:-missing}
     container_name: msa-basket
     environment:
       ASPNETCORE_URLS: "http://+:8080"
-      ConnectionStrings__Postgresql: "Host=${INFRA_POSTGRES_HOST};Port=${INFRA_POSTGRES_PORT:-5432};Database=BasketDb;Username=${INFRA_POSTGRES_USER};Password=${INFRA_POSTGRES_PASSWORD};"
-      ConnectionStrings__Redis: "${INFRA_REDIS_HOST}:${INFRA_REDIS_PORT:-6379},password=${INFRA_REDIS_PASSWORD},defaultDatabase=1"
-      RabbitMQ__HostName: "${INFRA_RABBITMQ_HOST}"
-      RabbitMQ__Port: "${INFRA_RABBITMQ_PORT:-5672}"
-      RabbitMQ__UserName: "${INFRA_RABBITMQ_USER}"
-      RabbitMQ__Password: "${INFRA_RABBITMQ_PASSWORD}"
-      ServiceAuthentication__Authority: "${MSA_ISSUER}"
+      MSA_SERVICE_AUTHORITY: "${MSA_SERVICE_AUTHORITY}"
+      MSA_CLIENT_SECRET_MSA_SVC_BASKET: "${MSA_CLIENT_SECRET_MSA_SVC_BASKET}"
       GrpcClients__Catalog__Address: "http://msa-catalog:8081"
     networks:
       - backend

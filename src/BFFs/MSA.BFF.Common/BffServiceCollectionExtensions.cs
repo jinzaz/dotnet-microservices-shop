@@ -134,7 +134,7 @@ public static class BffServiceCollectionExtensions
         if (string.IsNullOrWhiteSpace(clientSecret))
         {
             throw new InvalidOperationException(
-                "OpenIddict:ClientSecret is required. Set it with OpenIddict__ClientSecret.");
+                $"OpenIddict:ClientSecret is required. Set MSA_CLIENT_SECRET_{clientId.ToUpperInvariant()} in the environment or in msa.env.");
         }
 
         services.AddQuartz(options =>

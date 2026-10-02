@@ -1,3 +1,4 @@
+using MSA.Common;
 using MSA.Observability;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
@@ -13,6 +14,8 @@ using MSA.Grpc.Contracts.Order;
 using MSA.Grpc.Contracts.Payment;
 
 var builder = WebApplication.CreateBuilder(args);
+// Redis / PostgreSQL / RabbitMQ / OSS 地址与客户端密钥来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
+builder.Configuration.AddMsaEnvironment(builder.Environment.ContentRootPath);
 // 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
 builder.AddMsaObservability();
 

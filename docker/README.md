@@ -11,7 +11,7 @@
 ```
 docker/
 ├── compose.yaml                 # 入口：只做 include，按域分组
-├── base/dotnet-service.yaml     # 公共部分：环境、Issuer、OTLP、转发头（各服务 extends 它）
+├── base/dotnet-service.yaml     # 公共部分：环境、Issuer、OTLP、转发头；dotnet-infra-service 再加基础设施变量（各服务 extends 它）
 ├── services/
 │   ├── edge/        gateway.yaml  bff-web.yaml  bff-bm.yaml
 │   ├── identity/    identity.yaml user.yaml
@@ -19,7 +19,7 @@ docker/
 │   └── platform/    notification.yaml
 ├── config/                      # 结构化配置覆盖，挂载为 /app/appsettings.<环境>.json
 │   ├── gateway/appsettings.json     # YARP 集群地址
-│   └── identity/appsettings.json    # OpenIddict 客户端注册（回调地址、密钥、scope）
+│   └── identity/appsettings.json    # OpenIddict 客户端注册（回调地址、scope；密钥来自 .env）
 ├── images.txt                   # 镜像清单：镜像名 ↔ Dockerfile，构建脚本与 compose 共用
 ├── scripts/
 │   ├── build-images.ps1 | .sh          # 构建并推送镜像到 Harbor（全部或指定几个）
@@ -62,9 +62,9 @@ Docker Desktop 在 Settings → Docker Engine，Linux 在 `/etc/docker/daemon.js
 
 ```powershell
 cd docker
-Copy-Item .env.example .env                       # 填域名、基础设施地址；MSA_IMAGE_TAG 选版本
+Copy-Item .env.example .env                       # 填域名、基础设施地址、客户端密钥；MSA_IMAGE_TAG 选版本
 ./scripts/new-openiddict-certs.ps1                # 认证中心与两个 BFF 的 OpenIddict 密钥（已有则保留）
-# 按部署修改 config/identity/appsettings.json 里两个 BFF 的回调地址与 ClientSecret
+# 按部署修改 config/identity/appsettings.json 里两个 BFF 的回调地址
 docker compose pull                               # 从 Harbor 拉镜像
 docker compose up -d                              # 全部
 docker compose up -d msa-catalog msa-inventory    # 只起几个
@@ -100,13 +100,33 @@ docker compose logs -f msa-order
 
 | 内容 | 放在哪 | 为什么 |
 |---|---|---|
-| Redis / PostgreSQL / RabbitMQ、Issuer、下游地址等扁平配置 | 各服务 yaml 的 `environment`（值来自 `.env`） | 一个键一个值，按部署替换最方便 |
+| PostgreSQL / Redis / RabbitMQ / 对象存储的地址与口令、服务令牌授权地址、客户端密钥 | `.env` 里的 `INFRA_*`、`MSA_SERVICE_AUTHORITY`、`MSA_CLIENT_SECRET_*`，原名透传给容器 | 与本地开发的 `msa.env`（仓库根目录）**同名同义**，应用只有一套读取流程，见下文 |
+| Issuer、下游地址等其他扁平配置 | 各服务 yaml 的 `environment`（值来自 `.env`） | 一个键一个值，按部署替换最方便 |
 | 网关的 YARP 集群、认证中心的 OpenIddict 客户端 | `config/<服务>/appsettings.json`，挂载为 `/app/appsettings.<环境>.json` | 结构化（嵌套对象、数组），拆成 `A__0__B__1` 的环境变量既难读又容易错位 |
 | OpenIddict 密钥证书路径与口令 | 环境变量 `MSA_OPENIDDICT_CERT_PATH` / `MSA_OPENIDDICT_CERT_PASSWORD` | 部署机密，应用只从环境变量读取 |
 
 ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 `appsettings.<环境>.json` → 环境变量（后者覆盖前者）。
 挂载文件只写要改的部分即可（网关只改了集群地址，路由与健康检查沿用镜像里的定义）；
 **数组按下标合并**，所以认证中心的客户端列表要写完整，不要只写其中几项。
+
+### 基础设施与密钥：本地和 Docker 同一套变量
+
+各服务启动时调用 `MSA.Common.MsaEnvironment`，把下面这些环境变量合并进已有的配置键。镜像里的 `appsettings.json`
+只保留属于服务自己的部分（`Database=CatalogDb`、`defaultDatabase=2`、队列名、`ClientId`），地址与口令一律来自变量：
+
+| 变量 | 合并进 |
+|---|---|
+| `INFRA_POSTGRES_HOST` / `PORT` / `USER` / `PASSWORD` | `ConnectionStrings:Postgresql`（认证中心是 `DefaultConnection`） |
+| `INFRA_REDIS_HOST` / `PORT` / `PASSWORD` | `ConnectionStrings:Redis`（口令不能含逗号） |
+| `INFRA_RABBITMQ_HOST` / `PORT` / `USER` / `PASSWORD` / `VHOST` | `RabbitMQ:*` |
+| `INFRA_OSS_ENDPOINT` / `ACCESS_KEY` / `SECRET_KEY` | `ObjectStorage:*`（后台 BFF） |
+| `MSA_SERVICE_AUTHORITY` | `ServiceAuthentication:Authority` |
+| `MSA_CLIENT_SECRET_<ClientId 大写>` | 同一节点的 `ClientSecret`：`ServiceAuthentication`、BFF 的 `OpenIddict`、认证中心的 `OpenIddict:Applications` |
+
+- **本地开发**：变量来自仓库根目录的 `msa.env`（从服务目录逐级向上查找），已设置的进程环境变量优先。
+- **Docker**：`base/dotnet-service.yaml` 的 `dotnet-infra-service` 把 `INFRA_*` 透传给除网关外的所有服务；
+  `MSA_SERVICE_AUTHORITY` 与客户端密钥只注入需要它的容器（认证中心拿全部，其他服务只拿自己的）。`msa.env` 不进镜像（`.dockerignore`）。
+- 服务声明了连接串却拿不到主机地址时直接启动失败并提示缺哪个变量；没声明的部分（比如网关没有数据库）不会被合并。
 
 ## 入口代理的要求
 

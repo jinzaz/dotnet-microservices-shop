@@ -217,8 +217,7 @@ internal sealed class IdentitySeedHostedService(
         {
             throw new InvalidOperationException(
                 $"OpenIddict application '{application.ClientId}' requires a ClientSecret. " +
-                "Set it with configuration or an environment variable such as " +
-                "OpenIddict__Applications__0__ClientSecret.");
+                $"Set MSA_CLIENT_SECRET_{application.ClientId.ToUpperInvariant()} in the environment or in msa.env.");
         }
         if (application.Flows.Length is 0)
             throw new InvalidOperationException($"OpenIddict application '{application.ClientId}' requires at least one flow.");
