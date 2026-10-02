@@ -14,7 +14,6 @@ services:
       ASPNETCORE_URLS: "http://+:8080"
       MSA_SERVICE_AUTHORITY: "${MSA_SERVICE_AUTHORITY}"
       MSA_CLIENT_SECRET_MSA_SVC_BASKET: "${MSA_CLIENT_SECRET_MSA_SVC_BASKET}"
-      GrpcClients__Catalog__Address: "http://msa-catalog:8081"
     networks:
       - backend
 

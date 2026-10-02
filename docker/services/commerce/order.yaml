@@ -17,10 +17,6 @@ services:
       Kestrel__Endpoints__Grpc__Protocols: Http2
       MSA_SERVICE_AUTHORITY: "${MSA_SERVICE_AUTHORITY}"
       MSA_CLIENT_SECRET_MSA_SVC_ORDER: "${MSA_CLIENT_SECRET_MSA_SVC_ORDER}"
-      GrpcClients__Catalog__Address: "http://msa-catalog:8081"
-      GrpcClients__Inventory__Address: "http://msa-inventory:8081"
-      GrpcClients__Payment__Address: "http://msa-payment:8081"
-      GrpcClients__User__Address: "http://msa-user:8081"
     networks:
       - backend
 

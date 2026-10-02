@@ -11,11 +11,12 @@ services:
       # 浏览器跳转登录与各服务校验令牌用的是同一个公网地址（经入口代理）。
       Authentication__Issuer: ${MSA_ISSUER}
       Database__MigrateOnStartup: ${MSA_MIGRATE_ON_STARTUP:-false}
-      # 链路、指标、日志统一发往这个 OTLP（gRPC）端点。
-      OpenTelemetry__OtlpEndpoint: ${MSA_OTLP_ENDPOINT}
+      # 链路、指标、日志统一发往这个 OTLP（gRPC）端点（与 msa.env 同名，应用里合并进 OpenTelemetry:OtlpEndpoint）。
+      MSA_OTLP_ENDPOINT: ${MSA_OTLP_ENDPOINT}
 
-  # 用到 PostgreSQL / Redis / RabbitMQ 的服务（除网关外的全部）。变量名与本地开发的 msa.env 相同，
-  # 应用启动时由 MSA.Common.MsaEnvironment 合并进各自的连接串与 RabbitMQ 配置（库名、Redis 库号、队列名在镜像的 appsettings.json 里）。
+  # 用到 PostgreSQL / Redis / RabbitMQ 与 gRPC 下游的服务（除网关外的全部）。变量名与本地开发的 msa.env 相同，
+  # 应用启动时由 MSA.Common.MsaEnvironment 合并进各自的连接串、RabbitMQ 与 GrpcClients 配置（库名、Redis 库号、队列名在镜像的 appsettings.json 里）。
+  # 只有声明了对应 GrpcClients 的服务才会用到某个 MSA_GRPC_*。
   dotnet-infra-service:
     extends:
       service: dotnet-service
@@ -32,3 +33,8 @@ services:
       INFRA_RABBITMQ_USER: ${INFRA_RABBITMQ_USER}
       INFRA_RABBITMQ_PASSWORD: ${INFRA_RABBITMQ_PASSWORD}
       INFRA_RABBITMQ_VHOST: ${INFRA_RABBITMQ_VHOST}
+      MSA_GRPC_ORDER_ADDRESS: ${MSA_GRPC_ORDER_ADDRESS}
+      MSA_GRPC_CATALOG_ADDRESS: ${MSA_GRPC_CATALOG_ADDRESS}
+      MSA_GRPC_INVENTORY_ADDRESS: ${MSA_GRPC_INVENTORY_ADDRESS}
+      MSA_GRPC_PAYMENT_ADDRESS: ${MSA_GRPC_PAYMENT_ADDRESS}
+      MSA_GRPC_USER_ADDRESS: ${MSA_GRPC_USER_ADDRESS}

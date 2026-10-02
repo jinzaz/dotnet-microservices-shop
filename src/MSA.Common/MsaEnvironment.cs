@@ -18,6 +18,8 @@ namespace MSA.Common;
 /// <item>INFRA_RABBITMQ_HOST / PORT / USER / PASSWORD / VHOST → RabbitMQ:*</item>
 /// <item>INFRA_OSS_ENDPOINT / ACCESS_KEY / SECRET_KEY → ObjectStorage:*</item>
 /// <item>MSA_SERVICE_AUTHORITY → ServiceAuthentication:Authority</item>
+/// <item>MSA_OTLP_ENDPOINT → OpenTelemetry:OtlpEndpoint</item>
+/// <item>MSA_GRPC_&lt;名称大写&gt;_ADDRESS → GrpcClients:&lt;名称&gt;:Address（按被调用的服务命名，例如 MSA_GRPC_CATALOG_ADDRESS）</item>
 /// </list>
 /// 只合并服务自己声明过的部分：没有 Redis 连接串的服务不会被塞进 Redis 配置。
 /// 客户端密钥不进配置：用到的地方按 ClientId 直接调用 <see cref="ClientSecret"/> 读环境变量。
@@ -59,6 +61,11 @@ public static class MsaEnvironment
 
         if (current.GetSection("ServiceAuthentication").Exists())
             Map(values, env, "MSA_SERVICE_AUTHORITY", "ServiceAuthentication:Authority");
+
+        Map(values, env, "MSA_OTLP_ENDPOINT", "OpenTelemetry:OtlpEndpoint");
+
+        foreach (var client in current.GetSection("GrpcClients").GetChildren())
+            Map(values, env, $"MSA_GRPC_{client.Key.ToUpperInvariant()}_ADDRESS", $"{client.Path}:Address");
 
         return builder.AddInMemoryCollection(values);
     }

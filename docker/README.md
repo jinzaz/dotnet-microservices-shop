@@ -122,6 +122,8 @@ ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 
 | `INFRA_RABBITMQ_HOST` / `PORT` / `USER` / `PASSWORD` / `VHOST` | `RabbitMQ:*` |
 | `INFRA_OSS_ENDPOINT` / `ACCESS_KEY` / `SECRET_KEY` | `ObjectStorage:*`（后台 BFF） |
 | `MSA_SERVICE_AUTHORITY` | `ServiceAuthentication:Authority` |
+| `MSA_OTLP_ENDPOINT` | `OpenTelemetry:OtlpEndpoint`（全部 11 个服务，含网关与两个 BFF） |
+| `MSA_GRPC_<服务>_ADDRESS` | `GrpcClients:<服务>:Address`（按被调用的服务命名，例如 `MSA_GRPC_CATALOG_ADDRESS`；Docker 里是 `http://msa-catalog:8081`） |
 
 - **客户端密钥不进配置**：`MSA_CLIENT_SECRET_<ClientId 大写>` 由用到的地方按 ClientId 直接读环境变量（`MsaEnvironment.ClientSecret`）——
   `ServiceAuthenticationOptions.ClientSecret`、认证中心注册客户端、BFF 的 OpenIddict 客户端；appsettings 里写了 `ClientSecret` 也不生效。

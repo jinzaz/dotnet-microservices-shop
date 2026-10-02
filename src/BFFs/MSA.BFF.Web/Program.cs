@@ -7,7 +7,7 @@ using MSA.Grpc;
 using MSA.Grpc.Contracts.Inventory;
 
 var builder = WebApplication.CreateBuilder(args);
-// Redis / PostgreSQL / RabbitMQ / OSS 地址与客户端密钥来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
+// 基础设施地址、OTLP 与 gRPC 下游地址、客户端密钥来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
 builder.Configuration.AddMsaEnvironment(builder.Environment.ContentRootPath);
 // 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
 builder.AddMsaObservability();

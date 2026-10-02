@@ -26,5 +26,6 @@
 	</ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MSA.Observability\MSA.Observability.csproj" />
+    <ProjectReference Include="..\MSA.Common\MSA.Common.csproj" />
   </ItemGroup>
 </Project>

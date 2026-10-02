@@ -36,7 +36,7 @@ using System.Threading.RateLimiting;
 using OpenIddict.Validation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
-// Redis / PostgreSQL / RabbitMQ / OSS 地址与客户端密钥来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
+// 基础设施地址、OTLP 与 gRPC 下游地址、客户端密钥来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
 builder.Configuration.AddMsaEnvironment(builder.Environment.ContentRootPath);
 
 builder.Services.AddControllers()

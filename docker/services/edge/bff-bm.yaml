@@ -1,5 +1,5 @@
 # 后台 BFF：浏览器会话、PBAC、反向代理到网关、订单详情聚合。对外由入口代理以 HTTPS 暴露。
-# 只在 dotnet-infra_backend 网络内访问（不映射端口）：容器名 msa-bff-bm，监听 8080（HTTP）。
+# 只在 dotnet-infra_backend / dotnet-infra_frontend 网络内访问（不映射端口）：容器名 msa-bff-bm，监听 8080（HTTP）。
 # 公共部分（环境、Issuer、OTLP、转发头、PostgreSQL / Redis / RabbitMQ 地址与口令）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
 services:
   msa-bff-bm:
@@ -21,17 +21,18 @@ services:
       INFRA_OSS_ENDPOINT: "${INFRA_OSS_ENDPOINT}"
       INFRA_OSS_ACCESS_KEY: "${INFRA_OSS_ACCESS_KEY}"
       INFRA_OSS_SECRET_KEY: "${INFRA_OSS_SECRET_KEY}"
-      GrpcClients__Order__Address: "http://msa-order:8081"
-      GrpcClients__Payment__Address: "http://msa-payment:8081"
-      GrpcClients__Inventory__Address: "http://msa-inventory:8081"
       MSA_OPENIDDICT_CERT_PATH: /certs/openiddict.pfx
       MSA_OPENIDDICT_CERT_PASSWORD: "${MSA_BFF_BM_OPENIDDICT_CERT_PASSWORD}"
     volumes:
       - ../../certs/bff-bm-openiddict.pfx:/certs/openiddict.pfx:ro
     networks:
       - backend
+      - frontend
 
 networks:
+  frontend:
+    name: dotnet-infra_frontend
+    external: true
   backend:
     name: dotnet-infra_backend
     external: true

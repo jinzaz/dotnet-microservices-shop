@@ -1,5 +1,5 @@
 # API 网关（YARP）：BFF 的 /api/* 都经它转发到各业务服务。
-# 只在 dotnet-infra_backend 网络内访问（不映射端口）：容器名 msa-gateway，监听 8080（HTTP）。
+# 只在 dotnet-infra_backend / dotnet-infra_frontend 网络内访问（不映射端口）：容器名 msa-gateway，监听 8080（HTTP）。
 # 公共部分（环境、Issuer、OTLP、转发头）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
 services:
   msa-gateway:
@@ -16,8 +16,12 @@ services:
       - ../../config/gateway/appsettings.json:/app/appsettings.${ASPNETCORE_ENVIRONMENT:-Production}.json:ro
     networks:
       - backend
+      - frontend
 
 networks:
+  frontend:
+    name: dotnet-infra_frontend
+    external: true
   backend:
     name: dotnet-infra_backend
     external: true

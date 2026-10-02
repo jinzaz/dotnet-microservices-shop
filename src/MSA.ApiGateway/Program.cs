@@ -1,3 +1,4 @@
+using MSA.Common;
 using MSA.Observability;
 using Microsoft.AspNetCore.RateLimiting;
 using Polly;
@@ -8,6 +9,8 @@ using Microsoft.Extensions.Http;
 using MSA.ApiGateway;
 
 var builder = WebApplication.CreateBuilder(args);
+// OTLP 地址来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
+builder.Configuration.AddMsaEnvironment(builder.Environment.ContentRootPath);
 
 // Add services to the container.
 
