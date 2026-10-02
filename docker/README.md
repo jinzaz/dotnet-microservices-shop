@@ -121,9 +121,10 @@ ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 
 | `INFRA_RABBITMQ_HOST` / `PORT` / `USER` / `PASSWORD` / `VHOST` | `RabbitMQ:*` |
 | `INFRA_OSS_ENDPOINT` / `ACCESS_KEY` / `SECRET_KEY` | `ObjectStorage:*`（后台 BFF） |
 | `MSA_SERVICE_AUTHORITY` | `ServiceAuthentication:Authority` |
-| `MSA_CLIENT_SECRET_<ClientId 大写>` | 同一节点的 `ClientSecret`：`ServiceAuthentication`、BFF 的 `OpenIddict`、认证中心的 `OpenIddict:Applications` |
 
-- **本地开发**：变量来自仓库根目录的 `msa.env`（从服务目录逐级向上查找），已设置的进程环境变量优先。
+- **客户端密钥不进配置**：`MSA_CLIENT_SECRET_<ClientId 大写>` 由用到的地方按 ClientId 直接读环境变量（`MsaEnvironment.ClientSecret`）——
+  `ServiceAuthenticationOptions.ClientSecret`、认证中心注册客户端、BFF 的 OpenIddict 客户端；appsettings 里写了 `ClientSecret` 也不生效。
+- **本地开发**：仓库根目录的 `msa.env`（从服务目录逐级向上查找）在启动时写进进程环境变量，已设置的不覆盖。
 - **Docker**：`base/dotnet-service.yaml` 的 `dotnet-infra-service` 把 `INFRA_*` 透传给除网关外的所有服务；
   `MSA_SERVICE_AUTHORITY` 与客户端密钥只注入需要它的容器（认证中心拿全部，其他服务只拿自己的）。`msa.env` 不进镜像（`.dockerignore`）。
 - 服务声明了连接串却拿不到主机地址时直接启动失败并提示缺哪个变量；没声明的部分（比如网关没有数据库）不会被合并。

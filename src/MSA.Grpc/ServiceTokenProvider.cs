@@ -86,7 +86,8 @@ internal sealed class ClientCredentialsTokenProvider(
         {
             ["grant_type"] = "client_credentials",
             ["client_id"] = _options.ClientId,
-            ["client_secret"] = _options.ClientSecret
+            // ValidateOnStart 已保证存在。
+            ["client_secret"] = _options.ClientSecret!
         };
         if (!string.IsNullOrWhiteSpace(scopes))
             form["scope"] = scopes;

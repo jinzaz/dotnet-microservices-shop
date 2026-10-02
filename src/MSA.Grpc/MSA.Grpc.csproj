@@ -13,4 +13,8 @@
     <PackageReference Include="FluentValidation" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\MSA.Common\MSA.Common.csproj" />
+  </ItemGroup>
+
 </Project>

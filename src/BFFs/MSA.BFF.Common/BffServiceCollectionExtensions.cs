@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using MSA.BFF.Common.Auth;
 using MSA.BFF.Common.Middleware;
+using MSA.Common;
 using MSA.Shared;
 using OpenIddict.Client;
 using OpenIddict.Client.AspNetCore;
@@ -130,11 +131,12 @@ public static class BffServiceCollectionExtensions
         if (string.IsNullOrWhiteSpace(clientId))
             throw new InvalidOperationException("OpenIddict:ClientId is required.");
 
-        var clientSecret = configuration["OpenIddict:ClientSecret"];
-        if (string.IsNullOrWhiteSpace(clientSecret))
+        // 客户端密钥只读环境变量，不从配置读取：与认证中心注册客户端用的是同一个变量。
+        var clientSecret = MsaEnvironment.ClientSecret(clientId);
+        if (clientSecret is null)
         {
             throw new InvalidOperationException(
-                $"OpenIddict:ClientSecret is required. Set MSA_CLIENT_SECRET_{clientId.ToUpperInvariant()} in the environment or in msa.env.");
+                $"BFF client secret is missing. Set {MsaEnvironment.ClientSecretVariable(clientId)} in the environment or in msa.env.");
         }
 
         services.AddQuartz(options =>

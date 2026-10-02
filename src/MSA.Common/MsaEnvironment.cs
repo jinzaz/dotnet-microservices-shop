@@ -6,11 +6,11 @@ namespace MSA.Common;
 
 /// <summary>
 /// 基础设施地址、口令与客户端密钥统一来自环境变量，本地与 Docker 用同一套变量名：
-/// 本地开发由仓库根目录的 msa.env 提供（从内容根目录逐级向上查找），Docker 由 compose 的 env_file 注入。
-/// 进程环境变量优先于 msa.env。
+/// 本地开发由仓库根目录的 msa.env 提供（从内容根目录逐级向上查找，写进进程环境变量），Docker 由 compose 注入。
+/// 已经设置的进程环境变量优先于 msa.env。
 /// <para>
 /// 各服务 appsettings.json 只保留属于自己的部分（库名、Redis 库号、队列名、ClientId 等），
-/// 这里把环境变量合并进对应的配置键，业务代码照旧读 ConnectionStrings:Postgresql、RabbitMQ:HostName 这些键：
+/// 地址与口令要和这些部分拼在一起，所以合并进对应的配置键，业务代码照旧读 ConnectionStrings:Postgresql、RabbitMQ:HostName：
 /// </para>
 /// <list type="bullet">
 /// <item>INFRA_POSTGRES_HOST / PORT / USER / PASSWORD → ConnectionStrings:Postgresql、DefaultConnection</item>
@@ -18,9 +18,9 @@ namespace MSA.Common;
 /// <item>INFRA_RABBITMQ_HOST / PORT / USER / PASSWORD / VHOST → RabbitMQ:*</item>
 /// <item>INFRA_OSS_ENDPOINT / ACCESS_KEY / SECRET_KEY → ObjectStorage:*</item>
 /// <item>MSA_SERVICE_AUTHORITY → ServiceAuthentication:Authority</item>
-/// <item>MSA_CLIENT_SECRET_&lt;CLIENTID 大写&gt; → 同一节点下的 ClientSecret（ServiceAuthentication、BFF 的 OpenIddict、认证中心的 OpenIddict:Applications）</item>
 /// </list>
 /// 只合并服务自己声明过的部分：没有 Redis 连接串的服务不会被塞进 Redis 配置。
+/// 客户端密钥不进配置：用到的地方按 ClientId 直接调用 <see cref="ClientSecret"/> 读环境变量。
 /// </summary>
 public static class MsaEnvironment
 {
@@ -60,16 +60,16 @@ public static class MsaEnvironment
         if (current.GetSection("ServiceAuthentication").Exists())
             Map(values, env, "MSA_SERVICE_AUTHORITY", "ServiceAuthentication:Authority");
 
-        var clients = new[] { current.GetSection("ServiceAuthentication"), current.GetSection("OpenIddict") }
-            .Concat(current.GetSection("OpenIddict:Applications").GetChildren());
-        foreach (var client in clients)
-        {
-            if (client["ClientId"] is { Length: > 0 } clientId)
-                Map(values, env, $"MSA_CLIENT_SECRET_{clientId.ToUpperInvariant()}", $"{client.Path}:ClientSecret");
-        }
-
         return builder.AddInMemoryCollection(values);
     }
+
+    /// <summary>环境变量 MSA_CLIENT_SECRET_&lt;ClientId 大写&gt;：认证中心注册客户端与各服务取令牌读的是同一个变量。没有设置时返回 null。</summary>
+    public static string? ClientSecret(string clientId) =>
+        string.IsNullOrWhiteSpace(clientId)
+            ? null
+            : Environment.GetEnvironmentVariable(ClientSecretVariable(clientId)) is { Length: > 0 } secret ? secret : null;
+
+    public static string ClientSecretVariable(string clientId) => $"MSA_CLIENT_SECRET_{clientId.ToUpperInvariant()}";
 
     private static string Postgres(string name, string configured, IReadOnlyDictionary<string, string> env)
     {
@@ -126,10 +126,9 @@ public static class MsaEnvironment
             values[key] = value;
     }
 
-    /// <summary>msa.env 打底，进程环境变量覆盖；空值视为未设置。</summary>
+    /// <summary>把 msa.env 写进进程环境变量（已经设置的不覆盖），再返回全部非空的环境变量。</summary>
     internal static IReadOnlyDictionary<string, string> Read(string startDirectory)
     {
-        var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (Find(startDirectory) is { } file)
         {
             foreach (var line in File.ReadAllLines(file))
@@ -139,18 +138,22 @@ public static class MsaEnvironment
                 if (text.Length is 0 || text[0] == '#' || separator <= 0)
                     continue;
 
+                var name = text[..separator].Trim();
                 var value = text[(separator + 1)..].Trim();
                 if (value.Length >= 2 && value[0] is '\'' or '"' && value[^1] == value[0])
                     value = value[1..^1];
-                env[text[..separator].Trim()] = value;
+                if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(name)))
+                    Environment.SetEnvironmentVariable(name, value);
             }
         }
 
+        var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (DictionaryEntry variable in Environment.GetEnvironmentVariables())
-            env[(string)variable.Key] = (string?)variable.Value ?? string.Empty;
+        {
+            if (variable.Value is string { Length: > 0 } value)
+                env[(string)variable.Key] = value;
+        }
 
-        foreach (var empty in env.Where(pair => pair.Value.Length is 0).Select(pair => pair.Key).ToList())
-            env.Remove(empty);
         return env;
     }
 

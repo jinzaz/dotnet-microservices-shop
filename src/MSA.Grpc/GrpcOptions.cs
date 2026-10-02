@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using MSA.Common;
 
 namespace MSA.Grpc;
 
@@ -17,8 +18,9 @@ public sealed class ServiceAuthenticationOptions
     [Required]
     public string ClientId { get; set; } = string.Empty;
 
-    [Required]
-    public string ClientSecret { get; set; } = string.Empty;
+    /// <summary>只读环境变量 MSA_CLIENT_SECRET_&lt;ClientId 大写&gt;，不从配置绑定：appsettings 里写了也不生效。</summary>
+    [Required(ErrorMessage = "Service client secret is missing: set MSA_CLIENT_SECRET_<ClientId upper case> in the environment or in msa.env.")]
+    public string? ClientSecret => MsaEnvironment.ClientSecret(ClientId);
 
     /// <summary>提前多久刷新令牌，避免拿着马上就过期的令牌发起调用。</summary>
     public TimeSpan RefreshSkew { get; set; } = TimeSpan.FromMinutes(1);

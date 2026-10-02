@@ -1,3 +1,4 @@
+using MSA.Common;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace MSA.IdentityService;
@@ -217,7 +218,7 @@ internal sealed class IdentitySeedHostedService(
         {
             throw new InvalidOperationException(
                 $"OpenIddict application '{application.ClientId}' requires a ClientSecret. " +
-                $"Set MSA_CLIENT_SECRET_{application.ClientId.ToUpperInvariant()} in the environment or in msa.env.");
+                $"Set {MsaEnvironment.ClientSecretVariable(application.ClientId)} in the environment or in msa.env.");
         }
         if (application.Flows.Length is 0)
             throw new InvalidOperationException($"OpenIddict application '{application.ClientId}' requires at least one flow.");
@@ -239,7 +240,8 @@ internal sealed class IdentitySeedHostedService(
 internal sealed record OpenIddictApplicationSeed
 {
     public string ClientId { get; init; } = string.Empty;
-    public string ClientSecret { get; init; } = string.Empty;
+    // 只读环境变量 MSA_CLIENT_SECRET_<ClientId 大写>，不从配置绑定：与取令牌的服务读同一个变量。
+    public string ClientSecret => MsaEnvironment.ClientSecret(ClientId) ?? string.Empty;
     public string DisplayName { get; init; } = string.Empty;
     public string ConsentType { get; init; } = ConsentTypes.Implicit;
     public string[] Flows { get; init; } = [];
