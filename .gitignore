@@ -364,3 +364,8 @@ FodyWeavers.xsd
 # docker compose：本地口令与生成的开发证书不入库
 docker/.env
 docker/certs/
+
+# web dist
+src/MSA.Web/Front/dist
+src/MSA.Web/BM/dist
+src/MSA.Web/Identity/dist
