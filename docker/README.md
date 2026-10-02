@@ -3,27 +3,33 @@
 只编排 MSA 的 11 个 .NET 服务；PostgreSQL、Redis、RabbitMQ、OTel Collector 由外部的 `dotnet-infra` 项目提供，
 所有服务加入它的 `dotnet-infra_backend` 网络（外部网络，需要先存在）。
 
+服务**不映射端口、只开明文 HTTP**，只在 Docker 网络内用容器名互相调用；对外由入口代理（如 nginx，不在本编排里）
+按域名终止 TLS 后转发，它需要满足的条件见下文「入口代理的要求」。
+
 ## 目录
 
 ```
 docker/
 ├── compose.yaml                 # 入口：只做 include，按域分组
-├── base/dotnet-service.yaml     # 公共部分：TLS 证书、Issuer、OTLP、环境（各服务 extends 它）
+├── base/dotnet-service.yaml     # 公共部分：环境、Issuer、OTLP、转发头（各服务 extends 它）
 ├── services/
 │   ├── edge/        gateway.yaml  bff-web.yaml  bff-bm.yaml
 │   ├── identity/    identity.yaml user.yaml
 │   ├── commerce/    catalog.yaml  inventory.yaml basket.yaml order.yaml payment.yaml
 │   └── platform/    notification.yaml
+├── config/                      # 结构化配置覆盖，挂载为 /app/appsettings.<环境>.json
+│   ├── gateway/appsettings.json     # YARP 集群地址
+│   └── identity/appsettings.json    # OpenIddict 客户端注册（回调地址、密钥、scope）
 ├── images.txt                   # 镜像清单：镜像名 ↔ Dockerfile，构建脚本与 compose 共用
 ├── scripts/
 │   ├── build-images.ps1 | .sh          # 构建并推送镜像到 Harbor（全部或指定几个）
 │   └── new-openiddict-certs.ps1 | .sh  # 生成认证中心与两个 BFF 的 OpenIddict 密钥证书
 ├── .env.example                 # 模板；复制成 .env（.env 与 certs/ 不入库）
-├── certs/                       # tls.pfx（按域名申请）+ OpenIddict 密钥与 cert-passwords.env（脚本生成）
+├── certs/                       # OpenIddict 密钥与 cert-passwords.env（脚本生成）
 └── README.md
 ```
 
-每个服务一个文件，只写它自己的东西：镜像、端口、域名别名、连接串、它要调用的下游地址。
+每个服务一个文件，只写它自己的东西：镜像、监听端点、连接串、它要调用的下游地址。
 compose 只从 Harbor 拉镜像运行，不负责构建。
 
 ## 构建并推送镜像
@@ -56,9 +62,9 @@ Docker Desktop 在 Settings → Docker Engine，Linux 在 `/etc/docker/daemon.js
 
 ```powershell
 cd docker
-Copy-Item .env.example .env                       # 填域名、TLS 证书口令、基础设施地址；MSA_IMAGE_TAG 选版本
-Copy-Item <申请到的证书>.pfx certs/tls.pfx         # 通配证书 *.<MSA_DOMAIN>
+Copy-Item .env.example .env                       # 填域名、基础设施地址；MSA_IMAGE_TAG 选版本
 ./scripts/new-openiddict-certs.ps1                # 认证中心与两个 BFF 的 OpenIddict 密钥（已有则保留）
+# 按部署修改 config/identity/appsettings.json 里两个 BFF 的回调地址与 ClientSecret
 docker compose pull                               # 从 Harbor 拉镜像
 docker compose up -d                              # 全部
 docker compose up -d msa-catalog msa-inventory    # 只起几个
@@ -68,52 +74,56 @@ docker compose logs -f msa-order
 首次运行要建库时把 `.env` 里的 `MSA_MIGRATE_ON_STARTUP` 设为 `true`。
 跟踪 `latest` 时把 `MSA_PULL_POLICY` 设为 `always`，每次 `up` 都会拉最新镜像；固定版本用默认的 `missing`。
 
-## 端口与域名
+## 服务与端点
 
-每个服务的域名是 `<名字>.${MSA_DOMAIN}`，端口在容器内外一致（与本机 `launchSettings` 相同）：
+| 服务 | 容器名 | HTTP（REST、健康检查） | gRPC（HTTP/2） | 对外（经入口代理） |
+|---|---|---|---|---|
+| API 网关 | msa-gateway | 8080 | — | 否 |
+| 认证中心 | msa-identity | 8080 | — | `https://identity.${MSA_DOMAIN}` |
+| 用户 | msa-user | 8080 | 8081 | 否 |
+| 目录 | msa-catalog | 8080 | 8081 | 否 |
+| 库存 | msa-inventory | 8080 | 8081 | 否 |
+| 购物车 | msa-basket | 8080 | — | 否 |
+| 订单 | msa-order | 8080 | 8081 | 否 |
+| 支付 | msa-payment | 8080 | 8081 | 只有 `/payment/callbacks/` |
+| 通知 | msa-notification | 8080 | — | 否 |
+| 商城 BFF | msa-bff-web | 8080 | — | `https://bff-web.${MSA_DOMAIN}` |
+| 后台 BFF | msa-bff-bm | 8080 | — | `https://bff-bm.${MSA_DOMAIN}` |
 
-| 服务 | 容器名 | 域名 | 端口 |
-|---|---|---|---|
-| API 网关 | msa-gateway | gateway.${MSA_DOMAIN} | 10000 |
-| 订单 | msa-order | order.${MSA_DOMAIN} | 10001 |
-| 认证中心 | msa-identity | identity.${MSA_DOMAIN} | 10002 |
-| 目录 | msa-catalog | catalog.${MSA_DOMAIN} | 10003 |
-| 库存 | msa-inventory | inventory.${MSA_DOMAIN} | 10004 |
-| 支付 | msa-payment | payment.${MSA_DOMAIN} | 10005 |
-| 通知 | msa-notification | notification.${MSA_DOMAIN} | 10006 |
-| 购物车 | msa-basket | basket.${MSA_DOMAIN} | 10007 |
-| 商城 BFF | msa-bff-web | bff-web.${MSA_DOMAIN} | 10008 |
-| 后台 BFF | msa-bff-bm | bff-bm.${MSA_DOMAIN} | 10009 |
-| 用户 | msa-user | user.${MSA_DOMAIN} | 10010 |
+- **服务之间**：网关转发、BFF 转发到网关都是 `http://<容器名>:8080`；gRPC 是 `http://<容器名>:8081`。
+  明文 HTTP/2 需要单独的 Http2 端点（Kestrel 不会在明文端口上协商 HTTP/2），所以提供 gRPC 的服务多开一个 8081。
+- **认证中心是唯一的例外**：OpenIddict 要求 Issuer 是 HTTPS，且与令牌里的 `iss` 完全一致，所以浏览器登录、
+  各服务校验令牌（拉发现文档与签名公钥）、取服务令牌（client_credentials）都走 `MSA_ISSUER`
+  （`https://identity.${MSA_DOMAIN}/`），所以这个地址在容器里也必须能访问到，见「入口代理的要求」。
 
-**同一个域名，容器内外都能用。** 每个服务在 `dotnet-infra_backend` 上挂了自己域名的网络别名：
-容器之间的调用（gRPC、网关转发、取服务令牌、校验令牌时拉认证中心的发现文档）直接解析到对应容器，
-浏览器则经 DNS 解析到部署机。所以 OIDC 要求的「浏览器跳去登录的地址」与「服务校验令牌的 Issuer」
-天然是同一个 `https://identity.${MSA_DOMAIN}:10002/`，一张域名证书同时满足浏览器与容器。
+## 配置分层
 
-DNS 只需要把浏览器直接访问的名字指向部署机：`identity`、`bff-web`、`bff-bm`（以及前端站点）。
-其余服务只在容器之间互访，不需要对外解析。
+| 内容 | 放在哪 | 为什么 |
+|---|---|---|
+| Redis / PostgreSQL / RabbitMQ、Issuer、下游地址等扁平配置 | 各服务 yaml 的 `environment`（值来自 `.env`） | 一个键一个值，按部署替换最方便 |
+| 网关的 YARP 集群、认证中心的 OpenIddict 客户端 | `config/<服务>/appsettings.json`，挂载为 `/app/appsettings.<环境>.json` | 结构化（嵌套对象、数组），拆成 `A__0__B__1` 的环境变量既难读又容易错位 |
+| OpenIddict 密钥证书路径与口令 | 环境变量 `MSA_OPENIDDICT_CERT_PATH` / `MSA_OPENIDDICT_CERT_PASSWORD` | 部署机密，应用只从环境变量读取 |
 
-认证中心里两个 BFF 的登录 / 注销回调地址由 compose 按域名覆盖；前端站点地址见 `.env` 的
-`MSA_STORE_FRONTEND_URL` / `MSA_ADMIN_FRONTEND_URL` / `MSA_IDENTITY_UI_URL`。
+ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 `appsettings.<环境>.json` → 环境变量（后者覆盖前者）。
+挂载文件只写要改的部分即可（网关只改了集群地址，路由与健康检查沿用镜像里的定义）；
+**数组按下标合并**，所以认证中心的客户端列表要写完整，不要只写其中几项。
 
-## 证书
+## 入口代理的要求
 
-### TLS：按域名向 CA 申请
+入口代理（nginx 等）不在本编排里，单独部署。为了让这些服务正常工作，它需要满足：
 
-申请一张覆盖 `*.${MSA_DOMAIN}` 的通配证书（或包含上表全部域名的多域名证书），导出为 pfx 放到 `certs/tls.pfx`，
-口令填 `.env` 的 `MSA_TLS_CERT_PASSWORD`。所有服务共用这一张；公网 CA 签发的证书在容器与浏览器里天然受信任，
-不需要额外配置信任链。
+- **能访问到容器**：加入 `dotnet-infra_backend` 网络后直接转发到 `msa-identity:8080`、`msa-bff-web:8080`、
+  `msa-bff-bm:8080`、`msa-payment:8080`（只放行 `/payment/callbacks/`）；网关与其他业务服务不需要对外暴露。
+- **带转发头**：必须带 `X-Forwarded-Proto`（以及 `X-Forwarded-For` / `X-Forwarded-Host`）。服务端已开启
+  `ASPNETCORE_FORWARDEDHEADERS_ENABLED`，靠它认出原始请求是 HTTPS：OpenIddict 只接受 HTTPS、
+  BFF 会话 Cookie 带 Secure、登录回调地址也按它生成。缺了它登录会失败。
+- **容器里也能访问 `MSA_ISSUER`**：各服务校验令牌、取服务令牌都请求 `https://identity.${MSA_DOMAIN}/`。
+  入口代理在同一网络时，给它挂一个 `identity.${MSA_DOMAIN}` 的网络别名，这条流量就只在 Docker 网络内走；
+  不在同一网络时，要保证容器内能解析并访问到这个公网地址（内网 DNS 或 `extra_hosts`）。
+- **SSE 不缓冲**：秒杀余量推流 `/bff/flash-sales/` 是长连接，要关掉响应缓冲（nginx：`proxy_buffering off`）
+  并放长读超时（nginx：`proxy_read_timeout`）。
 
-CA 给的是 PEM（例如 fullchain.pem + privkey.pem）时先转成 pfx：
-
-```bash
-openssl pkcs12 -export -in fullchain.pem -inkey privkey.pem -out certs/tls.pfx -passout pass:<口令>
-```
-
-续期只需替换 `certs/tls.pfx` 后 `docker compose restart`。
-
-### OpenIddict 密钥：脚本生成
+## OpenIddict 密钥证书
 
 `scripts/new-openiddict-certs.ps1`（或 `.sh`）生成三份互相独立的密钥证书。它们只是签名 / 加密密钥的载体，
 不参与 TLS，自签名即可：
@@ -141,5 +151,6 @@ openssl pkcs12 -export -in fullchain.pem -inkey privkey.pem -out certs/tls.pfx -
 - 没有写健康检查与 `depends_on`：aspnet 镜像里没有 curl，服务之间的调用本身有重试，启动顺序不影响最终可用。
 - 默认以 Production 运行：认证中心与两个 BFF 用 certs/ 里固定的 OpenIddict 密钥，重启不会让令牌和登录失效。
   改回 Development 时它们会在容器里临时生成密钥（重启即失效），OpenAPI 与 gRPC 详细错误也会打开。
-- 支付渠道回调地址是 `https://payment.${MSA_DOMAIN}:10005/payment/callbacks`，需要公网可达才能收到渠道通知。
+- `ASPNETCORE_FORWARDEDHEADERS_ENABLED` 信任任意来源的转发头：服务不映射端口、只有 Docker 网络内可达，这是成立的；
+  如果以后把某个服务端口直接暴露出去，要改成只信任入口代理的地址。
 - 镜像用 `sdk:10.0` 自带的 SDK 构建（`.dockerignore` 排除了锁定本机预览版 SDK 的 `global.json`）。

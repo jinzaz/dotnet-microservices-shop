@@ -1,6 +1,6 @@
 # 商品、促销、优惠券与抢券；对订单/购物车提供价格与券确认 gRPC。
-# 域名：catalog.${MSA_DOMAIN}（容器之间也走这个名字，网络别名指向本容器）。
-# 公共部分（TLS 证书、OTLP、Issuer、环境）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
+# 只在 dotnet-infra_backend 网络内访问（不映射端口）：容器名 msa-catalog，监听 8080（HTTP/1.1：REST、健康检查）与 8081（HTTP/2：gRPC）。
+# 公共部分（环境、Issuer、OTLP、转发头）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
 services:
   msa-catalog:
     extends:
@@ -10,10 +10,11 @@ services:
     image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/catalog-service:${MSA_IMAGE_TAG:-latest}
     pull_policy: ${MSA_PULL_POLICY:-missing}
     container_name: msa-catalog
-    ports:
-      - "10003:10003"
     environment:
-      ASPNETCORE_URLS: "https://+:10003"
+      Kestrel__Endpoints__Http__Url: "http://+:8080"
+      Kestrel__Endpoints__Http__Protocols: Http1
+      Kestrel__Endpoints__Grpc__Url: "http://+:8081"
+      Kestrel__Endpoints__Grpc__Protocols: Http2
       ConnectionStrings__Postgresql: "Host=${INFRA_POSTGRES_HOST};Port=${INFRA_POSTGRES_PORT:-5432};Database=CatalogDb;Username=${INFRA_POSTGRES_USER};Password=${INFRA_POSTGRES_PASSWORD};"
       ConnectionStrings__Redis: "${INFRA_REDIS_HOST}:${INFRA_REDIS_PORT:-6379},password=${INFRA_REDIS_PASSWORD},defaultDatabase=2"
       RabbitMQ__HostName: "${INFRA_RABBITMQ_HOST}"
@@ -21,9 +22,7 @@ services:
       RabbitMQ__UserName: "${INFRA_RABBITMQ_USER}"
       RabbitMQ__Password: "${INFRA_RABBITMQ_PASSWORD}"
     networks:
-      backend:
-        aliases:
-          - catalog.${MSA_DOMAIN}
+      - backend
 
 networks:
   backend:

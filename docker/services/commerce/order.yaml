@@ -1,6 +1,6 @@
 # 订单与下单 Saga；下单时实时确认价格、券、库存与收货地址。
-# 域名：order.${MSA_DOMAIN}（容器之间也走这个名字，网络别名指向本容器）。
-# 公共部分（TLS 证书、OTLP、Issuer、环境）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
+# 只在 dotnet-infra_backend 网络内访问（不映射端口）：容器名 msa-order，监听 8080（HTTP/1.1：REST、健康检查）与 8081（HTTP/2：gRPC）。
+# 公共部分（环境、Issuer、OTLP、转发头）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
 services:
   msa-order:
     extends:
@@ -10,25 +10,24 @@ services:
     image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/order-service:${MSA_IMAGE_TAG:-latest}
     pull_policy: ${MSA_PULL_POLICY:-missing}
     container_name: msa-order
-    ports:
-      - "10001:10001"
     environment:
-      ASPNETCORE_URLS: "https://+:10001"
+      Kestrel__Endpoints__Http__Url: "http://+:8080"
+      Kestrel__Endpoints__Http__Protocols: Http1
+      Kestrel__Endpoints__Grpc__Url: "http://+:8081"
+      Kestrel__Endpoints__Grpc__Protocols: Http2
       ConnectionStrings__Postgresql: "Host=${INFRA_POSTGRES_HOST};Port=${INFRA_POSTGRES_PORT:-5432};Database=OrderDb;Username=${INFRA_POSTGRES_USER};Password=${INFRA_POSTGRES_PASSWORD};"
       ConnectionStrings__Redis: "${INFRA_REDIS_HOST}:${INFRA_REDIS_PORT:-6379},password=${INFRA_REDIS_PASSWORD},defaultDatabase=5"
       RabbitMQ__HostName: "${INFRA_RABBITMQ_HOST}"
       RabbitMQ__Port: "${INFRA_RABBITMQ_PORT:-5672}"
       RabbitMQ__UserName: "${INFRA_RABBITMQ_USER}"
       RabbitMQ__Password: "${INFRA_RABBITMQ_PASSWORD}"
-      ServiceAuthentication__Authority: "https://identity.${MSA_DOMAIN}:10002/"
-      GrpcClients__Catalog__Address: "https://catalog.${MSA_DOMAIN}:10003"
-      GrpcClients__Inventory__Address: "https://inventory.${MSA_DOMAIN}:10004"
-      GrpcClients__Payment__Address: "https://payment.${MSA_DOMAIN}:10005"
-      GrpcClients__User__Address: "https://user.${MSA_DOMAIN}:10010"
+      ServiceAuthentication__Authority: "${MSA_ISSUER}"
+      GrpcClients__Catalog__Address: "http://msa-catalog:8081"
+      GrpcClients__Inventory__Address: "http://msa-inventory:8081"
+      GrpcClients__Payment__Address: "http://msa-payment:8081"
+      GrpcClients__User__Address: "http://msa-user:8081"
     networks:
-      backend:
-        aliases:
-          - order.${MSA_DOMAIN}
+      - backend
 
 networks:
   backend:

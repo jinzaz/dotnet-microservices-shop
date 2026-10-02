@@ -1,6 +1,6 @@
-# 支付；建单收款前向订单核对金额。渠道回调地址需要公网可达，本地只能用于联调。
-# 域名：payment.${MSA_DOMAIN}（容器之间也走这个名字，网络别名指向本容器）。
-# 公共部分（TLS 证书、OTLP、Issuer、环境）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
+# 支付；建单收款前向订单核对金额。渠道回调地址需要经入口代理公网可达。
+# 只在 dotnet-infra_backend 网络内访问（不映射端口）：容器名 msa-payment，监听 8080（HTTP/1.1：REST、健康检查）与 8081（HTTP/2：gRPC）。
+# 公共部分（环境、Issuer、OTLP、转发头）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
 services:
   msa-payment:
     extends:
@@ -10,23 +10,22 @@ services:
     image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/payment-service:${MSA_IMAGE_TAG:-latest}
     pull_policy: ${MSA_PULL_POLICY:-missing}
     container_name: msa-payment
-    ports:
-      - "10005:10005"
     environment:
-      ASPNETCORE_URLS: "https://+:10005"
+      Kestrel__Endpoints__Http__Url: "http://+:8080"
+      Kestrel__Endpoints__Http__Protocols: Http1
+      Kestrel__Endpoints__Grpc__Url: "http://+:8081"
+      Kestrel__Endpoints__Grpc__Protocols: Http2
       ConnectionStrings__Postgresql: "Host=${INFRA_POSTGRES_HOST};Port=${INFRA_POSTGRES_PORT:-5432};Database=PaymentDb;Username=${INFRA_POSTGRES_USER};Password=${INFRA_POSTGRES_PASSWORD};"
       ConnectionStrings__Redis: "${INFRA_REDIS_HOST}:${INFRA_REDIS_PORT:-6379},password=${INFRA_REDIS_PASSWORD},defaultDatabase=6"
       RabbitMQ__HostName: "${INFRA_RABBITMQ_HOST}"
       RabbitMQ__Port: "${INFRA_RABBITMQ_PORT:-5672}"
       RabbitMQ__UserName: "${INFRA_RABBITMQ_USER}"
       RabbitMQ__Password: "${INFRA_RABBITMQ_PASSWORD}"
-      PaymentEndpoints__NotifyBaseUrl: "https://payment.${MSA_DOMAIN}:10005/payment/callbacks"
-      ServiceAuthentication__Authority: "https://identity.${MSA_DOMAIN}:10002/"
-      GrpcClients__Order__Address: "https://order.${MSA_DOMAIN}:10001"
+      PaymentEndpoints__NotifyBaseUrl: "${MSA_PAYMENT_NOTIFY_BASE_URL}"
+      ServiceAuthentication__Authority: "${MSA_ISSUER}"
+      GrpcClients__Order__Address: "http://msa-order:8081"
     networks:
-      backend:
-        aliases:
-          - payment.${MSA_DOMAIN}
+      - backend
 
 networks:
   backend:

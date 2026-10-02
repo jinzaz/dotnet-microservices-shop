@@ -6,6 +6,13 @@
     <File Path="docker/images.txt" />
     <File Path="docker/README.md" />
   </Folder>
+  <Folder Name="/0.Root/docker/config/" />
+  <Folder Name="/0.Root/docker/config/gateway/">
+    <File Path="docker/config/gateway/appsettings.json" />
+  </Folder>
+  <Folder Name="/0.Root/docker/config/identity/">
+    <File Path="docker/config/identity/appsettings.json" />
+  </Folder>
   <Folder Name="/0.Root/docker/base/">
     <File Path="docker/base/dotnet-service.yaml" />
   </Folder>

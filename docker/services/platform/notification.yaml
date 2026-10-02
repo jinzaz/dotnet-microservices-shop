@@ -1,6 +1,6 @@
 # 站内信 / 短信通知，消费业务事件。
-# 域名：notification.${MSA_DOMAIN}（容器之间也走这个名字，网络别名指向本容器）。
-# 公共部分（TLS 证书、OTLP、Issuer、环境）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
+# 只在 dotnet-infra_backend 网络内访问（不映射端口）：容器名 msa-notification，监听 8080（HTTP）。
+# 公共部分（环境、Issuer、OTLP、转发头）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
 services:
   msa-notification:
     extends:
@@ -10,10 +10,8 @@ services:
     image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/notification-service:${MSA_IMAGE_TAG:-latest}
     pull_policy: ${MSA_PULL_POLICY:-missing}
     container_name: msa-notification
-    ports:
-      - "10006:10006"
     environment:
-      ASPNETCORE_URLS: "https://+:10006"
+      ASPNETCORE_URLS: "http://+:8080"
       ConnectionStrings__Postgresql: "Host=${INFRA_POSTGRES_HOST};Port=${INFRA_POSTGRES_PORT:-5432};Database=NotificationDb;Username=${INFRA_POSTGRES_USER};Password=${INFRA_POSTGRES_PASSWORD};"
       ConnectionStrings__Redis: "${INFRA_REDIS_HOST}:${INFRA_REDIS_PORT:-6379},password=${INFRA_REDIS_PASSWORD},defaultDatabase=4"
       RabbitMQ__HostName: "${INFRA_RABBITMQ_HOST}"
@@ -21,9 +19,7 @@ services:
       RabbitMQ__UserName: "${INFRA_RABBITMQ_USER}"
       RabbitMQ__Password: "${INFRA_RABBITMQ_PASSWORD}"
     networks:
-      backend:
-        aliases:
-          - notification.${MSA_DOMAIN}
+      - backend
 
 networks:
   backend:

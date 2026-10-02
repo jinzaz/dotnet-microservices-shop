@@ -1,18 +1,15 @@
 # 所有 .NET 服务的公共部分，各服务通过 extends 引用。
-# 网络别名、端口与各自的 OpenIddict 密钥写在各服务自己的文件里，这里只放所有服务都一样的部分。
+# 端点、各自的 OpenIddict 密钥与结构化配置写在各服务自己的文件里，这里只放所有服务都一样的部分。
 services:
   dotnet-service:
     restart: unless-stopped
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
-      # 按域名向 CA 申请的 TLS 证书（通配 *.${MSA_DOMAIN}），导出为 pfx 放到 docker/certs/tls.pfx。
-      # 公网 CA 签发的证书容器内天然受信任，服务之间的 HTTPS（OpenIddict 发现文档、gRPC、YARP 转发）不需要额外配置。
-      ASPNETCORE_Kestrel__Certificates__Default__Path: /certs/tls.pfx
-      ASPNETCORE_Kestrel__Certificates__Default__Password: ${MSA_TLS_CERT_PASSWORD}
-      # 浏览器和容器都用这个地址访问认证中心，令牌里的 iss 也是它；各服务按它校验令牌。
+      # 服务只开明文 HTTP，TLS 在入口代理终止。打开转发头处理后，认证中心与 BFF 才能从 X-Forwarded-Proto
+      # 认出原始请求是 HTTPS：OpenIddict 只接受 HTTPS、BFF 的会话 Cookie 带 Secure、登录回调地址也按它生成。
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      # 浏览器跳转登录与各服务校验令牌用的是同一个公网地址（经入口代理）。
       Authentication__Issuer: ${MSA_ISSUER}
       Database__MigrateOnStartup: ${MSA_MIGRATE_ON_STARTUP:-false}
       # 链路、指标、日志统一发往这个 OTLP（gRPC）端点。
       OpenTelemetry__OtlpEndpoint: ${MSA_OTLP_ENDPOINT}
-    volumes:
-      - ../certs/tls.pfx:/certs/tls.pfx:ro

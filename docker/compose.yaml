@@ -3,8 +3,9 @@
 #
 # 用法（在 docker/ 目录下）：
 #   1. cp .env.example .env，按需修改基础设施地址与口令
-#   2. 按域名申请的 TLS 证书导出为 certs/tls.pfx；./scripts/new-openiddict-certs.ps1（或 .sh）生成
-#      认证中心与两个 BFF 的 OpenIddict 密钥证书，随机口令写进 certs/cert-passwords.env（与 .env 一起插值）
+#   2. ./scripts/new-openiddict-certs.ps1（或 .sh）生成认证中心与两个 BFF 的 OpenIddict 密钥证书，
+#      随机口令写进 certs/cert-passwords.env（与 .env 一起插值）；按部署修改 config/ 下的结构化配置
+#      服务不映射端口、只开 HTTP，对外由入口代理按域名终止 TLS 后转发
 #   3. 镜像由 scripts/build-images.* 构建并推送到 Harbor，这里只拉取运行：
 #      docker compose pull && docker compose up -d   # 全部
 #      docker compose up -d msa-catalog             # 单个服务

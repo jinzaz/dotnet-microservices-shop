@@ -1,6 +1,6 @@
-# 认证中心（OpenIddict）。签发的令牌里 iss = MSA_ISSUER，浏览器与容器用同一个地址访问它。
-# 域名：identity.${MSA_DOMAIN}（容器之间也走这个名字，网络别名指向本容器）。
-# 公共部分（TLS 证书、OTLP、Issuer、环境）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
+# 认证中心（OpenIddict）。对外由入口代理以 HTTPS 暴露，令牌里的 iss = MSA_ISSUER。
+# 只在 dotnet-infra_backend 网络内访问（不映射端口）：容器名 msa-identity，监听 8080（HTTP）。
+# 公共部分（环境、Issuer、OTLP、转发头）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
 services:
   msa-identity:
     extends:
@@ -10,29 +10,22 @@ services:
     image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/identity-service:${MSA_IMAGE_TAG:-latest}
     pull_policy: ${MSA_PULL_POLICY:-missing}
     container_name: msa-identity
-    ports:
-      - "10002:10002"
     environment:
-      ASPNETCORE_URLS: "https://+:10002"
+      ASPNETCORE_URLS: "http://+:8080"
       ConnectionStrings__DefaultConnection: "Host=${INFRA_POSTGRES_HOST};Port=${INFRA_POSTGRES_PORT:-5432};Database=IdentityDb;Username=${INFRA_POSTGRES_USER};Password=${INFRA_POSTGRES_PASSWORD};"
       ConnectionStrings__Redis: "${INFRA_REDIS_HOST}:${INFRA_REDIS_PORT:-6379},password=${INFRA_REDIS_PASSWORD},defaultDatabase=0"
+      IdentityUi__BaseUrl: "${MSA_IDENTITY_UI_URL}"
       RabbitMQ__Host: "${INFRA_RABBITMQ_HOST}"
       RabbitMQ__Port: "${INFRA_RABBITMQ_PORT:-5672}"
       RabbitMQ__User: "${INFRA_RABBITMQ_USER}"
       RabbitMQ__Password: "${INFRA_RABBITMQ_PASSWORD}"
-      IdentityUi__BaseUrl: "${MSA_IDENTITY_UI_URL}"
-      OpenIddict__Applications__0__RedirectUris__0: "https://bff-web.${MSA_DOMAIN}:10008/api/bff/callback/login"
-      OpenIddict__Applications__0__PostLogoutRedirectUris__0: "https://bff-web.${MSA_DOMAIN}:10008/api/bff/callback/logout"
-      OpenIddict__Applications__1__RedirectUris__0: "https://bff-bm.${MSA_DOMAIN}:10009/api/bff/callback/login"
-      OpenIddict__Applications__1__PostLogoutRedirectUris__0: "https://bff-bm.${MSA_DOMAIN}:10009/api/bff/callback/logout"
       MSA_OPENIDDICT_CERT_PATH: /certs/openiddict.pfx
       MSA_OPENIDDICT_CERT_PASSWORD: "${MSA_IDENTITY_OPENIDDICT_CERT_PASSWORD}"
     volumes:
       - ../../certs/identity-openiddict.pfx:/certs/openiddict.pfx:ro
+      - ../../config/identity/appsettings.json:/app/appsettings.${ASPNETCORE_ENVIRONMENT:-Production}.json:ro
     networks:
-      backend:
-        aliases:
-          - identity.${MSA_DOMAIN}
+      - backend
 
 networks:
   backend:
