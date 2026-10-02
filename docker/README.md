@@ -24,6 +24,7 @@ docker/
 ├── scripts/
 │   ├── build-images.ps1 | .sh          # 构建并推送镜像到 Harbor（全部或指定几个）
 │   └── new-openiddict-certs.ps1 | .sh  # 生成认证中心与两个 BFF 的 OpenIddict 密钥证书
+├── nginx/msa.conf               # 入口站点参考配置（三个前端 + 回调 + 对象存储），不在编排里，放进 nginx 的 conf.d/
 ├── .env.example                 # 模板；复制成 .env（.env 与 certs/ 不入库）
 ├── certs/                       # OpenIddict 密钥与 cert-passwords.env（脚本生成）
 └── README.md
@@ -79,7 +80,7 @@ docker compose logs -f msa-order
 | 服务 | 容器名 | HTTP（REST、健康检查） | gRPC（HTTP/2） | 对外（经入口代理） |
 |---|---|---|---|---|
 | API 网关 | msa-gateway | 8080 | — | 否 |
-| 认证中心 | msa-identity | 8080 | — | `https://identity.${MSA_DOMAIN}` |
+| 认证中心 | msa-identity | 8080 | — | `https://identity.${MSA_DOMAIN}`（与登录页同域） |
 | 用户 | msa-user | 8080 | 8081 | 否 |
 | 目录 | msa-catalog | 8080 | 8081 | 否 |
 | 库存 | msa-inventory | 8080 | 8081 | 否 |
@@ -87,8 +88,8 @@ docker compose logs -f msa-order
 | 订单 | msa-order | 8080 | 8081 | 否 |
 | 支付 | msa-payment | 8080 | 8081 | 只有 `/payment/callbacks/` |
 | 通知 | msa-notification | 8080 | — | 否 |
-| 商城 BFF | msa-bff-web | 8080 | — | `https://bff-web.${MSA_DOMAIN}` |
-| 后台 BFF | msa-bff-bm | 8080 | — | `https://bff-bm.${MSA_DOMAIN}` |
+| 商城 BFF | msa-bff-web | 8080 | — | `https://shop.${MSA_DOMAIN}` 下的 `/api`、`/bff`（与商城前端同域） |
+| 后台 BFF | msa-bff-bm | 8080 | — | `https://admin.${MSA_DOMAIN}` 下的 `/api`、`/bff`（与后台前端同域） |
 
 - **服务之间**：网关转发、BFF 转发到网关都是 `http://<容器名>:8080`；gRPC 是 `http://<容器名>:8081`。
   明文 HTTP/2 需要单独的 Http2 端点（Kestrel 不会在明文端口上协商 HTTP/2），所以提供 gRPC 的服务多开一个 8081。
@@ -131,18 +132,46 @@ ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 
 
 ## 入口代理的要求
 
-入口代理（nginx 等）不在本编排里，单独部署。为了让这些服务正常工作，它需要满足：
+入口代理（nginx 等）不在本编排里，单独部署；`nginx/msa.conf` 是按下面要求写好的参考配置。为了让这些服务正常工作，它需要满足：
 
-- **能访问到容器**：加入 `dotnet-infra_backend` 网络后直接转发到 `msa-identity:8080`、`msa-bff-web:8080`、
-  `msa-bff-bm:8080`、`msa-payment:8080`（只放行 `/payment/callbacks/`）；网关与其他业务服务不需要对外暴露。
+- **转发规则**：nginx 加入 `dotnet-infra_backend` 网络，静态页面自己提供，接口按域名转发（`nginx/msa.conf`）。
+  每个前端和它调用的后端**必须同域**，且每个域名只放行下面这些路径：
+
+  | 域名 | nginx 放行的路径 | 转发到 |
+  |---|---|---|
+  | `shop.${MSA_DOMAIN}` | `/api/`、`/bff/`（其他路径是 `Front/dist`） | `msa-bff-web:8080` |
+  | `admin.${MSA_DOMAIN}` | `/api/`、`/bff/`（其他路径是 `BM/dist`） | `msa-bff-bm:8080` |
+  | `identity.${MSA_DOMAIN}` | `/connect/`、`/.well-known/`、`/api/Auth/`（其他路径是 `Identity/dist`） | `msa-gateway:8080` → 认证中心（`config/gateway` 的 `edge-identity-*` 路由，`/api/Auth` 去掉 `/api`） |
+  | `payment.${MSA_DOMAIN}` | `/payment/callbacks/` | `msa-payment:8080` |
+  | `oss.${MSA_DOMAIN}` | 全部 | `base-rustfs:9000`（S3 签名包含 Host） |
+
+  所有转发都保留原始 Host。认证中心的域名只放行这三个前缀：网关里还有不限域名的内部服务路由，不能从外部直接打到。
+
+  为什么必须同域：BFF 的会话与防伪 Cookie 只属于提供它的域名，且 BFF 没有开 CORS，前端跨域调用拿不到会话；
+  认证中心的登录 Cookie 由登录页（`/api/Auth/login`）写入，`/connect/authorize` 要在同一个域名下才读得到它。
 - **带转发头**：必须带 `X-Forwarded-Proto`（以及 `X-Forwarded-For` / `X-Forwarded-Host`）。服务端已开启
   `ASPNETCORE_FORWARDEDHEADERS_ENABLED`，靠它认出原始请求是 HTTPS：OpenIddict 只接受 HTTPS、
   BFF 会话 Cookie 带 Secure、登录回调地址也按它生成。缺了它登录会失败。
 - **容器里也能访问 `MSA_ISSUER`**：各服务校验令牌、取服务令牌都请求 `https://identity.${MSA_DOMAIN}/`。
   入口代理在同一网络时，给它挂一个 `identity.${MSA_DOMAIN}` 的网络别名，这条流量就只在 Docker 网络内走；
   不在同一网络时，要保证容器内能解析并访问到这个公网地址（内网 DNS 或 `extra_hosts`）。
+  `INFRA_OSS_ENDPOINT`（`https://oss.${MSA_DOMAIN}`）同理：后台 BFF 签出的地址给浏览器用，它自己也用这个地址读写对象。
 - **SSE 不缓冲**：秒杀余量推流 `/bff/flash-sales/` 是长连接，要关掉响应缓冲（nginx：`proxy_buffering off`）
   并放长读超时（nginx：`proxy_read_timeout`）。
+
+## 前端打包
+
+三个前端都是 Vite 静态站点，在各自目录执行 `npm ci && npm run build`，产物在 `dist/`，交给入口代理托管（不进本编排）。
+打包时读取的变量会被写死进产物，换域名要重新打包：
+
+| 前端 | 变量（`.env.production`） | 说明 |
+|---|---|---|
+| `Front`（商城） | 无需设置 | `VITE_API_BASE_URL` 留空即走同源 `/bff`、`/api`；不要填跨域地址 |
+| `BM`（后台） | `VITE_STOREFRONT_URL` | 领券活动分享链接指向的商城地址 |
+| `Identity`（登录页） | `VITE_STORE_URL` | 登录 / 注册后没有 returnUrl 时跳回的商城地址 |
+
+`.env.production` 里是 `msa.test.com` 的值，与 `.env` 的 `MSA_DOMAIN` 保持一致。开发时（`npm run dev` / `dev.bat`）不读这些文件，
+仍由 Vite 代理把 `/bff`、`/api` 转到本机的 BFF / 网关。
 
 ## OpenIddict 密钥证书
 
