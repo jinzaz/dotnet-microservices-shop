@@ -7,6 +7,7 @@ using Yarp.ReverseProxy.Configuration;
 using System.Threading.RateLimiting;
 using Microsoft.Extensions.Http;
 using MSA.ApiGateway;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 // OTLP 地址来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
@@ -34,14 +35,31 @@ builder.Services.AddRateLimiter(options =>
 // Register Polly policies to be applied to HttpClients used by YARP via IHttpMessageHandlerBuilderFilter
 builder.Services.AddSingleton<IHttpMessageHandlerBuilderFilter, PollyHttpMessageHandlerBuilderFilter>();
 
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor |
+        ForwardedHeaders.XForwardedProto |
+        ForwardedHeaders.XForwardedHost;
+
+    options.ForwardLimit = 1;
+
+    //options.KnownIPNetworks.Add(
+    //    new IPNetwork(
+    //        IPAddress.Parse("172.30.0.0"),
+    //        24));
+});
+
 // Add OpenIddict validation (for downstream tokens)
+
+builder.Services.AddAuthentication(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
 builder.Services
     .AddOpenIddict()
     .AddValidation(options =>
     {
         options.SetIssuer(builder.Configuration["Authentication:Issuer"]
             ?? throw new InvalidOperationException("Authentication:Issuer is required."));
-        options.AddAudiences(builder.Configuration["Authentication:Audience"] ?? "api");
+        //options.AddAudiences(builder.Configuration["Authentication:Audience"] ?? "api"); // 网关暂时不参与授权，直接转发 downstream 的 access token，audience 由 downstream 验证。
         options.UseSystemNetHttp();
         options.UseAspNetCore();
     });
@@ -58,6 +76,7 @@ builder.AddMsaObservability();
 
 var app = builder.Build();
 
+app.UseForwardedHeaders();
 app.UseHttpsRedirection();
 
 app.UseRateLimiter();

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MSA.Infrastrucute.Extensions;
 using Quartz;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 // 基础设施地址、OTLP 与 gRPC 下游地址、客户端密钥来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
@@ -39,7 +40,12 @@ builder.Services.AddQuartzHostedService(options =>
 });
 
 builder.Services.AddOpenIddictServer(builder.Configuration, builder.Environment);
-
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor |
+        ForwardedHeaders.XForwardedProto;
+});
 
 builder.Services.AddSingleton(TimeProvider.System);
 
@@ -64,6 +70,7 @@ app.UseStatusCodePages();
 if (!app.Environment.IsDevelopment())
     app.UseHsts();
 app.UseHttpsRedirection();
+app.UseForwardedHeaders();
 app.UseRouting();
 app.UseRateLimiter();
 app.UseAuthentication();
