@@ -5,7 +5,9 @@
 # 用法：./build-images.sh [all | 镜像名 ...] [--registry R] [--tag T] [--platform P] [--no-latest] [--no-push]
 #   不传镜像名时列出清单交互选择（全部或编号）；all 构建全部。
 #   默认标签 = 当前 git 提交的短哈希（工作区有改动时加 -dirty），同时推 latest。
+#   所有镜像共用 docker/Dockerfile（--target <镜像名>）：restore 与编译只在第一个镜像做一次，后面的镜像直接命中缓存。
 set -euo pipefail
+export DOCKER_BUILDKIT=1
 
 registry=harbor.local/msa-shop; tag=""; platform=linux/amd64; latest=true; push=true; only=()
 while [ $# -gt 0 ]; do
@@ -29,9 +31,9 @@ if [ -z "$tag" ]; then
 fi
 
 catalog=()
-while read -r name dockerfile; do
+while read -r name project; do
   case "$name" in ''|'#'*) continue ;; esac
-  catalog+=("$name $dockerfile")
+  catalog+=("$name $project")
 done < <(tr -d '\r' < "$manifest")
 
 if [ ${#only[@]} -eq 0 ]; then
@@ -64,11 +66,11 @@ fi
 
 built=()
 for entry in "${selected[@]}"; do
-  read -r name dockerfile <<< "$entry"
+  read -r name _ <<< "$entry"
   tags=("$registry/$name:$tag")
   [ "$latest" = true ] && tags+=("$registry/$name:latest")
   echo "==> 构建 $name（${tags[*]}）"
-  args=(build --file "$repository/$dockerfile" --platform "$platform")
+  args=(build --file "$repository/docker/Dockerfile" --target "$name" --platform "$platform")
   for t in "${tags[@]}"; do args+=(--tag "$t"); done
   docker "${args[@]}" "$repository"
   if [ "$push" = true ]; then

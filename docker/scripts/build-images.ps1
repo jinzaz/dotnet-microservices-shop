@@ -25,6 +25,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# 所有镜像共用 docker/Dockerfile（--target <镜像名>）：restore 与编译只在第一个镜像做一次，后面的镜像直接命中缓存。
+$env:DOCKER_BUILDKIT = '1'
+$dockerfile = Join-Path $PSScriptRoot '..\Dockerfile'
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $manifest = Join-Path $PSScriptRoot '..\images.txt'
 
@@ -36,7 +39,7 @@ if (-not $Tag) {
 
 $images = @(Get-Content $manifest -Encoding UTF8 |
     Where-Object { $_ -and -not $_.TrimStart().StartsWith('#') } |
-    ForEach-Object { $name, $dockerfile = -split $_; [pscustomobject]@{ Name = $name; Dockerfile = $dockerfile } })
+    ForEach-Object { $name, $project = -split $_; [pscustomobject]@{ Name = $name; Project = $project } })
 if ($Only.Count -eq 0) {
     Write-Host '可构建的镜像：'
     for ($index = 0; $index -lt $images.Count; $index++) {
@@ -65,7 +68,7 @@ foreach ($image in $images) {
     $tags = @("${reference}:$Tag") + $(if ($NoLatest) { @() } else { @("${reference}:latest") })
     Write-Host "==> 构建 $($image.Name)（$($tags -join ', ')）" -ForegroundColor Cyan
 
-    $arguments = @('build', '--file', (Join-Path $repository $image.Dockerfile), '--platform', $Platform)
+    $arguments = @('build', '--file', $dockerfile, '--target', $image.Name, '--platform', $Platform)
     $tags | ForEach-Object { $arguments += @('--tag', $_) }
     $arguments += $repository
     & docker @arguments

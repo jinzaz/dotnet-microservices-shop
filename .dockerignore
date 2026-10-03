@@ -32,3 +32,12 @@ README.md
 global.json
 # 本地开发的共用环境配置（含开发口令），不进镜像；容器里的同名变量由 compose 注入。
 msa.env
+# 镜像构建只需要 .NET 源码：前端、文档、部署配置（含 certs/ 里的密钥）不进构建上下文，改了它们也不会让构建缓存失效。
+# docker/images.txt 例外：docker/Dockerfile 按它发布服务。
+docker/
+!docker/images.txt
+docs/
+TestResults/
+src/MSA.Web/
+**/dist
+*.md

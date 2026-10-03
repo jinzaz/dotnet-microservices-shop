@@ -1,13 +1,14 @@
-# 镜像清单：构建脚本（scripts/build-images.*）按它构建与推送，compose 文件里的镜像名与它一一对应。
-# 格式：<镜像名> <Dockerfile 路径（相对仓库根目录）>；构建上下文统一是仓库根目录。
-api-gateway           src/MSA.ApiGateway/Dockerfile
-identity-service      src/MSA.IdentityService/Dockerfile
-user-service          src/MSA.UserService/Dockerfile
-catalog-service       src/MSA.CatalogService/Dockerfile
-inventory-service     src/MSA.InventoryService/Dockerfile
-basket-service        src/MSA.BasketService/Dockerfile
-order-service         src/MSA.OrderService/Dockerfile
-payment-service       src/MSA.PaymentService/Dockerfile
-notification-service  src/MSA.NotificationService/Dockerfile
-bff-web               src/BFFs/MSA.BFF.Web/Dockerfile
-bff-bm                src/BFFs/MSA.BFF.BM/Dockerfile
+# 镜像清单：<镜像名> <项目文件（相对仓库根目录）>
+# 构建脚本（scripts/build-images.*）按它构建与推送；docker/Dockerfile 按它发布全部服务，镜像名同时是 Dockerfile 里的 target 名；
+# compose 文件里的镜像名与它一一对应。新增服务时在这里加一行，并在 docker/Dockerfile 末尾加一个同名 target。
+api-gateway           src/MSA.ApiGateway/MSA.ApiGateway.csproj
+identity-service      src/MSA.IdentityService/MSA.IdentityService.csproj
+user-service          src/MSA.UserService/MSA.UserService.csproj
+catalog-service       src/MSA.CatalogService/MSA.CatalogService.csproj
+inventory-service     src/MSA.InventoryService/MSA.InventoryService.csproj
+basket-service        src/MSA.BasketService/MSA.BasketService.csproj
+order-service         src/MSA.OrderService/MSA.OrderService.csproj
+payment-service       src/MSA.PaymentService/MSA.PaymentService.csproj
+notification-service  src/MSA.NotificationService/MSA.NotificationService.csproj
+bff-web               src/BFFs/MSA.BFF.Web/MSA.BFF.Web.csproj
+bff-bm                src/BFFs/MSA.BFF.BM/MSA.BFF.BM.csproj
