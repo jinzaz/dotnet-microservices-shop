@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using MSA.EventBus.Abstractions;
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -24,6 +25,35 @@ public static class ServiceCollectionExtensions
             // This list will also be used to subscribe to events from the underlying message broker implementation.
             o.EventTypes[typeof(TEvent).Name] = typeof(TEvent);
         });
+
+        return services;
+    }
+
+    /// <summary>
+    /// 扫描一个程序集里所有 IIntegrationEventHandler&lt;TEvent&gt; 的实现并逐一注册，
+    /// 效果等同于对每一个手写一行 AddIntegrationEventHandler&lt;TEvent, THandler&gt;()。
+    /// 反射只在启动时跑一次，不影响请求路径；跟 AOT/裁剪不兼容（本项目没启用）。
+    /// </summary>
+    public static IServiceCollection AddIntegrationEventHandlersFromAssemblyContaining<TMarker>(this IServiceCollection services) =>
+        services.AddIntegrationEventHandlersFromAssembly(typeof(TMarker).Assembly);
+
+    [RequiresUnreferencedCode("反射扫描程序集里的处理器类型，和代码裁剪（trimming）/Native AOT 不兼容。")]
+    public static IServiceCollection AddIntegrationEventHandlersFromAssembly(this IServiceCollection services, Assembly assembly)
+    {
+        var register = typeof(ServiceCollectionExtensions)
+            .GetMethod(nameof(AddIntegrationEventHandler), BindingFlags.Public | BindingFlags.Static)!;
+
+        foreach (var handlerType in assembly.GetTypes().Where(t => t is { IsClass: true, IsAbstract: false }))
+        {
+            foreach (var @interface in handlerType.GetInterfaces())
+            {
+                if (!@interface.IsGenericType || @interface.GetGenericTypeDefinition() != typeof(IIntegrationEventHandler<>))
+                    continue;
+
+                var eventType = @interface.GetGenericArguments()[0];
+                register.MakeGenericMethod(eventType, handlerType).Invoke(null, [services]);
+            }
+        }
 
         return services;
     }

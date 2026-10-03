@@ -24,8 +24,12 @@ services:
       INFRA_OSS_SECRET_KEY: "${INFRA_OSS_SECRET_KEY}"
       MSA_OPENIDDICT_CERT_PATH: /certs/openiddict.pfx
       MSA_OPENIDDICT_CERT_PASSWORD: "${MSA_BFF_BM_OPENIDDICT_CERT_PASSWORD}"
+      # body 加密密钥，跟上面的 OpenIddict 证书是两套独立密钥（scripts/new-bodyenc-certs）。
+      MSA_BODYENC_CERT_PATH: /certs/bodyenc.pfx
+      MSA_BODYENC_CERT_PASSWORD: "${MSA_BFF_BM_BODYENC_CERT_PASSWORD}"
     volumes:
       - ../../certs/bff-bm-openiddict.pfx:/certs/openiddict.pfx:ro
+      - ../../certs/bff-bm-bodyenc.pfx:/certs/bodyenc.pfx:ro
     networks:
       - backend
       - frontend

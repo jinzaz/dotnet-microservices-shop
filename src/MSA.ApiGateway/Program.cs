@@ -10,8 +10,7 @@ using MSA.ApiGateway;
 using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
-// OTLP 地址来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
-builder.Configuration.AddMsaEnvironment(builder.Environment.ContentRootPath);
+builder.AddMsaServiceDefaults();
 
 // Add services to the container.
 
@@ -67,16 +66,14 @@ builder.Services
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
-// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
-builder.AddMsaObservability();
-
 // Consul client & dynamic YARP config provider
 // Consul dynamic provider temporarily disabled; using static ReverseProxy config from appsettings.json
 
 var app = builder.Build();
 
 app.UseForwardedHeaders();
-app.UseHttpsRedirection();
+// UseMsaServiceDefaults 里的 HTTPS 重定向开关要在转发头处理之后调，否则它看到的还是没纠正过的 scheme。
+app.UseMsaServiceDefaults();
 
 app.UseRateLimiter();
 

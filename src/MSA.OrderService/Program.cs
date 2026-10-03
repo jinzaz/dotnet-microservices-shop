@@ -36,15 +36,13 @@ using System.Threading.RateLimiting;
 using OpenIddict.Validation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
-// 基础设施地址、OTLP 与 gRPC 下游地址、客户端密钥来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
-builder.Configuration.AddMsaEnvironment(builder.Environment.ContentRootPath);
+builder.AddMsaServiceDefaults();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
-builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks()
     .AddCheck<OrderDatabaseHealthCheck>("postgresql", tags: ["ready"]);
 
@@ -77,8 +75,7 @@ builder.Services.AddOptions<OrderCheckoutOptions>()
 
 builder.Services.AddMediatR(configuration =>
     configuration.RegisterServicesFromAssemblyContaining<CreateOrderCommand>());
-builder.Services.AddScoped<IValidator<CreateOrderCommand>, CreateOrderCommandValidator>();
-builder.Services.AddScoped<IValidator<UpdateOrderFulfillmentCommand>, UpdateOrderFulfillmentCommandValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<CreateOrderCommand>();
 builder.Services.AddMsaApplicationPipeline();
 
 builder.Services.AddRateLimiter(options =>
@@ -120,23 +117,7 @@ builder.Services.AddOutbox<OrderDbContext>();
 // Outbox/Inbox 保留期清理，并为运维接口暴露失败消息与卡住的 Saga。
 builder.Services.AddMessagingOperations<OrderDbContext>();
 builder.Services.AddSaga<OrderDbContext>();
-builder.Services.AddIntegrationEventHandler<ProductChangedIntegrationEvent, ProductChangedHandler>();
-builder.Services.AddIntegrationEventHandler<ProductVariantChangedIntegrationEvent, ProductVariantChangedHandler>();
-builder.Services.AddIntegrationEventHandler<PromotionSnapshotChangedIntegrationEvent, PromotionSnapshotChangedHandler>();
-builder.Services.AddIntegrationEventHandler<CouponSnapshotChangedIntegrationEvent, CouponSnapshotChangedHandler>();
-builder.Services.AddIntegrationEventHandler<FlashSaleCampaignOpenedIntegrationEvent, FlashSaleCampaignOpenedHandler>();
-builder.Services.AddIntegrationEventHandler<FlashSaleCampaignClosedIntegrationEvent, FlashSaleCampaignClosedHandler>();
-builder.Services.AddIntegrationEventHandler<InventoryAllocationOpenedIntegrationEvent, InventoryAllocationOpenedHandler>();
-builder.Services.AddIntegrationEventHandler<InventoryAllocationClosedIntegrationEvent, InventoryAllocationClosedHandler>();
-builder.Services.AddIntegrationEventHandler<InventoryReservedIntegrationEvent, InventoryReservedHandler>();
-builder.Services.AddIntegrationEventHandler<InventoryRejectedIntegrationEvent, InventoryRejectedHandler>();
-builder.Services.AddIntegrationEventHandler<PaymentSucceededIntegrationEvent, PaymentSucceededHandler>();
-builder.Services.AddIntegrationEventHandler<PaymentFailedIntegrationEvent, PaymentFailedHandler>();
-builder.Services.AddIntegrationEventHandler<InventoryCommittedIntegrationEvent, InventoryCommittedHandler>();
-builder.Services.AddIntegrationEventHandler<InventoryReleasedIntegrationEvent, InventoryReleasedHandler>();
-builder.Services.AddIntegrationEventHandler<PaymentCancelledIntegrationEvent, PaymentCancelledHandler>();
-builder.Services.AddIntegrationEventHandler<PaymentRefundedIntegrationEvent, PaymentRefundedHandler>();
-builder.Services.AddIntegrationEventHandler<PaymentRefundFailedIntegrationEvent, PaymentRefundFailedHandler>();
+builder.Services.AddIntegrationEventHandlersFromAssemblyContaining<CreateOrderCommand>();
 builder.Services.AddScoped<OrderCancellationWorkflow>();
 builder.Services.AddScoped<ISagaTimeoutHandler, OrderSagaTimeoutHandler>();
 
@@ -156,9 +137,6 @@ builder.Services.AddMsaApiAuthorization(
     "order.admin.read",
     "order.admin.write");
 
-// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
-builder.AddMsaObservability();
-
 var app = builder.Build();
 
 if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
@@ -167,16 +145,13 @@ if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
     await scope.ServiceProvider.GetRequiredService<OrderDbContext>().Database.MigrateAsync();
 }
 
-app.UseExceptionHandler();
-app.UseStatusCodePages();
-app.UseHttpsRedirection();
+app.UseMsaServiceDefaults();
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
-app.MapHealthChecks("/health");
 app.MapMessagingAdminEndpoints("order", "order.admin.read", "order.admin.write");
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions

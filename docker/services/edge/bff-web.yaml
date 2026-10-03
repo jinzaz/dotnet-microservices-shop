@@ -21,8 +21,12 @@ services:
       MSA_CLIENT_SECRET_MSA_SVC_BFFWEB: "${MSA_CLIENT_SECRET_MSA_SVC_BFFWEB}"
       MSA_OPENIDDICT_CERT_PATH: /certs/openiddict.pfx
       MSA_OPENIDDICT_CERT_PASSWORD: "${MSA_BFF_WEB_OPENIDDICT_CERT_PASSWORD}"
+      # body 加密密钥，跟上面的 OpenIddict 证书是两套独立密钥（scripts/new-bodyenc-certs）。
+      MSA_BODYENC_CERT_PATH: /certs/bodyenc.pfx
+      MSA_BODYENC_CERT_PASSWORD: "${MSA_BFF_WEB_BODYENC_CERT_PASSWORD}"
     volumes:
       - ../../certs/bff-web-openiddict.pfx:/certs/openiddict.pfx:ro
+      - ../../certs/bff-web-bodyenc.pfx:/certs/bodyenc.pfx:ro
     networks:
       - backend
       - frontend

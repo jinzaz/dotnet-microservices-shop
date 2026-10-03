@@ -18,8 +18,7 @@ using System.Text.Json.Serialization;
 using OpenIddict.Validation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
-// 基础设施地址、OTLP 与 gRPC 下游地址、客户端密钥来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
-builder.Configuration.AddMsaEnvironment(builder.Environment.ContentRootPath);
+builder.AddMsaServiceDefaults();
 var connectionString = builder.Configuration.GetConnectionString("Postgresql");
 if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
@@ -32,8 +31,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddMediatR(configuration => configuration.RegisterServicesFromAssemblyContaining<OrderConfirmedHandler>());
 builder.Services.AddMsaApplicationPipeline();
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
-builder.Services.AddIntegrationEventHandler<OrderConfirmedIntegrationEvent, OrderConfirmedHandler>();
-builder.Services.AddIntegrationEventHandler<OrderCancelledIntegrationEvent, OrderCancelledHandler>();
+builder.Services.AddIntegrationEventHandlersFromAssemblyContaining<OrderConfirmedHandler>();
 builder.Services.AddScoped<INotificationSender, LoggingNotificationSender>();
 builder.Services.AddHostedService<NotificationDispatchService>();
 builder.Services.AddOpenIddict().AddValidation(options =>
@@ -50,10 +48,6 @@ builder.Services.AddMsaApiAuthorization(
     "notification.admin.write");
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-builder.Services.AddHealthChecks();
-builder.Services.AddProblemDetails();
-// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
-builder.AddMsaObservability();
 
 var app = builder.Build();
 if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
@@ -62,10 +56,9 @@ if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
     await scope.ServiceProvider.GetRequiredService<NotificationDbContext>().Database.MigrateAsync();
 }
 
-app.UseExceptionHandler();
+app.UseMsaServiceDefaults();
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapHealthChecks("/health");
 app.MapMessagingAdminEndpoints("notification", "notification.admin.read", "notification.admin.write");
 app.MapGet("/notification/users/{userId}", async (
     string userId,

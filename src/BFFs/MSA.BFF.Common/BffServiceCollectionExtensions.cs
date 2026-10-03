@@ -129,9 +129,16 @@ public static class BffServiceCollectionExtensions
         }
 
         // 授权/登出端点要留给浏览器跳转，必须是公网域名；换 token 和拉 JWKS 是后端对后端，容器网络内部直连即可，
-        // 没必要经入口代理绕一圈。OpenIddict:InternalAddress 不配置时退回 Issuer，本地开发两者原本就是同一个地址。
-        var internalValue = configuration["OpenIddict:InternalAddress"] ?? issuerValue;
-        Uri.TryCreate(internalValue!.TrimEnd('/') + "/", UriKind.Absolute, out var internalBase);
+        // 没必要经入口代理绕一圈。必填：appsettings.json 本地默认值和 Docker 的环境变量都要写，漏配直接启动失败，
+        // 不悄悄退回成 Issuer——那样配置漏了也看不出来，等于白改。
+        var internalValue = configuration["OpenIddict:InternalAddress"];
+        if (!Uri.TryCreate(internalValue, UriKind.Absolute, out var internalBase) ||
+            internalBase.Scheme != Uri.UriSchemeHttp && internalBase.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new InvalidOperationException(
+                "OpenIddict:InternalAddress must be an absolute HTTP or HTTPS URI.");
+        }
+        internalBase = new Uri(internalBase.AbsoluteUri.TrimEnd('/') + "/");
 
         var clientId = configuration["OpenIddict:ClientId"];
         if (string.IsNullOrWhiteSpace(clientId))
@@ -188,7 +195,7 @@ public static class BffServiceCollectionExtensions
                 var registration = new OpenIddictClientRegistration
                 {
                     Issuer = issuer,
-                    Configuration = internalBase is null ? null : new OpenIddictConfiguration
+                    Configuration = new OpenIddictConfiguration
                     {
                         Issuer = issuer,
                         AuthorizationEndpoint = new Uri(issuer, "connect/authorize"),

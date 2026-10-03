@@ -8,16 +8,14 @@ using MSA.BFF.BM.Authorization;
 using MSA.BFF.BM.Endpoints;
 using MSA.BFF.BM.ObjectStorage;
 using MSA.BFF.Common;
+using MSA.BFF.Common.BodyEncryption;
 using MSA.Grpc;
 using MSA.Grpc.Contracts.Inventory;
 using MSA.Grpc.Contracts.Order;
 using MSA.Grpc.Contracts.Payment;
 
 var builder = WebApplication.CreateBuilder(args);
-// 基础设施地址、OTLP 与 gRPC 下游地址、客户端密钥来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
-builder.Configuration.AddMsaEnvironment(builder.Environment.ContentRootPath);
-// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
-builder.AddMsaObservability();
+builder.AddMsaServiceDefaults();
 
 var postgresql = builder.Configuration.GetConnectionString("Postgresql")
     ?? throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
@@ -31,11 +29,11 @@ builder.Services.AddDbContext<BffBmDbContext>(options =>
     options.UseOpenIddict();
 });
 builder.Services.AddOpenApi();
-builder.Services.AddProblemDetails();
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(
         new JsonStringEnumConverter(allowIntegerValues: false)));
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddBffBodyEncryption(builder.Environment);
 builder.Services.AddBff(redis, "MSABm");
 builder.Services.AddBffOpenIddictClient<BffBmDbContext>(
     builder.Configuration,
@@ -95,16 +93,16 @@ if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
     await scope.ServiceProvider.GetRequiredService<BffBmDbContext>().Database.MigrateAsync();
 }
 
-app.UseExceptionHandler();
-app.UseStatusCodePages();
+app.UseMsaServiceDefaults();
+app.UseBffBodyEncryption();
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
-app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseBffAntiforgery();
 
+app.MapBodyEncryptionPublicKeyEndpoint();
 app.MapBffEndpoints();
 app.MapPbacEndpoints();
 app.MapObjectStorageEndpoints();

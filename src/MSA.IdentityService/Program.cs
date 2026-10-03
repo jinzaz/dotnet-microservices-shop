@@ -7,12 +7,10 @@ using Quartz;
 using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
-// 基础设施地址、OTLP 与 gRPC 下游地址、客户端密钥来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
-builder.Configuration.AddMsaEnvironment(builder.Environment.ContentRootPath);
+builder.AddMsaServiceDefaults();
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddOpenApi();
-builder.Services.AddProblemDetails();
 
 var connection = builder.Configuration.GetConnectionString("DefaultConnection");
 if (string.IsNullOrWhiteSpace(connection))
@@ -54,9 +52,6 @@ builder.Services.AddMsaApiAuthorization(
     IdentityServiceConstants.Resources.Auth,
     IdentityServiceConstants.Scopes.AuthAdminRead,
     IdentityServiceConstants.Scopes.AuthAdminWrite);
-// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
-builder.AddMsaObservability();
-builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
@@ -65,12 +60,10 @@ if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
     await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.MigrateAsync();
 }
 
-app.UseExceptionHandler();
-app.UseStatusCodePages();
+app.UseForwardedHeaders();
 if (!app.Environment.IsDevelopment())
     app.UseHsts();
-app.UseHttpsRedirection();
-app.UseForwardedHeaders();
+app.UseMsaServiceDefaults();
 app.UseRouting();
 app.UseRateLimiter();
 app.UseAuthentication();
@@ -78,6 +71,5 @@ app.UseAuthorization();
 app.UseAntiforgery();
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
-app.MapHealthChecks("/health");
 app.MapControllers();
 app.Run();

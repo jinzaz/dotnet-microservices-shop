@@ -23,10 +23,12 @@ docker/
 ├── images.txt                   # 镜像清单：镜像名 ↔ Dockerfile，构建脚本与 compose 共用
 ├── scripts/
 │   ├── build-images.ps1 | .sh          # 构建并推送镜像到 Harbor（全部或指定几个）
-│   └── new-openiddict-certs.ps1 | .sh  # 生成认证中心与两个 BFF 的 OpenIddict 密钥证书
+│   ├── new-openiddict-certs.ps1 | .sh  # 生成认证中心与两个 BFF 的 OpenIddict 密钥证书
+│   ├── new-bodyenc-certs.ps1 | .sh     # 生成两个 BFF 的 body 加密密钥证书（浏览器 ⇄ BFF）
+│   └── check-env-sync.ps1 | .sh        # 核对 .env 和 .env.example 的变量名是否一致
 ├── nginx/msa.conf               # 入口站点参考配置（三个前端 + 回调 + 对象存储），不在编排里，放进 nginx 的 conf.d/
 ├── .env.example                 # 模板；复制成 .env（.env 与 certs/ 不入库）
-├── certs/                       # OpenIddict 密钥与 cert-passwords.env（脚本生成）
+├── certs/                       # OpenIddict 密钥、body 加密密钥与 cert-passwords.env（脚本生成）
 └── README.md
 ```
 
@@ -64,7 +66,9 @@ Docker Desktop 在 Settings → Docker Engine，Linux 在 `/etc/docker/daemon.js
 ```powershell
 cd docker
 Copy-Item .env.example .env                       # 填域名、基础设施地址、客户端密钥；MSA_IMAGE_TAG 选版本
+./scripts/check-env-sync.ps1                      # 核对 .env 和 .env.example 的变量名是否一致（改了一个别忘另一个）
 ./scripts/new-openiddict-certs.ps1                # 认证中心与两个 BFF 的 OpenIddict 密钥（已有则保留）
+./scripts/new-bodyenc-certs.ps1                   # 两个 BFF 的 body 加密密钥（已有则保留）
 # 按部署修改 config/identity/appsettings.json 里两个 BFF 的回调地址
 docker compose pull                               # 从 Harbor 拉镜像
 docker compose up -d                              # 全部
@@ -193,6 +197,22 @@ ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 
 - 每个应用一份独立密钥：认证中心的令牌与 BFF 的 state token 互不共用，一处泄露不波及其他。
 - 已有的证书默认保留：换掉认证中心的密钥，已签发的令牌全部失效；换掉 BFF 的，进行中的登录会失败。
   确实要轮换时加 `-Force`，可配合 `-Only identity` 只换一个（bash 版：`--force identity`）。
+
+## Body 加密密钥证书
+
+`scripts/new-bodyenc-certs.ps1`（或 `.sh`）生成两个 BFF 各自的 body 加密密钥（浏览器 ⇄ BFF 的请求/响应体，
+ECDH P-256，跟上面的 OpenIddict 证书是完全独立的两套密钥，口令写进同一份 `cert-passwords.env`）：
+
+| 文件 | 用途 | 挂给谁 |
+|---|---|---|
+| `bff-web-bodyenc.pfx` | 商城 BFF：浏览器 ⇄ BFF 的 body 加密 | 只有 msa-bff-web |
+| `bff-bm-bodyenc.pfx` | 后台 BFF：同上 | 只有 msa-bff-bm |
+
+- ECDH P-256（KeyUsage=KeyAgreement，不是签名用途）、2 年有效期，不参与 TLS，自签名即可。
+- 应用只从环境变量 `MSA_BODYENC_CERT_PATH` / `MSA_BODYENC_CERT_PASSWORD` 读取（跟 OpenIddict 那两个变量名不同，不会互相覆盖）。
+- 已有的证书默认保留：换掉会让所有浏览器里缓存的服务端公钥失效（下一次请求解密失败），
+  轮换后要等前端重新拉一次 `/bff/security/public-key`（默认每次页面刷新都会拉，不用特别处理，
+  但正在进行中的一次请求可能会失败一次，刷新重试即可）。
 
 ## 可观测性
 

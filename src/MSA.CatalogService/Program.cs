@@ -20,8 +20,7 @@ using OpenIddict.Validation.AspNetCore;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
-// 基础设施地址、OTLP 与 gRPC 下游地址、客户端密钥来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
-builder.Configuration.AddMsaEnvironment(builder.Environment.ContentRootPath);
+builder.AddMsaServiceDefaults();
 var postgresql = builder.Configuration.GetConnectionString("Postgresql");
 if (string.IsNullOrWhiteSpace(postgresql))
     throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
@@ -52,30 +51,16 @@ builder.Services.AddScoped<ICouponCampaignReadService>(services => services.GetR
 builder.Services.AddScoped<ICatalogSnapshotPublisher, OutboxCatalogSnapshotPublisher>();
 builder.Services.AddScoped<ICatalogAuditWriter, CatalogAuditWriter>();
 
-builder.Services.AddScoped<IValidator<CreateCategoryAdminCommand>, CreateCategoryAdminValidator>();
-builder.Services.AddScoped<IValidator<CreateDraftProductCommand>, CreateDraftProductValidator>();
-builder.Services.AddScoped<IValidator<ChangeProductPriceCommand>, ChangeProductPriceValidator>();
-builder.Services.AddScoped<IValidator<CreateProductVariantCommand>, CreateProductVariantValidator>();
-builder.Services.AddScoped<IValidator<UpdateProductVariantCommand>, UpdateProductVariantValidator>();
-builder.Services.AddScoped<IValidator<AddProductMediaCommand>, ProductMediaCommandValidator>();
-builder.Services.AddScoped<IValidator<UpdateProductMediaCommand>, UpdateProductMediaValidator>();
-builder.Services.AddScoped<IValidator<CreatePromotionCommand>, CreatePromotionValidator>();
-builder.Services.AddScoped<IValidator<ReplacePromotionDefinitionCommand>, ReplacePromotionDefinitionValidator>();
-builder.Services.AddScoped<IValidator<CreateCouponCommand>, CreateCouponValidator>();
-builder.Services.AddScoped<IValidator<CreateCouponBatchCommand>, CreateCouponBatchValidator>();
-builder.Services.AddScoped<IValidator<CreateCouponCampaignCommand>, CreateCouponCampaignValidator>();
-builder.Services.AddScoped<IValidator<ReviseCouponCampaignCommand>, ReviseCouponCampaignValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<CreateDraftProductCommand>();
 
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 builder.Services.AddOutbox<CatalogDbContext>();
 // Outbox/Inbox 保留期清理，并为运维接口暴露失败消息与卡住的 Saga。
 builder.Services.AddMessagingOperations<CatalogDbContext>();
 builder.Services.AddExceptionHandler<CatalogApiExceptionHandler>();
-builder.Services.AddProblemDetails();
 // BM 以名称传枚举（如 ProductMediaRequest.MediaType = "Image"），默认序列化只接受数字。
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-builder.Services.AddHealthChecks();
 // 服务间实时调用：同一套 OpenIddict scope / resource，策略与 REST 一致。
 builder.Services.AddMsaGrpcServer(builder.Environment.IsDevelopment());
 
@@ -92,9 +77,6 @@ builder.Services.AddMsaApiAuthorization(
     "catalog.admin.read",
     "catalog.admin.write");
 
-// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
-builder.AddMsaObservability();
-
 var app = builder.Build();
 if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 {
@@ -102,10 +84,9 @@ if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
     await scope.ServiceProvider.GetRequiredService<CatalogDbContext>().Database.MigrateAsync();
 }
 
-app.UseExceptionHandler();
+app.UseMsaServiceDefaults();
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapHealthChecks("/health");
 app.MapCatalogEndpoints();
 app.MapCatalogAdminEndpoints();
 app.MapMsaGrpcService<CatalogPricingGrpcService>("catalog-api");

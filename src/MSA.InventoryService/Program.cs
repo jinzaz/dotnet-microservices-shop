@@ -23,8 +23,7 @@ using System.Text.Json.Serialization;
 using OpenIddict.Validation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
-// 基础设施地址、OTLP 与 gRPC 下游地址、客户端密钥来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
-builder.Configuration.AddMsaEnvironment(builder.Environment.ContentRootPath);
+builder.AddMsaServiceDefaults();
 var postgresql = builder.Configuration.GetConnectionString("Postgresql");
 if (string.IsNullOrWhiteSpace(postgresql))
     throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
@@ -42,9 +41,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.AddMediatR(configuration =>
     configuration.RegisterServicesFromAssemblyContaining<AddStockCommand>());
-builder.Services.AddScoped<IValidator<AddStockCommand>, AddStockValidator>();
-builder.Services.AddScoped<IValidator<AdjustStockCommand>, AdjustStockCommandValidator>();
-builder.Services.AddScoped<IValidator<CreateInventoryAllocationCommand>, CreateInventoryAllocationValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<AddStockCommand>();
 builder.Services.AddMsaApplicationPipeline();
 
 builder.Services.AddOptions<InventoryReservationOptions>()
@@ -73,9 +70,7 @@ builder.Services.AddOutbox<InventoryDbContext>();
 builder.Services.AddHostedService<InventoryReservationExpiryService>();
 // Outbox/Inbox 保留期清理，并为运维接口暴露失败消息与卡住的 Saga。
 builder.Services.AddMessagingOperations<InventoryDbContext>();
-builder.Services.AddIntegrationEventHandler<OrderSubmittedIntegrationEvent, OrderSubmittedHandler>();
-builder.Services.AddIntegrationEventHandler<ReleaseInventoryIntegrationEvent, ReleaseInventoryHandler>();
-builder.Services.AddIntegrationEventHandler<CommitInventoryIntegrationEvent, CommitInventoryHandler>();
+builder.Services.AddIntegrationEventHandlersFromAssemblyContaining<AddStockCommand>();
 
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
@@ -95,11 +90,8 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
-builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks()
     .AddCheck<InventoryDatabaseHealthCheck>("postgresql", tags: ["ready"]);
-// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
-builder.AddMsaObservability();
 
 var app = builder.Build();
 
@@ -109,14 +101,12 @@ if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
     await scope.ServiceProvider.GetRequiredService<InventoryDbContext>().Database.MigrateAsync();
 }
 
-app.UseExceptionHandler();
-app.UseStatusCodePages();
+app.UseMsaServiceDefaults();
 app.UseAuthentication();
 app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
-app.MapHealthChecks("/health");
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {

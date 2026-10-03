@@ -1,3 +1,13 @@
+import {
+  createBodyEncryptionContext,
+  decryptResponseBody,
+  encryptRequestBody,
+  ephemeralKeyHeaderValue,
+  ENCRYPTED_CONTENT_TYPE,
+  EPHEMERAL_KEY_HEADER,
+  type BodyEncryptionContext,
+} from './body-crypto';
+
 export type BffSession = {
   isAuthenticated: boolean;
   subject: string | null;
@@ -95,13 +105,36 @@ async function csrfToken() {
   return csrfPromise;
 }
 
+/** BFF 对加密请求的响应也是加密的（包括错误响应），这里统一解密成一个看起来像普通 JSON 响应的 Response，
+ * 后面的 readProblem / response.json() 不用关心这一层。没走加密的响应原样返回。 */
+async function decryptResponseIfNeeded(response: Response, context: BodyEncryptionContext): Promise<Response> {
+  if (!response.headers.get('Content-Type')?.includes(ENCRYPTED_CONTENT_TYPE)) return response;
+
+  const envelope = await response.arrayBuffer();
+  const plaintext = await decryptResponseBody(context, envelope);
+  const headers = new Headers(response.headers);
+  headers.set('Content-Type', 'application/json');
+  return new Response(plaintext, { status: response.status, statusText: response.statusText, headers });
+}
+
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const method = options.method?.toUpperCase() ?? 'GET';
   const headers = new Headers(options.headers);
   headers.set('Accept', 'application/json');
-  if (options.body !== undefined) headers.set('Content-Type', 'application/json');
   if (!['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method)) {
     headers.set('X-XSRF-TOKEN', await csrfToken());
+  }
+
+  // 每次请求用一把临时密钥：没有 body 的请求（GET 之类）也带这个头，响应才能被加密——
+  // 密钥协商不依赖请求体是否存在。
+  const cryptoContext = await createBodyEncryptionContext();
+  headers.set(EPHEMERAL_KEY_HEADER, ephemeralKeyHeaderValue(cryptoContext));
+
+  let requestBody: BodyInit | undefined;
+  if (options.body !== undefined) {
+    const plaintext = new TextEncoder().encode(JSON.stringify(options.body));
+    requestBody = await encryptRequestBody(cryptoContext, plaintext);
+    headers.set('Content-Type', ENCRYPTED_CONTENT_TYPE);
   }
 
   let response: Response;
@@ -111,12 +144,14 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
       method,
       credentials: 'include',
       headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body: requestBody,
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new Error('暂时无法连接 MSA.BFF.BM，请确认服务已启动。');
   }
+
+  response = await decryptResponseIfNeeded(response, cryptoContext);
 
   if (!response.ok) {
     const problem = await readProblem(response);

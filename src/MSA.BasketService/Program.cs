@@ -22,8 +22,7 @@ using MSA.Infrastrucute.Extensions;
 using OpenIddict.Validation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
-// 基础设施地址、OTLP 与 gRPC 下游地址、客户端密钥来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
-builder.Configuration.AddMsaEnvironment(builder.Environment.ContentRootPath);
+builder.AddMsaServiceDefaults();
 var postgresql = builder.Configuration.GetConnectionString("Postgresql");
 if (string.IsNullOrWhiteSpace(postgresql))
     throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
@@ -55,20 +54,14 @@ builder.Services.AddOptions<BasketOptions>()
 
 builder.Services.AddMediatR(configuration =>
     configuration.RegisterServicesFromAssemblyContaining<GetBasketQuery>());
-builder.Services.AddScoped<IValidator<AddBasketItemCommand>, AddBasketItemCommandValidator>();
-builder.Services.AddScoped<IValidator<SetBasketItemQuantityCommand>, SetBasketItemQuantityCommandValidator>();
-builder.Services.AddScoped<IValidator<RemoveBasketItemCommand>, RemoveBasketItemCommandValidator>();
-builder.Services.AddScoped<IValidator<ClearBasketCommand>, ClearBasketCommandValidator>();
-builder.Services.AddScoped<IValidator<ReplaceBasketCouponsCommand>, ReplaceBasketCouponsCommandValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<AddBasketItemCommand>();
 builder.Services.AddMsaApplicationPipeline();
 
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 builder.Services.AddOutbox<BasketDbContext>();
 // Outbox/Inbox 保留期清理，并为运维接口暴露失败消息与卡住的 Saga。
 builder.Services.AddMessagingOperations<BasketDbContext>();
-builder.Services.AddIntegrationEventHandler<ProductChangedIntegrationEvent, ProductChangedHandler>();
-builder.Services.AddIntegrationEventHandler<ProductVariantChangedIntegrationEvent, ProductVariantChangedHandler>();
-builder.Services.AddIntegrationEventHandler<OrderSubmittedIntegrationEvent, OrderSubmittedHandler>();
+builder.Services.AddIntegrationEventHandlersFromAssemblyContaining<GetBasketQuery>();
 
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
@@ -86,11 +79,8 @@ builder.Services.AddMsaApiAuthorization(
 builder.Services.AddValidation();
 builder.Services.AddOpenApi();
 builder.Services.AddExceptionHandler<BasketApiExceptionHandler>();
-builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks()
     .AddCheck<BasketDatabaseHealthCheck>("postgresql", tags: ["ready"]);
-// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
-builder.AddMsaObservability();
 
 var app = builder.Build();
 if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
@@ -99,13 +89,11 @@ if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
     await scope.ServiceProvider.GetRequiredService<BasketDbContext>().Database.MigrateAsync();
 }
 
-app.UseExceptionHandler();
-app.UseStatusCodePages();
+app.UseMsaServiceDefaults();
 app.UseAuthentication();
 app.UseAuthorization();
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
-app.MapHealthChecks("/health");
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {

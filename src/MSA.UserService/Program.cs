@@ -13,10 +13,7 @@ using MSA.UserService.Middleware;
 using OpenIddict.Validation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
-// 基础设施地址、OTLP 与 gRPC 下游地址、客户端密钥来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
-builder.Configuration.AddMsaEnvironment(builder.Environment.ContentRootPath);
-// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
-builder.AddMsaObservability();
+builder.AddMsaServiceDefaults();
 var postgresql = builder.Configuration.GetConnectionString("Postgresql");
 if (string.IsNullOrWhiteSpace(postgresql))
     throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
@@ -38,8 +35,6 @@ builder.Services.AddControllers();
 builder.Services.AddMsaGrpcServer(builder.Environment.IsDevelopment());
 builder.Services.AddOpenApi();
 builder.Services.AddExceptionHandler<UserApiExceptionHandler>();
-builder.Services.AddProblemDetails();
-builder.Services.AddHealthChecks();
 
 builder.Services.AddAuthentication(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
 builder.Services.AddOpenIddict().AddValidation(options =>
@@ -61,14 +56,11 @@ if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
     await scope.ServiceProvider.GetRequiredService<UserDbContext>().Database.MigrateAsync();
 }
 
-app.UseExceptionHandler();
-app.UseStatusCodePages();
+app.UseMsaServiceDefaults();
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
-app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapHealthChecks("/health");
 app.MapControllers();
 app.MapMsaGrpcService<UserAddressGrpcService>("user-api");
 app.Run();

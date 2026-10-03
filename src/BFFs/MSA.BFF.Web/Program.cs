@@ -2,15 +2,13 @@ using MSA.Common;
 using MSA.Observability;
 using Microsoft.EntityFrameworkCore;
 using MSA.BFF.Common;
+using MSA.BFF.Common.BodyEncryption;
 using MSA.BFF.Web;
 using MSA.Grpc;
 using MSA.Grpc.Contracts.Inventory;
 
 var builder = WebApplication.CreateBuilder(args);
-// 基础设施地址、OTLP 与 gRPC 下游地址、客户端密钥来自环境变量或仓库根目录的 msa.env，见 MsaEnvironment。
-builder.Configuration.AddMsaEnvironment(builder.Environment.ContentRootPath);
-// 链路、指标、日志统一走 OTLP，配置见 MSA.Observability。
-builder.AddMsaObservability();
+builder.AddMsaServiceDefaults();
 
 var postgresql = builder.Configuration.GetConnectionString("Postgresql")
     ?? throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
@@ -24,7 +22,7 @@ builder.Services.AddDbContext<BffWebDbContext>(options =>
     options.UseOpenIddict();
 });
 builder.Services.AddOpenApi();
-builder.Services.AddProblemDetails();
+builder.Services.AddBffBodyEncryption(builder.Environment);
 builder.Services.AddBff(redis, "MSAWeb");
 builder.Services.AddBffOpenIddictClient<BffWebDbContext>(
     builder.Configuration,
@@ -43,16 +41,16 @@ if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
     await scope.ServiceProvider.GetRequiredService<BffWebDbContext>().Database.MigrateAsync();
 }
 
-app.UseExceptionHandler();
-app.UseStatusCodePages();
+app.UseMsaServiceDefaults();
+app.UseBffBodyEncryption();
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
-app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseBffAntiforgery();
 
+app.MapBodyEncryptionPublicKeyEndpoint();
 app.MapBffEndpoints();
 app.MapFlashSaleStreamEndpoints();
 app.MapReverseProxy();

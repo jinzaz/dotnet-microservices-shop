@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using Grpc.Core;
+using MSA.BFF.Common.BodyEncryption;
 using MSA.Grpc.Contracts.Inventory;
 
 namespace MSA.BFF.Web;
@@ -34,6 +35,7 @@ internal static class FlashSaleStreamEndpoints
                 CancellationToken cancellationToken) =>
                 TypedResults.ServerSentEvents(RelayAsync(sku, inventory, cancellationToken)))
             .AllowAnonymous()
+            .WithMetadata(new SkipBodyEncryptionAttribute())
             .WithTags("Flash Sale")
             .WithName("StreamFlashSaleOffers")
             .WithSummary("Server-sent events with the live remaining quantity of a SKU's flash-sale offers.");
