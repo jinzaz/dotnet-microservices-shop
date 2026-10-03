@@ -68,5 +68,9 @@ done
     [ -n "${pw[$key]:-}" ] && echo "$key='${pw[$key]}'"
   done
 } > "$passwords"
-chmod 600 "$passwords" "$certs"/*-openiddict.pfx 2>/dev/null || true
+# pfx 本身是密码加密的 PKCS12，光有读权限拿不到私钥；容器里跑的是镜像自带的非 root 用户（跟宿主机生成
+# 证书的用户不是同一个 UID），644 让它能读到文件。真正敏感的密码在 cert-passwords.env，保持 600：
+# 那个文件是 docker compose 在宿主机上读的，不会进容器。
+chmod 600 "$passwords" 2>/dev/null || true
+chmod 644 "$certs"/*-openiddict.pfx 2>/dev/null || true
 echo "输出目录：$certs"

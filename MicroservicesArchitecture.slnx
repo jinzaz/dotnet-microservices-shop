@@ -22,6 +22,8 @@
   <Folder Name="/0.Root/docker/scripts/">
     <File Path="docker/scripts/build-images.ps1" />
     <File Path="docker/scripts/build-images.sh" />
+    <File Path="docker/scripts/new-bodyenc-certs.ps1" />
+    <File Path="docker/scripts/new-bodyenc-certs.sh" />
     <File Path="docker/scripts/new-openiddict-certs.ps1" />
     <File Path="docker/scripts/new-openiddict-certs.sh" />
   </Folder>
