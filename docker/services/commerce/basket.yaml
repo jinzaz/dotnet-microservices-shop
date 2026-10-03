@@ -12,6 +12,7 @@ services:
     container_name: msa-basket
     environment:
       ASPNETCORE_URLS: "http://+:8080"
+      ServiceAuthentication__ClientId: "MSA_Svc_Basket"
       MSA_SERVICE_AUTHORITY: "${MSA_SERVICE_AUTHORITY}"
       MSA_CLIENT_SECRET_MSA_SVC_BASKET: "${MSA_CLIENT_SECRET_MSA_SVC_BASKET}"
     networks:

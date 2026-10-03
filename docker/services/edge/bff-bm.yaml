@@ -12,6 +12,8 @@ services:
     container_name: msa-bff-bm
     environment:
       ASPNETCORE_URLS: "http://+:8080"
+      ServiceAuthentication__ClientId: "MSA_Svc_BffBm"
+      OpenIddict__ClientId: "MSA_Bff_BM"
       OpenIddict__Issuer: "${MSA_ISSUER}"
       OpenIddict__InternalAddress: "${MSA_IDENTITY_INTERNAL_ADDRESS}"
       Bff__FrontendBaseUrl: "${MSA_ADMIN_FRONTEND_URL}"
