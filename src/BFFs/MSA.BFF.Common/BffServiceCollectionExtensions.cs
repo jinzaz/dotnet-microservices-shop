@@ -201,7 +201,15 @@ public static class BffServiceCollectionExtensions
                         AuthorizationEndpoint = new Uri(issuer, "connect/authorize"),
                         EndSessionEndpoint = new Uri(issuer, "connect/logout"),
                         TokenEndpoint = new Uri(internalBase, "connect/token"),
-                        JsonWebKeySetUri = new Uri(internalBase, ".well-known/jwks")
+                        JsonWebKeySetUri = new Uri(internalBase, ".well-known/jwks"),
+                        // 跳过自动发现（discovery 文档本来就会把 token_endpoint 等写成公网地址，起不到走内部地址的作用），
+                        // 但这几个 *Supported 列表不能空着：OpenIddict 客户端在发起登录跳转、处理回调时会拿它们
+                        // 跟自己支持的能力做交集，空列表在这几处没有"当作支持"的兜底，会直接抛异常或者静默跳过 PKCE。
+                        // 跟认证中心服务端实际开的流程（AllowAuthorizationCodeFlow + RequireProofKeyForCodeExchange +
+                        // AllowRefreshTokenFlow）保持一致。
+                        GrantTypesSupported = { GrantTypes.AuthorizationCode, GrantTypes.RefreshToken },
+                        ResponseTypesSupported = { ResponseTypes.Code },
+                        CodeChallengeMethodsSupported = { CodeChallengeMethods.Sha256 }
                     },
                     RegistrationId = configuration["OpenIddict:RegistrationId"] ?? clientId,
                     ClientId = clientId,
