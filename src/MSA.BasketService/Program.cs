@@ -72,7 +72,7 @@ builder.Services.AddIntegrationEventHandler<OrderSubmittedIntegrationEvent, Orde
 
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
-    options.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/");
+    options.SetMsaIssuer(builder.Configuration);
     options.AddAudiences("basket-api", "basket.admin.write", "basket.admin.read");
     options.UseSystemNetHttp();
     options.UseAspNetCore();

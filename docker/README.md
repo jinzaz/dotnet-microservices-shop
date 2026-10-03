@@ -93,9 +93,10 @@ docker compose logs -f msa-order
 
 - **服务之间**：网关转发、BFF 转发到网关都是 `http://<容器名>:8080`；gRPC 是 `http://<容器名>:8081`。
   明文 HTTP/2 需要单独的 Http2 端点（Kestrel 不会在明文端口上协商 HTTP/2），所以提供 gRPC 的服务多开一个 8081。
-- **认证中心是唯一的例外**：OpenIddict 要求 Issuer 是 HTTPS，且与令牌里的 `iss` 完全一致，所以浏览器登录、
-  各服务校验令牌（拉发现文档与签名公钥）、取服务令牌（client_credentials）都走 `MSA_ISSUER`
-  （`https://identity.${MSA_DOMAIN}/`），所以这个地址在容器里也必须能访问到，见「入口代理的要求」。
+- **认证中心是唯一的例外**：浏览器登录跳转必须走 `MSA_ISSUER`（`https://identity.${MSA_DOMAIN}/`），
+  OpenIddict 要求它是 HTTPS 且与令牌里的 `iss` 完全一致。但各服务校验令牌拉 JWKS、取服务令牌（client_credentials）
+  是后端对后端，不经浏览器，直接用容器内地址 `MSA_IDENTITY_INTERNAL_ADDRESS`（`http://msa-identity:8080`），
+  不用绕入口代理出去再回来。
 
 ## 配置分层
 
@@ -121,7 +122,7 @@ ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 
 | `INFRA_REDIS_HOST` / `PORT` / `PASSWORD` | `ConnectionStrings:Redis`（口令不能含逗号） |
 | `INFRA_RABBITMQ_HOST` / `PORT` / `USER` / `PASSWORD` / `VHOST` | `RabbitMQ:*` |
 | `INFRA_OSS_ENDPOINT` / `ACCESS_KEY` / `SECRET_KEY` | `ObjectStorage:*`（后台 BFF） |
-| `MSA_SERVICE_AUTHORITY` | `ServiceAuthentication:Authority` |
+| `MSA_SERVICE_AUTHORITY` | `ServiceAuthentication:Authority`（取服务令牌，值是容器内地址） |
 | `MSA_OTLP_ENDPOINT` | `OpenTelemetry:OtlpEndpoint`（全部 11 个服务，含网关与两个 BFF） |
 | `MSA_GRPC_<服务>_ADDRESS` | `GrpcClients:<服务>:Address`（按被调用的服务命名，例如 `MSA_GRPC_CATALOG_ADDRESS`；Docker 里是 `http://msa-catalog:8081`） |
 
@@ -154,10 +155,10 @@ ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 
 - **带转发头**：必须带 `X-Forwarded-Proto`（以及 `X-Forwarded-For` / `X-Forwarded-Host`）。服务端已开启
   `ASPNETCORE_FORWARDEDHEADERS_ENABLED`，靠它认出原始请求是 HTTPS：OpenIddict 只接受 HTTPS、
   BFF 会话 Cookie 带 Secure、登录回调地址也按它生成。缺了它登录会失败。
-- **容器里也能访问 `MSA_ISSUER`**：各服务校验令牌、取服务令牌都请求 `https://identity.${MSA_DOMAIN}/`。
-  入口代理在同一网络时，给它挂一个 `identity.${MSA_DOMAIN}` 的网络别名，这条流量就只在 Docker 网络内走；
-  不在同一网络时，要保证容器内能解析并访问到这个公网地址（内网 DNS 或 `extra_hosts`）。
-  `INFRA_OSS_ENDPOINT`（`https://oss.${MSA_DOMAIN}`）同理：后台 BFF 签出的地址给浏览器用，它自己也用这个地址读写对象。
+- **容器不需要访问 `MSA_ISSUER`**：校验令牌拉 JWKS、取服务令牌都走容器内地址 `MSA_IDENTITY_INTERNAL_ADDRESS`，
+  不依赖入口代理、也不要求容器能解析公网域名；`MSA_ISSUER` 只用来比对令牌里的 `iss` 和拼浏览器跳转地址。
+  `INFRA_OSS_ENDPOINT`（`https://oss.${MSA_DOMAIN}`）是例外：后台 BFF 签出的地址给浏览器用，它自己也用这个地址读写对象，
+  所以容器仍要能访问到这个公网地址（内网 DNS 或 `extra_hosts`）。
 - **SSE 不缓冲**：秒杀余量推流 `/bff/flash-sales/` 是长连接，要关掉响应缓冲（nginx：`proxy_buffering off`）
   并放长读超时（nginx：`proxy_read_timeout`）。
 

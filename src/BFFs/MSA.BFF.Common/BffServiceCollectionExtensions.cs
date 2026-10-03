@@ -7,6 +7,7 @@ using MSA.BFF.Common.Auth;
 using MSA.BFF.Common.Middleware;
 using MSA.Common;
 using MSA.Shared;
+using OpenIddict.Abstractions;
 using OpenIddict.Client;
 using OpenIddict.Client.AspNetCore;
 using Quartz;
@@ -127,6 +128,11 @@ public static class BffServiceCollectionExtensions
                 "OpenIddict:Issuer must be an absolute HTTP or HTTPS URI.");
         }
 
+        // 授权/登出端点要留给浏览器跳转，必须是公网域名；换 token 和拉 JWKS 是后端对后端，容器网络内部直连即可，
+        // 没必要经入口代理绕一圈。OpenIddict:InternalAddress 不配置时退回 Issuer，本地开发两者原本就是同一个地址。
+        var internalValue = configuration["OpenIddict:InternalAddress"] ?? issuerValue;
+        Uri.TryCreate(internalValue!.TrimEnd('/') + "/", UriKind.Absolute, out var internalBase);
+
         var clientId = configuration["OpenIddict:ClientId"];
         if (string.IsNullOrWhiteSpace(clientId))
             throw new InvalidOperationException("OpenIddict:ClientId is required.");
@@ -182,6 +188,14 @@ public static class BffServiceCollectionExtensions
                 var registration = new OpenIddictClientRegistration
                 {
                     Issuer = issuer,
+                    Configuration = internalBase is null ? null : new OpenIddictConfiguration
+                    {
+                        Issuer = issuer,
+                        AuthorizationEndpoint = new Uri(issuer, "connect/authorize"),
+                        EndSessionEndpoint = new Uri(issuer, "connect/logout"),
+                        TokenEndpoint = new Uri(internalBase, "connect/token"),
+                        JsonWebKeySetUri = new Uri(internalBase, ".well-known/jwks")
+                    },
                     RegistrationId = configuration["OpenIddict:RegistrationId"] ?? clientId,
                     ClientId = clientId,
                     ClientSecret = clientSecret,

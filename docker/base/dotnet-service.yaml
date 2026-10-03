@@ -8,8 +8,10 @@ services:
       # 服务只开明文 HTTP，TLS 在入口代理终止。打开转发头处理后，认证中心与 BFF 才能从 X-Forwarded-Proto
       # 认出原始请求是 HTTPS：OpenIddict 只接受 HTTPS、BFF 的会话 Cookie 带 Secure、登录回调地址也按它生成。
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
-      # 浏览器跳转登录与各服务校验令牌用的是同一个公网地址（经入口代理）。
+      # 浏览器跳转登录与各服务校验令牌（iss claim）用的是同一个公网地址（经入口代理）。
       Authentication__Issuer: ${MSA_ISSUER}
+      # 校验令牌时拉 JWKS 走容器网络直连认证中心，不经入口代理绕一圈；浏览器不用这个地址，不受影响。
+      Authentication__InternalAddress: ${MSA_IDENTITY_INTERNAL_ADDRESS}
       Database__MigrateOnStartup: ${MSA_MIGRATE_ON_STARTUP:-false}
       # 链路、指标、日志统一发往这个 OTLP（gRPC）端点（与 msa.env 同名，应用里合并进 OpenTelemetry:OtlpEndpoint）。
       MSA_OTLP_ENDPOINT: ${MSA_OTLP_ENDPOINT}

@@ -13,6 +13,7 @@ services:
     environment:
       ASPNETCORE_URLS: "http://+:8080"
       OpenIddict__Issuer: "${MSA_ISSUER}"
+      OpenIddict__InternalAddress: "${MSA_IDENTITY_INTERNAL_ADDRESS}"
       Bff__FrontendBaseUrl: "${MSA_ADMIN_FRONTEND_URL}"
       ReverseProxy__Clusters__gateway__Destinations__default__Address: "http://msa-gateway:8080/"
       MSA_SERVICE_AUTHORITY: "${MSA_SERVICE_AUTHORITY}"

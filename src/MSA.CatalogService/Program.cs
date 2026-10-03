@@ -81,7 +81,7 @@ builder.Services.AddMsaGrpcServer(builder.Environment.IsDevelopment());
 
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
-    options.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/");
+    options.SetMsaIssuer(builder.Configuration);
     options.AddAudiences("catalog-api");
     options.UseSystemNetHttp();
     options.UseAspNetCore();

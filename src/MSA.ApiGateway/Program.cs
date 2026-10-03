@@ -57,8 +57,7 @@ builder.Services
     .AddOpenIddict()
     .AddValidation(options =>
     {
-        options.SetIssuer(builder.Configuration["Authentication:Issuer"]
-            ?? throw new InvalidOperationException("Authentication:Issuer is required."));
+        options.SetMsaIssuer(builder.Configuration);
         //options.AddAudiences(builder.Configuration["Authentication:Audience"] ?? "api"); // 网关暂时不参与授权，直接转发 downstream 的 access token，audience 由 downstream 验证。
         options.UseSystemNetHttp();
         options.UseAspNetCore();

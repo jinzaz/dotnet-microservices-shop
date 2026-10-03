@@ -144,7 +144,7 @@ builder.Services.AddScoped<ISagaTimeoutHandler, OrderSagaTimeoutHandler>();
 // 如果注入了 AddControllers() , 则必须手动指定认证方案，否则会出现 409 Conflict 错误。因为 AddControllers() 会覆盖默认的认证方案。
 builder.Services.AddOpenIddict().AddValidation(options =>
 {
-    options.SetIssuer(builder.Configuration["Authentication:Issuer"] ?? "https://localhost:10002/");
+    options.SetMsaIssuer(builder.Configuration);
     options.AddAudiences("order-api", "order.admin.write", "order.admin.read");
     options.UseSystemNetHttp();
     options.UseAspNetCore();
