@@ -47,18 +47,6 @@ public static class BffEndpoints
             .WithName("BffLogoutCallback")
             .WithSummary("Complete the identity-provider logout flow.");
 
-        endpoints.MapMethods("/api/bff/callback/login", [HttpMethods.Get, HttpMethods.Post], LoginCallback)
-            .AllowAnonymous()
-            .DisableAntiforgery()
-            .WithName("ConfiguredBffLoginCallback")
-            .ExcludeFromDescription();
-
-        endpoints.MapMethods("/api/bff/callback/logout", [HttpMethods.Get, HttpMethods.Post], LogoutCallback)
-            .AllowAnonymous()
-            .DisableAntiforgery()
-            .WithName("ConfiguredBffLogoutCallback")
-            .ExcludeFromDescription();
-
         bff.MapGet("/user", (Delegate)GetUserAsync)
             .AllowAnonymous()
             .WithName("GetBffUserSession")
