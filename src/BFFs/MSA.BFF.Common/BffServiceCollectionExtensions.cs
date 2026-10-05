@@ -192,25 +192,25 @@ public static class BffServiceCollectionExtensions
 
                 options.UseSystemNetHttp().SetProductInformation(productAssembly);
 
+                // 不能手写静态 OpenIddictConfiguration：那样 OpenIddict 不会去拉 JWKS，id_token 验签必失败。
+                // 改为从内部地址拉 discovery（签名密钥、*Supported 元数据都来自它），再改写端点：认证中心按请求进来的
+                // 地址生成端点，内部拉到的全是内部地址，所以浏览器要跳的授权/登出端点改回公网，token/JWKS 走内部。
+                options.AddEventHandler<OpenIddictClientEvents.HandleConfigurationResponseContext>(handler => handler
+                    .UseInlineHandler(context =>
+                    {
+                        context.Configuration.AuthorizationEndpoint = new Uri(issuer, "connect/authorize");
+                        context.Configuration.EndSessionEndpoint = new Uri(issuer, "connect/logout");
+                        context.Configuration.TokenEndpoint = new Uri(internalBase, "connect/token");
+                        context.Configuration.JsonWebKeySetUri = new Uri(internalBase, ".well-known/jwks");
+                        return default;
+                    })
+                    .SetOrder(int.MaxValue)
+                    .SetType(OpenIddictClientHandlerType.Custom));
+
                 var registration = new OpenIddictClientRegistration
                 {
                     Issuer = issuer,
-                    Configuration = new OpenIddictConfiguration
-                    {
-                        Issuer = issuer,
-                        AuthorizationEndpoint = new Uri(issuer, "connect/authorize"),
-                        EndSessionEndpoint = new Uri(issuer, "connect/logout"),
-                        TokenEndpoint = new Uri(internalBase, "connect/token"),
-                        JsonWebKeySetUri = new Uri(internalBase, ".well-known/jwks"),
-                        // 跳过自动发现（discovery 文档本来就会把 token_endpoint 等写成公网地址，起不到走内部地址的作用），
-                        // 但这几个 *Supported 列表不能空着：OpenIddict 客户端在发起登录跳转、处理回调时会拿它们
-                        // 跟自己支持的能力做交集，空列表在这几处没有"当作支持"的兜底，会直接抛异常或者静默跳过 PKCE。
-                        // 跟认证中心服务端实际开的流程（AllowAuthorizationCodeFlow + RequireProofKeyForCodeExchange +
-                        // AllowRefreshTokenFlow）保持一致。
-                        GrantTypesSupported = { GrantTypes.AuthorizationCode, GrantTypes.RefreshToken },
-                        ResponseTypesSupported = { ResponseTypes.Code },
-                        CodeChallengeMethodsSupported = { CodeChallengeMethods.Sha256 }
-                    },
+                    ConfigurationEndpoint = new Uri(internalBase, ".well-known/openid-configuration"),
                     RegistrationId = configuration["OpenIddict:RegistrationId"] ?? clientId,
                     ClientId = clientId,
                     ClientSecret = clientSecret,

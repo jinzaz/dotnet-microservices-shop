@@ -8,7 +8,7 @@ description: Implement or change the repository's browser-facing MSA.BFF.Web and
 - Reuse BFF authentication, server-side session, token refresh, CSRF, and YARP code through `MSA.BFF.Common`; keep business-manager PBAC code in `MSA.BFF.BM`.
 - Use OpenIddict Authorization Code with PKCE. Tokens stay in the encrypted server-side session and never reach browser JavaScript.
 - BFF-owned endpoints start with `/bff`. Only gateway pass-through endpoints start with `/api`; forward their path unchanged to the API gateway.
-- Keep the two exact `/api/bff/callback/*` aliases only while the existing Identity Application registrations point there; they are local OIDC callbacks, never YARP routes.
+- OIDC callbacks are `/bff/callback/login` and `/bff/callback/logout`; Identity `RedirectUris` / `PostLogoutRedirectUris` must use exactly these paths.
 - Strip inbound `Cookie` and `Authorization` headers before proxying, then attach the current session's access token.
 - Require CSRF validation for every unsafe browser request except OpenID Connect callbacks.
 - BM proxy access is deny-by-default: a `/api` route must match a persisted route-permission entry and an explicit allow policy. Any matching deny policy wins.

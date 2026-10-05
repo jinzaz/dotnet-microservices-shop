@@ -165,11 +165,16 @@ internal static class ServiceCollection
                     options.AddEncryptionCertificate(certificate).AddSigningCertificate(certificate);
                 }
 
-                options.UseAspNetCore()
+                var aspNetCore = options.UseAspNetCore()
                     .EnableAuthorizationEndpointPassthrough()
                     .EnableTokenEndpointPassthrough()
                     .EnableEndSessionEndpointPassthrough()
                     .EnableStatusCodePagesIntegration();
+
+                // 非开发环境 TLS 终止在 nginx：公网请求带 X-Forwarded-Proto=https，但 BFF/服务经 MSA_IDENTITY_INTERNAL_ADDRESS
+                // 直连容器的 /connect/token、/.well-known/jwks 是明文 HTTP，不关掉会被 ID2083 拒掉。容器不映射端口，外部够不着。
+                if (!environment.IsDevelopment())
+                    aspNetCore.DisableTransportSecurityRequirement();
             })
             .AddValidation(options =>
             {

@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using OpenIddict.Abstractions;
+using OpenIddict.Validation;
 
 namespace MSA.Common;
 
@@ -18,12 +18,19 @@ public static class MsaResourceValidation
         var issuer = RequireUri(configuration, "Authentication:Issuer");
         builder.SetIssuer(issuer);
 
-        var internalBase = RequireUri(configuration, "Authentication:InternalAddress");
-        builder.SetConfiguration(new OpenIddictConfiguration
-        {
-            Issuer = issuer,
-            JsonWebKeySetUri = new Uri(new Uri(internalBase.AbsoluteUri.TrimEnd('/') + "/"), ".well-known/jwks")
-        });
+        // 不能用 SetConfiguration 手写静态配置：那样 OpenIddict 不会去拉 JWKS，所有令牌验签都失败。
+        // 改为从内部地址拉 discovery，再把文档里的公网 JWKS 地址换成内部地址。
+        var internalBase = new Uri(RequireUri(configuration, "Authentication:InternalAddress").AbsoluteUri.TrimEnd('/') + "/");
+        builder.Configure(options =>
+            options.ConfigurationEndpoint = new Uri(internalBase, ".well-known/openid-configuration"));
+        builder.AddEventHandler<OpenIddictValidationEvents.HandleConfigurationResponseContext>(handler => handler
+            .UseInlineHandler(context =>
+            {
+                context.Configuration.JsonWebKeySetUri = new Uri(internalBase, ".well-known/jwks");
+                return default;
+            })
+            .SetOrder(int.MaxValue)
+            .SetType(OpenIddictValidationHandlerType.Custom));
 
         return builder;
     }
