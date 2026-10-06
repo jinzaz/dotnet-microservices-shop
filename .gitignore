@@ -366,6 +366,5 @@ docker/.env
 docker/certs/
 
 # web dist
-src/MSA.Web/Front/dist
-src/MSA.Web/BM/dist
-src/MSA.Web/Identity/dist
+# 前端构建产物（npm run build），由 nginx 部署时单独拷贝，不入库
+src/MSA.Web/*/dist/

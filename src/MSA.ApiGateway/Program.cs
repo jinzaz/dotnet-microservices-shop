@@ -59,7 +59,9 @@ builder.Services
         options.SetMsaIssuer(builder.Configuration);
         //options.AddAudiences(builder.Configuration["Authentication:Audience"] ?? "api"); // 网关暂时不参与授权，直接转发 downstream 的 access token，audience 由 downstream 验证。
         options.UseSystemNetHttp();
-        options.UseAspNetCore();
+        // 网关只是转发：不能为了找 access_token 表单参数把请求体读掉，否则 YARP 转发时请求体已经空了
+        // （Content-Length 对不上，下游读表单被中止、浏览器收到 400），例如认证中心的授权确认表单 POST /connect/authorize。
+        options.UseAspNetCore().DisableAccessTokenExtractionFromBodyForm();
     });
 
 // Use YARP and load static config; dynamic service discovery can be plugged in separately
