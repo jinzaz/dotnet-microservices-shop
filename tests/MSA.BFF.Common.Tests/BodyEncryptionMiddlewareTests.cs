@@ -30,7 +30,7 @@ public sealed class BodyEncryptionMiddlewareTests
         builder.WebHost.UseTestServer();
         builder.Environment.EnvironmentName = Environments.Development; // 没配证书时自动生成一把临时密钥
         builder.Services.AddRouting();
-        builder.Services.AddBffBodyEncryption(builder.Environment);
+        builder.Services.AddBffBodyEncryption();
 
         _app = builder.Build();
         _app.UseBffBodyEncryption();
@@ -48,7 +48,7 @@ public sealed class BodyEncryptionMiddlewareTests
 
         await _app.StartAsync();
         _client = _app.GetTestClient();
-        _serverKey = _app.Services.GetRequiredService<BodyEncryptionServerKey>();
+        _serverKey = _app.Services.GetRequiredService<BodyEncryptionKeyRing>().Current;
     }
 
     [TestCleanup]
@@ -125,6 +125,45 @@ public sealed class BodyEncryptionMiddlewareTests
         var response = await _client.SendAsync(request);
 
         Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task PublicKeyEndpointAnnouncesTheKeyIdAndIsNeverCached()
+    {
+        var response = await _client.GetAsync("/bff/security/public-key");
+
+        Assert.AreEqual(_serverKey.Kid, response.Headers.GetValues(BodyEncryptionMiddleware.KeyIdHeader).Single());
+        Assert.IsTrue(response.Headers.CacheControl?.NoStore);
+        CollectionAssert.AreEqual(_serverKey.PublicKeyRaw, await response.Content.ReadAsByteArrayAsync());
+    }
+
+    [TestMethod]
+    public async Task RequestCarryingTheCurrentKeyIdRoundTrips()
+    {
+        using var client = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        var (c2s, s2c) = DeriveKeys(client, _serverKey.PublicKeyRaw);
+
+        using var request = EncryptedRequest(HttpMethod.Post, "/echo", client, c2s, "{\"n\":1}"u8.ToArray());
+        request.Headers.Add(BodyEncryptionMiddleware.KeyIdHeader, _serverKey.Kid);
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual("{\"echo\":{\"n\":1}}", await DecryptResponseAsync(response, s2c));
+    }
+
+    [TestMethod]
+    public async Task RetiredKeyIdIsRejectedWithASignalToRefetchTheKey()
+    {
+        // 浏览器缓存的公钥已经退役：明确告诉它重拉，而不是用当前密钥加密一个它解不开的响应。
+        using var client = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        var (c2s, _) = DeriveKeys(client, _serverKey.PublicKeyRaw);
+
+        using var request = EncryptedRequest(HttpMethod.Post, "/echo", client, c2s, "{\"n\":1}"u8.ToArray());
+        request.Headers.Add(BodyEncryptionMiddleware.KeyIdHeader, "retired-key-id");
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.IsTrue(response.Headers.Contains(BodyEncryptionMiddleware.UnknownKeyHeader));
+        Assert.AreNotEqual(BodyEncryptionMiddleware.ContentType, response.Content.Headers.ContentType?.MediaType);
     }
 
     private static byte[] ExportRawPublicKey(ECDiffieHellman key)

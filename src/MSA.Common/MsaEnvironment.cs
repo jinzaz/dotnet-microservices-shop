@@ -13,7 +13,7 @@ namespace MSA.Common;
 /// 地址与口令要和这些部分拼在一起，所以合并进对应的配置键，业务代码照旧读 ConnectionStrings:Postgresql、RabbitMQ:HostName：
 /// </para>
 /// <list type="bullet">
-/// <item>INFRA_POSTGRES_HOST / PORT / USER / PASSWORD → ConnectionStrings:Postgresql、DefaultConnection</item>
+/// <item>INFRA_POSTGRES_HOST / PORT / USER / PASSWORD → ConnectionStrings:Postgresql、DefaultConnection、Certificates</item>
 /// <item>INFRA_REDIS_HOST / PORT / PASSWORD → ConnectionStrings:Redis</item>
 /// <item>INFRA_RABBITMQ_HOST / PORT / USER / PASSWORD / VHOST → RabbitMQ:*</item>
 /// <item>INFRA_OSS_ENDPOINT / ACCESS_KEY / SECRET_KEY → ObjectStorage:*</item>
@@ -34,7 +34,8 @@ public static class MsaEnvironment
         var current = builder as IConfiguration ?? builder.Build();
         var values = new Dictionary<string, string?>();
 
-        foreach (var name in new[] { "Postgresql", "DefaultConnection" })
+        // Certificates：证书库（CertificateDb），认证中心与两个 BFF 读自己的证书、存 DataProtection 密钥环。
+        foreach (var name in new[] { "Postgresql", "DefaultConnection", "Certificates" })
         {
             if (current.GetConnectionString(name) is { } connectionString)
                 values[$"ConnectionStrings:{name}"] = Postgres(name, connectionString, env);

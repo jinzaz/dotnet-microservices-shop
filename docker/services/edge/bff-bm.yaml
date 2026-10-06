@@ -24,6 +24,8 @@ services:
       INFRA_OSS_ENDPOINT: "${INFRA_OSS_ENDPOINT}"
       INFRA_OSS_ACCESS_KEY: "${INFRA_OSS_ACCESS_KEY}"
       INFRA_OSS_SECRET_KEY: "${INFRA_OSS_SECRET_KEY}"
+      # 证书库：私钥与 DataProtection 密钥环用自己的 KEK 解密。证书库里有当前证书时下面两个 pfx 不再使用（迁移期的退路）。
+      MSA_CERT_KEK_BFF_BM: "${MSA_CERT_KEK_BFF_BM}"
       MSA_OPENIDDICT_CERT_PATH: /certs/openiddict.pfx
       MSA_OPENIDDICT_CERT_PASSWORD: "${MSA_BFF_BM_OPENIDDICT_CERT_PASSWORD}"
       # body 加密密钥，跟上面的 OpenIddict 证书是两套独立密钥（scripts/new-bodyenc-certs）。

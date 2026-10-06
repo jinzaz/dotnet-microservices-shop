@@ -2,12 +2,13 @@ import { getCsrfToken } from '../../features/auth/auth-session';
 import { toApiError } from './api-error';
 import { apiUrl, bffUrl } from '../config/api';
 import {
+  applyBodyEncryptionHeaders,
   createBodyEncryptionContext,
   decryptResponseBody,
   encryptRequestBody,
-  ephemeralKeyHeaderValue,
   ENCRYPTED_CONTENT_TYPE,
-  EPHEMERAL_KEY_HEADER,
+  isUnknownKeyResponse,
+  resetServerPublicKeyCache,
   type BodyEncryptionContext,
 } from './body-crypto';
 
@@ -29,6 +30,32 @@ export function bffRequest<T>(path: string, options: ApiRequestOptions = {}): Pr
   return sendRequest<T>(bffUrl(path), options);
 }
 
+async function sendEncrypted(url: string, body: unknown, requestOptions: Omit<ApiRequestOptions, 'body'>, headers: Headers) {
+  // 每次请求用一把临时密钥：没有 body 的请求（GET 之类）也带这个头，响应才能被加密——
+  // 密钥协商不依赖请求体是否存在。
+  const cryptoContext = await createBodyEncryptionContext();
+  applyBodyEncryptionHeaders(headers, cryptoContext);
+
+  let requestBody: BodyInit | undefined;
+  if (body !== undefined) {
+    const plaintext = new TextEncoder().encode(JSON.stringify(body));
+    requestBody = await encryptRequestBody(cryptoContext, plaintext);
+    headers.set('Content-Type', ENCRYPTED_CONTENT_TYPE);
+  }
+
+  try {
+    const response = await fetch(url, {
+      ...requestOptions,
+      credentials: 'include',
+      headers,
+      body: requestBody,
+    });
+    return { response, cryptoContext };
+  } catch {
+    throw new Error('暂时无法连接服务，请确认 MSA.BFF.Web 已启动。');
+  }
+}
+
 async function sendRequest<T>(url: string, options: ApiRequestOptions): Promise<T> {
   const { body, headers: suppliedHeaders, ...requestOptions } = options;
   const headers = new Headers(suppliedHeaders);
@@ -38,31 +65,14 @@ async function sendRequest<T>(url: string, options: ApiRequestOptions): Promise<
     headers.set('X-XSRF-TOKEN', await getCsrfToken());
   }
 
-  // 每次请求用一把临时密钥：没有 body 的请求（GET 之类）也带这个头，响应才能被加密——
-  // 密钥协商不依赖请求体是否存在。
-  const cryptoContext = await createBodyEncryptionContext();
-  headers.set(EPHEMERAL_KEY_HEADER, ephemeralKeyHeaderValue(cryptoContext));
-
-  let requestBody: BodyInit | undefined;
-  if (body !== undefined) {
-    const plaintext = new TextEncoder().encode(JSON.stringify(body));
-    requestBody = await encryptRequestBody(cryptoContext, plaintext);
-    headers.set('Content-Type', ENCRYPTED_CONTENT_TYPE);
+  let sent = await sendEncrypted(url, body, requestOptions, headers);
+  if (isUnknownKeyResponse(sent.response)) {
+    // 打开页面之后 BFF 轮换了加密密钥、旧密钥也已退役：服务端在处理前就拒绝了，重拉公钥再发一次是安全的。
+    resetServerPublicKeyCache();
+    sent = await sendEncrypted(url, body, requestOptions, headers);
   }
 
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      ...requestOptions,
-      credentials: 'include',
-      headers,
-      body: requestBody,
-    });
-  } catch {
-    throw new Error('暂时无法连接服务，请确认 MSA.BFF.Web 已启动。');
-  }
-
-  response = await decryptResponseIfNeeded(response, cryptoContext);
+  const response = await decryptResponseIfNeeded(sent.response, sent.cryptoContext);
 
   if (!response.ok) {
     throw await toApiError(response, '服务请求失败，请稍后重试。');

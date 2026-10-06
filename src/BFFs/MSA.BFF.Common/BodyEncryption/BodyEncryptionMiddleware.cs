@@ -18,11 +18,17 @@ namespace MSA.BFF.Common.BodyEncryption;
 ///
 /// AEAD（GCM）天然要求拿到完整消息才能校验 tag，所以响应必须整段缓冲再加密——SSE、文件上传/下载
 /// 这类流式或大体量端点要用 [SkipBodyEncryption] 跳过，否则等于把整个响应塞进内存。
+///
+/// 服务端密钥会轮换：浏览器在 X-Msa-Kid 头里带上它拿到的公钥标识，服务端用对应的密钥（当前或保留期内的旧密钥）。
+/// 标识认不出来（旧密钥已退役）时返回 400 并带 X-Msa-Kid-Unknown 头，前端据此重拉公钥再重试一次。
+/// 不带 X-Msa-Kid 的旧客户端按当前密钥处理。
 /// </summary>
-public sealed class BodyEncryptionMiddleware(BodyEncryptionServerKey serverKey, ILogger<BodyEncryptionMiddleware> logger) : IMiddleware
+public sealed class BodyEncryptionMiddleware(BodyEncryptionKeyRing keyRing, ILogger<BodyEncryptionMiddleware> logger) : IMiddleware
 {
     public const string ContentType = "application/vnd.msa.enc";
     public const string EphemeralKeyHeader = "X-Msa-Ekey";
+    public const string KeyIdHeader = "X-Msa-Kid";
+    public const string UnknownKeyHeader = "X-Msa-Kid-Unknown";
 
     private static readonly byte[] RequestInfo = "msa-body-c2s"u8.ToArray();
     private static readonly byte[] ResponseInfo = "msa-body-s2c"u8.ToArray();
@@ -43,10 +49,24 @@ public sealed class BodyEncryptionMiddleware(BodyEncryptionServerKey serverKey, 
             return;
         }
 
+        var kid = context.Request.Headers[KeyIdHeader].ToString();
+        BodyEncryptionServerKey? serverKey;
+        if (kid.Length == 0)
+        {
+            serverKey = keyRing.Current;
+        }
+        else if (!keyRing.TryGet(kid, out serverKey))
+        {
+            // 不加密这个响应：浏览器手里的公钥已经对不上了，加了它也解不开。
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            context.Response.Headers[UnknownKeyHeader] = "1";
+            return;
+        }
+
         byte[] c2sKey, s2cKey;
         try
         {
-            (c2sKey, s2cKey) = DeriveKeys(headerValue.ToString());
+            (c2sKey, s2cKey) = DeriveKeys(serverKey, headerValue.ToString());
         }
         catch (Exception ex) when (ex is FormatException or CryptographicException or PlatformNotSupportedException or ArgumentException)
         {
@@ -85,7 +105,7 @@ public sealed class BodyEncryptionMiddleware(BodyEncryptionServerKey serverKey, 
         await WriteEncryptedResponseAsync(context, buffered, s2cKey, originalResponseBody);
     }
 
-    private (byte[] C2S, byte[] S2C) DeriveKeys(string headerValue)
+    private static (byte[] C2S, byte[] S2C) DeriveKeys(BodyEncryptionServerKey serverKey, string headerValue)
     {
         var clientPublicKeyRaw = Convert.FromBase64String(headerValue);
 

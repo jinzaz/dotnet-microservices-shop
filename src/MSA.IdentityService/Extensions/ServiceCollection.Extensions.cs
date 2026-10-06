@@ -1,6 +1,6 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
-using MSA.Shared;
+using MSA.Certificates;
 using Microsoft.AspNetCore.WebUtilities;
 using OpenIddict.Validation.AspNetCore;
 
@@ -153,17 +153,14 @@ internal static class ServiceCollection
                     IdentityServiceConstants.Scopes.Basket,
                     IdentityServiceConstants.Scopes.Notification,
                     IdentityServiceConstants.Scopes.Order);
+                // 签名（oidc-signing）/ 加密（oidc-encryption）证书来自证书库，两个用途分开轮换，不用重启；
+                // 证书库里还没有时，开发环境用开发证书，其余环境用环境变量里的 pfx（同一张兼作签名与加密）。
                 if (environment.IsDevelopment())
                 {
                     options.AddDevelopmentEncryptionCertificate()
                     .AddDevelopmentSigningCertificate();
                 }
-                else
-                {
-                    // 签名 / 加密令牌的证书：生产环境只从环境变量读取。
-                    var certificate = OpenIddictCertificateEnvironment.Load();
-                    options.AddEncryptionCertificate(certificate).AddSigningCertificate(certificate);
-                }
+                options.UseMsaCertificates();
 
                 var aspNetCore = options.UseAspNetCore()
                     .EnableAuthorizationEndpointPassthrough()

@@ -3,6 +3,7 @@ using MSA.Observability;
 using Microsoft.EntityFrameworkCore;
 using MSA.BFF.Common;
 using MSA.BFF.Common.BodyEncryption;
+using MSA.Certificates;
 using MSA.BFF.Web;
 using MSA.Grpc;
 using MSA.Grpc.Contracts.Inventory;
@@ -22,7 +23,9 @@ builder.Services.AddDbContext<BffWebDbContext>(options =>
     options.UseOpenIddict();
 });
 builder.Services.AddOpenApi();
-builder.Services.AddBffBodyEncryption(builder.Environment);
+// 证书库：OIDC state token 证书、请求体加密密钥的来源；DataProtection 密钥环（会话票据）也存进去，发版不再全员掉线。
+builder.Services.AddMsaCertificates(builder.Configuration);
+builder.Services.AddBffBodyEncryption();
 builder.Services.AddBff(redis, "MSAWeb");
 builder.Services.AddBffOpenIddictClient<BffWebDbContext>(
     builder.Configuration,

@@ -1,10 +1,11 @@
 import {
+  applyBodyEncryptionHeaders,
   createBodyEncryptionContext,
   decryptResponseBody,
   encryptRequestBody,
-  ephemeralKeyHeaderValue,
   ENCRYPTED_CONTENT_TYPE,
-  EPHEMERAL_KEY_HEADER,
+  isUnknownKeyResponse,
+  resetServerPublicKeyCache,
   type BodyEncryptionContext,
 } from './body-crypto';
 
@@ -117,18 +118,11 @@ async function decryptResponseIfNeeded(response: Response, context: BodyEncrypti
   return new Response(plaintext, { status: response.status, statusText: response.statusText, headers });
 }
 
-export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const method = options.method?.toUpperCase() ?? 'GET';
-  const headers = new Headers(options.headers);
-  headers.set('Accept', 'application/json');
-  if (!['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method)) {
-    headers.set('X-XSRF-TOKEN', await csrfToken());
-  }
-
+async function sendEncrypted(path: string, method: string, options: RequestOptions, headers: Headers) {
   // 每次请求用一把临时密钥：没有 body 的请求（GET 之类）也带这个头，响应才能被加密——
   // 密钥协商不依赖请求体是否存在。
   const cryptoContext = await createBodyEncryptionContext();
-  headers.set(EPHEMERAL_KEY_HEADER, ephemeralKeyHeaderValue(cryptoContext));
+  applyBodyEncryptionHeaders(headers, cryptoContext);
 
   let requestBody: BodyInit | undefined;
   if (options.body !== undefined) {
@@ -137,21 +131,37 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     headers.set('Content-Type', ENCRYPTED_CONTENT_TYPE);
   }
 
-  let response: Response;
   try {
-    response = await fetch(absolute(path), {
+    const response = await fetch(absolute(path), {
       ...options,
       method,
       credentials: 'include',
       headers,
       body: requestBody,
     });
+    return { response, cryptoContext };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new Error('暂时无法连接 MSA.BFF.BM，请确认服务已启动。');
   }
+}
 
-  response = await decryptResponseIfNeeded(response, cryptoContext);
+export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const method = options.method?.toUpperCase() ?? 'GET';
+  const headers = new Headers(options.headers);
+  headers.set('Accept', 'application/json');
+  if (!['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method)) {
+    headers.set('X-XSRF-TOKEN', await csrfToken());
+  }
+
+  let sent = await sendEncrypted(path, method, options, headers);
+  if (isUnknownKeyResponse(sent.response)) {
+    // 打开页面之后 BFF 轮换了加密密钥、旧密钥也已退役：服务端在处理前就拒绝了，重拉公钥再发一次是安全的。
+    resetServerPublicKeyCache();
+    sent = await sendEncrypted(path, method, options, headers);
+  }
+
+  const response = await decryptResponseIfNeeded(sent.response, sent.cryptoContext);
 
   if (!response.ok) {
     const problem = await readProblem(response);

@@ -16,7 +16,7 @@ docker/
 │   ├── edge/        gateway.yaml  bff-web.yaml  bff-bm.yaml
 │   ├── identity/    identity.yaml user.yaml
 │   ├── commerce/    catalog.yaml  inventory.yaml basket.yaml order.yaml payment.yaml
-│   └── platform/    notification.yaml
+│   └── platform/    notification.yaml certificate.yaml
 ├── config/                      # 结构化配置覆盖，挂载为 /app/appsettings.<环境>.json
 │   ├── gateway/appsettings.json     # YARP 集群地址
 │   └── identity/appsettings.json    # OpenIddict 客户端注册（回调地址、scope；密钥来自 .env）
@@ -92,6 +92,7 @@ docker compose logs -f msa-order
 | 订单 | msa-order | 8080 | 8081 | 否 |
 | 支付 | msa-payment | 8080 | 8081 | 只有 `/payment/callbacks/` |
 | 通知 | msa-notification | 8080 | — | 否 |
+| 证书 | msa-certificate | 8080 | — | 只有 80 端口的 `/.well-known/acme-challenge/`（HTTP-01 验证） |
 | 商城 BFF | msa-bff-web | 8080 | — | `https://shop.${MSA_DOMAIN}` 下的 `/api`、`/bff`（与商城前端同域） |
 | 后台 BFF | msa-bff-bm | 8080 | — | `https://admin.${MSA_DOMAIN}` 下的 `/api`、`/bff`（与后台前端同域） |
 
@@ -180,7 +181,30 @@ ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 
 `.env.production` 里是 `msa.test.com` 的值，与 `.env` 的 `MSA_DOMAIN` 保持一致。开发时（`npm run dev` / `dev.bat`）不读这些文件，
 仍由 Vite 代理把 `/bff`、`/api` 转到本机的 BFF / 网关。
 
-## OpenIddict 密钥证书
+## 证书库与自动续期
+
+证书统一由证书服务（msa-certificate，库 `CertificateDb`）管理，后台"证书"页面可以导入、导出、生成、吊销，并配置 Let's Encrypt 托管：
+
+| 用途 | 使用方 | 轮换 |
+|---|---|---|
+| 令牌签名 `oidc-signing` / 令牌加密 `oidc-encryption` | 认证中心 | 每 90 天或到期前 30 天自动生成接替证书；签名证书提前 2 天发布到 JWKS，旧证书保留 15 天 |
+| 登录状态令牌 `oidc-client` | 两个 BFF | 同上，旧证书保留 1 天 |
+| 请求体加密 `body-encryption` | 两个 BFF | 每 30 天自动轮换，旧密钥保留 1 天；前端按 kid 发现轮换后自动重拉公钥 |
+| 站点证书 `tls` | 入口 nginx | ACME 托管的站点用掉 2/3 寿命自动续订，写到 `MSA_TLS_DEPLOY_DIR/<站点名>/` |
+
+- **KEK**：私钥用使用方自己的 KEK（`MSA_CERT_KEK_*`，见 `.env.example`）加密入库，所有服务共用一个数据库账号也拿不到别人的私钥。
+  认证中心与两个 BFF 的 DataProtection 密钥环（登录 Cookie、会话票据）也存在证书库里，发版重建容器不再让所有人掉线。
+- **换证书不用重启**：各服务每分钟检查一次证书库，新证书到生效时间自动启用。
+- **定时任务**：证书服务每小时检查一轮（`Renewal__Interval`），后台可以"立即检查续期"。失败的 ACME 申请按 1、2、4…24 小时退避重试。
+- **ACME**：普通域名可用 HTTP-01（nginx 80 端口已把 `/.well-known/acme-challenge/` 转给证书服务）；通配符域名只能用 DNS-01，
+  需要配置阿里云或 Cloudflare 凭据。先用"测试环境"跑通再切正式环境。
+- **nginx 生效**：nginx 不会自己重新读证书，宿主机加一条每天 `nginx -t && nginx -s reload` 的定时任务（见 `nginx/msa.conf`）。
+
+**升级步骤**（已有部署）：先执行证书服务的迁移（`Database__MigrateOnStartup=true` 或 `dotnet ef database update`），在 `.env` 里填好四个 KEK，
+再到后台把现有的 `*-openiddict.pfx` 按用途导入（认证中心那张同时导入为 `oidc-signing` 和 `oidc-encryption`）并立即生效，最后启用自动轮换。
+证书库里某个用途还没有当前证书时，服务继续用下面两节的环境变量 pfx，所以先导入再上线，已签发的令牌不受影响。
+
+## OpenIddict 密钥证书（迁移前 / 证书库为空时的退路）
 
 `scripts/new-openiddict-certs.ps1`（或 `.sh`）生成三份互相独立的密钥证书。它们只是签名 / 加密密钥的载体，
 不参与 TLS，自签名即可：
@@ -198,7 +222,7 @@ ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 
 - 已有的证书默认保留：换掉认证中心的密钥，已签发的令牌全部失效；换掉 BFF 的，进行中的登录会失败。
   确实要轮换时加 `-Force`，可配合 `-Only identity` 只换一个（bash 版：`--force identity`）。
 
-## Body 加密密钥证书
+## Body 加密密钥证书（迁移前 / 证书库为空时的退路）
 
 `scripts/new-bodyenc-certs.ps1`（或 `.sh`）生成两个 BFF 各自的 body 加密密钥（浏览器 ⇄ BFF 的请求/响应体，
 ECDH P-256，跟上面的 OpenIddict 证书是完全独立的两套密钥，口令写进同一份 `cert-passwords.env`）：

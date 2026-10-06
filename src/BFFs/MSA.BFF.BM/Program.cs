@@ -9,6 +9,7 @@ using MSA.BFF.BM.Endpoints;
 using MSA.BFF.BM.ObjectStorage;
 using MSA.BFF.Common;
 using MSA.BFF.Common.BodyEncryption;
+using MSA.Certificates;
 using MSA.Grpc;
 using MSA.Grpc.Contracts.Inventory;
 using MSA.Grpc.Contracts.Order;
@@ -33,7 +34,9 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(
         new JsonStringEnumConverter(allowIntegerValues: false)));
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddBffBodyEncryption(builder.Environment);
+// 证书库：OIDC state token 证书、请求体加密密钥的来源；DataProtection 密钥环（会话票据）也存进去，发版不再全员掉线。
+builder.Services.AddMsaCertificates(builder.Configuration);
+builder.Services.AddBffBodyEncryption();
 builder.Services.AddBff(redis, "MSABm");
 builder.Services.AddBffOpenIddictClient<BffBmDbContext>(
     builder.Configuration,

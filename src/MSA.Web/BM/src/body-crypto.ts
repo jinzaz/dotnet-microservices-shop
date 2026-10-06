@@ -7,6 +7,8 @@
 //   - 信封：nonce(12 字节) || ciphertext+tag（AES-GCM 的 tag 默认拼在密文末尾，不用分开传）。
 //   - HKDF info：请求方向 "msa-body-c2s"，响应方向 "msa-body-s2c"，没有 salt（空）。
 //
+// 服务端密钥会轮换：公钥接口的 X-Msa-Kid 响应头随请求带回；服务端回 X-Msa-Kid-Unknown 时重拉公钥再发一次。
+//
 // 跟 MSA.Web.Front 的 shared/api/body-crypto.ts 是同一份逻辑的两份拷贝：两个项目各自独立打包，
 // 没有共享包基础设施，重复这一个小文件比引入 monorepo 工作区划算。
 
@@ -15,33 +17,49 @@ const baseUrl = configuredBaseUrl.replace(/\/$/, '');
 
 export const ENCRYPTED_CONTENT_TYPE = 'application/vnd.msa.enc';
 export const EPHEMERAL_KEY_HEADER = 'X-Msa-Ekey';
+/** 服务端公钥标识：公钥接口在响应头里给出，加密请求原样带回，服务端轮换密钥期间据此选对密钥。 */
+export const KEY_ID_HEADER = 'X-Msa-Kid';
+/** 服务端认不出这个公钥标识（旧密钥已退役）：重拉公钥后重发一次即可。 */
+const UNKNOWN_KEY_HEADER = 'X-Msa-Kid-Unknown';
 
 const NONCE_LENGTH = 12;
 const REQUEST_INFO = new TextEncoder().encode('msa-body-c2s');
 const RESPONSE_INFO = new TextEncoder().encode('msa-body-s2c');
 
 export type BodyEncryptionContext = {
+  keyId: string | null;
   ephemeralPublicKeyRaw: ArrayBuffer;
   c2sKey: CryptoKey;
   s2cKey: CryptoKey;
 };
 
-let cachedServerPublicKey: Promise<CryptoKey> | undefined;
+type ServerPublicKey = { keyId: string | null; key: CryptoKey };
 
-/** 懒加载并缓存 BFF 的 ECDH 公钥；并发请求共用同一次拉取，不会各发一遍。 */
-function getServerPublicKey(): Promise<CryptoKey> {
+let cachedServerPublicKey: Promise<ServerPublicKey> | undefined;
+
+/** 懒加载并缓存 BFF 的 ECDH 公钥；并发请求共用同一次拉取，不会各发一遍。拉取失败不缓存，下次请求重试。 */
+function getServerPublicKey(): Promise<ServerPublicKey> {
   cachedServerPublicKey ??= (async () => {
-    const response = await fetch(`${baseUrl}/bff/security/public-key`);
+    const response = await fetch(`${baseUrl}/bff/security/public-key`, { cache: 'no-store' });
     if (!response.ok) throw new Error('无法获取服务端加密公钥。');
     const raw = await response.arrayBuffer();
-    return crypto.subtle.importKey('raw', raw, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
-  })();
+    const key = await crypto.subtle.importKey('raw', raw, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+    return { keyId: response.headers.get(KEY_ID_HEADER), key };
+  })().catch((error: unknown) => {
+    cachedServerPublicKey = undefined;
+    throw error;
+  });
   return cachedServerPublicKey;
 }
 
-/** 服务端证书轮换或者公钥缓存坏了导致解密失败时，调用这个清掉缓存，下次请求重新拉一次。 */
+/** 服务端轮换了密钥（响应带 X-Msa-Kid-Unknown）时清掉缓存，下次请求重新拉一次。 */
 export function resetServerPublicKeyCache(): void {
   cachedServerPublicKey = undefined;
+}
+
+/** 服务端已经不认浏览器缓存的公钥了：调用方应 resetServerPublicKeyCache() 后用新密钥重发。 */
+export function isUnknownKeyResponse(response: Response): boolean {
+  return response.headers.has(UNKNOWN_KEY_HEADER);
 }
 
 async function deriveAesKey(sharedBits: ArrayBuffer, info: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
@@ -58,7 +76,7 @@ async function deriveAesKey(sharedBits: ArrayBuffer, info: Uint8Array<ArrayBuffe
 
 /** 为一次请求生成临时密钥对并跟服务端协商出 c2s/s2c 两个方向各自的 AES 密钥。 */
 export async function createBodyEncryptionContext(): Promise<BodyEncryptionContext> {
-  const serverPublicKey = await getServerPublicKey();
+  const { keyId, key: serverPublicKey } = await getServerPublicKey();
   const ephemeral = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
   const ephemeralPublicKeyRaw = await crypto.subtle.exportKey('raw', ephemeral.publicKey);
   const sharedBits = await crypto.subtle.deriveBits({ name: 'ECDH', public: serverPublicKey }, ephemeral.privateKey, 256);
@@ -68,16 +86,18 @@ export async function createBodyEncryptionContext(): Promise<BodyEncryptionConte
     deriveAesKey(sharedBits, RESPONSE_INFO),
   ]);
 
-  return { ephemeralPublicKeyRaw, c2sKey, s2cKey };
+  return { keyId, ephemeralPublicKeyRaw, c2sKey, s2cKey };
 }
 
 function base64FromArrayBuffer(buffer: ArrayBuffer): string {
   return btoa(String.fromCharCode(...new Uint8Array(buffer)));
 }
 
-/** 把 X-Msa-Ekey 头的值算出来——GET 之类没有 body 的请求也要带这个头，响应才能被加密。 */
-export function ephemeralKeyHeaderValue(context: BodyEncryptionContext): string {
-  return base64FromArrayBuffer(context.ephemeralPublicKeyRaw);
+/** 写上加密请求要带的头：X-Msa-Ekey（临时公钥）——GET 之类没有 body 的请求也要带，响应才能被加密；X-Msa-Kid（服务端公钥标识）。 */
+export function applyBodyEncryptionHeaders(headers: Headers, context: BodyEncryptionContext): void {
+  headers.set(EPHEMERAL_KEY_HEADER, base64FromArrayBuffer(context.ephemeralPublicKeyRaw));
+  if (context.keyId) headers.set(KEY_ID_HEADER, context.keyId);
+  else headers.delete(KEY_ID_HEADER);
 }
 
 export async function encryptRequestBody(context: BodyEncryptionContext, plaintext: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {

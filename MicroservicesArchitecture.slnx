@@ -45,6 +45,7 @@
     <File Path="docker/services/identity/identity.yaml" />
   </Folder>
   <Folder Name="/0.Root/docker/services/platform/">
+    <File Path="docker/services/platform/certificate.yaml" />
     <File Path="docker/services/platform/notification.yaml" />
   </Folder>
   <Folder Name="/1.Doc/" />
@@ -60,6 +61,7 @@
   </Folder>
   <Folder Name="/2.Src/1.Libraries/">
     <Project Path="src/BFFs/MSA.BFF.Common/MSA.BFF.Common.csproj" />
+    <Project Path="src/MSA.Certificates/MSA.Certificates.csproj" />
     <Project Path="src/MSA.Common/MSA.Common.csproj" Id="3cde7dcb-f6a5-4272-a4d6-3788b13f46c0" />
     <Project Path="src/MSA.Contracts/MSA.Contracts.csproj" />
     <Project Path="src/MSA.EventBus/MSA.EventBus.csproj" Id="95fde12a-5ab9-4184-aace-8dff777978a8" />
@@ -77,6 +79,7 @@
   </Folder>
   <Folder Name="/2.Src/2.ApiService/">
     <Project Path="src/MSA.ApiGateway/MSA.ApiGateway.csproj" Id="31f7e4be-36c1-4ebb-af61-603c1e2bd139" />
+    <Project Path="src/MSA.CertificateService/MSA.CertificateService.csproj" />
     <Project Path="src/MSA.IdentityService/MSA.IdentityService.csproj" Id="77d3e573-0b9a-4c2e-b6f8-64ef0cecc951" />
   </Folder>
   <Folder Name="/2.Src/2.ApiService/BFFs/">
@@ -93,6 +96,8 @@
     <Project Path="src/MSA.UserService/MSA.UserService.csproj" Id="9a9806f8-c9a2-4512-b64f-ac9f5a11cc35" />
   </Folder>
   <Folder Name="/3.Tests/">
+    <Project Path="tests/MSA.BFF.Common.Tests/MSA.BFF.Common.Tests.csproj" />
+    <Project Path="tests/MSA.Certificates.Tests/MSA.Certificates.Tests.csproj" />
     <Project Path="tests/MSA.CommerceTests/MSA.CommerceTests.csproj" />
     <Project Path="tests/MSA.DistributedTransactionTests/MSA.DistributedTransactionTests.csproj" />
   </Folder>

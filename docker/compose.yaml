@@ -39,3 +39,5 @@ include:
   # 平台服务
   - path: services/platform/notification.yaml
     env_file: [.env, certs/cert-passwords.env]
+  - path: services/platform/certificate.yaml
+    env_file: [.env, certs/cert-passwords.env]

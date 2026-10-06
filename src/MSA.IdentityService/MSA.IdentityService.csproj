@@ -39,11 +39,7 @@
 	  <ProjectReference Include="..\MSA.Observability\MSA.Observability.csproj" />
 	  <ProjectReference Include="..\MSA.Persistence.Postgres\MSA.Persistence.Postgres.csproj" />
 	  <ProjectReference Include="..\MSA.Infrastrucute\MSA.Infrastrucute.csproj" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <!-- 生产环境 OpenIddict 证书只从环境变量读取；与两个 BFF 共用同一份实现。 -->
-	  <Compile Include="..\Shared\OpenIddictCertificateEnvironment.cs" Link="Shared\OpenIddictCertificateEnvironment.cs" />
+	  <ProjectReference Include="..\MSA.Certificates\MSA.Certificates.csproj" />
 	</ItemGroup>
 
 </Project>

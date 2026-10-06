@@ -1,0 +1,35 @@
+# 证书服务：证书库（CertificateDb）的唯一写入方，提供后台证书管理 API、内部密钥自动轮换、Let's Encrypt 申请与续订，
+# 并把站点 TLS 证书写到 nginx 的证书目录。只在 dotnet-infra_backend 网络内访问（不映射端口）：容器名 msa-certificate，监听 8080（HTTP）。
+# 后台经 BM BFF → 网关（/api/certificate/**）访问；HTTP-01 验证由 nginx 的 80 端口把 /.well-known/acme-challenge/ 直接转给它。
+# 公共部分（环境、Issuer、OTLP、转发头、PostgreSQL / Redis / RabbitMQ 地址与口令）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
+services:
+  msa-certificate:
+    extends:
+      file: ../../base/dotnet-service.yaml
+      service: dotnet-infra-service
+    # 镜像由 scripts/build-images.* 构建并推送到 Harbor（清单见 images.txt），这里只拉取。
+    image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/certificate-service:${MSA_IMAGE_TAG:-latest}
+    pull_policy: ${MSA_PULL_POLICY:-missing}
+    container_name: msa-certificate
+    environment:
+      ASPNETCORE_URLS: "http://+:8080"
+      # 证书服务持有全部使用方的 KEK：写入时用使用方自己的 KEK 加密，那个使用方才解得开。缺一个就起不来。
+      MSA_CERT_KEK_IDENTITY: "${MSA_CERT_KEK_IDENTITY}"
+      MSA_CERT_KEK_BFF_WEB: "${MSA_CERT_KEK_BFF_WEB}"
+      MSA_CERT_KEK_BFF_BM: "${MSA_CERT_KEK_BFF_BM}"
+      MSA_CERT_KEK_EDGE: "${MSA_CERT_KEK_EDGE}"
+      # DNS-01 验证用的 DNS 服务商凭据，没配的服务商在后台不可选。
+      MSA_ACME_ALIYUN_ACCESS_KEY_ID: "${MSA_ACME_ALIYUN_ACCESS_KEY_ID:-}"
+      MSA_ACME_ALIYUN_ACCESS_KEY_SECRET: "${MSA_ACME_ALIYUN_ACCESS_KEY_SECRET:-}"
+      MSA_ACME_CLOUDFLARE_API_TOKEN: "${MSA_ACME_CLOUDFLARE_API_TOKEN:-}"
+      # 当前 TLS 证书写到这里：<站点名>/fullchain.pem、privkey.pem。同一个宿主机目录以只读方式挂给 nginx。
+      Tls__DeployDirectory: /deploy/tls
+    volumes:
+      - ${MSA_TLS_DEPLOY_DIR:-../../tls}:/deploy/tls
+    networks:
+      - backend
+
+networks:
+  backend:
+    name: dotnet-infra_backend
+    external: true

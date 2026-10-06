@@ -1,12 +1,11 @@
 using System.Net.Http.Headers;
 using System.Reflection;
-using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using MSA.BFF.Common.Auth;
 using MSA.BFF.Common.Middleware;
+using MSA.Certificates;
 using MSA.Common;
-using MSA.Shared;
 using OpenIddict.Abstractions;
 using OpenIddict.Client;
 using OpenIddict.Client.AspNetCore;
@@ -169,20 +168,15 @@ public static class BffServiceCollectionExtensions
             {
                 options.AllowAuthorizationCodeFlow().AllowRefreshTokenFlow();
 
+                // 签名 / 加密 OIDC state token 的证书来自证书库（oidc-client），轮换不用重启；
+                // 证书库里还没有时，开发环境用开发证书，其余环境用环境变量里的 pfx。
                 if (environment.IsDevelopment())
                 {
                     options
                         .AddDevelopmentEncryptionCertificate()
                         .AddDevelopmentSigningCertificate();
                 }
-                else
-                {
-                    // 签名 / 加密 OIDC state token 的证书：生产环境只从环境变量读取。
-                    var certificate = OpenIddictCertificateEnvironment.Load();
-                    options
-                        .AddEncryptionCertificate(certificate)
-                        .AddSigningCertificate(certificate);
-                }
+                options.UseMsaCertificates();
 
                 options
                     .UseAspNetCore()

@@ -1,3 +1,4 @@
+using MSA.Certificates;
 using MSA.Common;
 using MSA.Observability;
 using Microsoft.AspNetCore.Identity;
@@ -22,6 +23,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 });
 
 
+// 证书库：OpenIddict 签名 / 加密证书的来源；DataProtection 密钥环（登录 Cookie、短信验证码）也存进去，发版不再全员掉线。
+builder.Services.AddMsaCertificates(builder.Configuration);
 builder.Services.AddIdentityDefault(builder.Configuration, builder.Environment);
 builder.Services.AddIdentityRateLimiting();
 builder.Services.AddSmsLogin(builder.Configuration, builder.Environment);

@@ -22,7 +22,10 @@ internal static class PbacSeedData
         ("order.fulfillment", "订单履约"),
         ("payment.transactions", "支付交易"),
         ("notification.messages", "用户通知"),
-        ("system.messaging", "消息运维")
+        ("system.messaging", "消息运维"),
+        ("system.certificates", "证书管理"),
+        // 导出私钥单独授权：能管理证书不等于能把私钥带走。只用到 query。
+        ("system.certificate-keys", "证书私钥")
     ];
 
     internal static readonly BmRole[] SystemAdministratorRole =
@@ -170,7 +173,8 @@ internal static class PbacSeedData
             ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/resume"),
             ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/end"),
             ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/quantity"),
-            .. MessagingRoutes()
+            .. MessagingRoutes(),
+            .. CertificateRoutes()
         ];
 
         return definitions
@@ -197,6 +201,28 @@ internal static class PbacSeedData
                 ("system.messaging.edit", HttpMethods.Post, $"/api/{service}/admin/messaging/dead-letters/replay")
             })
             .ToArray();
+
+    /// <summary>证书服务（MSA.CertificateService）的后台接口。吊销算删除；导出私钥归 system.certificate-keys。</summary>
+    private static (string Permission, string Method, string Path)[] CertificateRoutes() =>
+    [
+        ("system.certificates.query", HttpMethods.Get, "/api/certificate/admin/catalog"),
+        ("system.certificates.query", HttpMethods.Get, "/api/certificate/admin/certificates"),
+        ("system.certificates.query", HttpMethods.Get, "/api/certificate/admin/certificates/{id}"),
+        ("system.certificates.query", HttpMethods.Get, "/api/certificate/admin/certificates/{id}/export"),
+        ("system.certificates.query", HttpMethods.Get, "/api/certificate/admin/audits"),
+        ("system.certificates.query", HttpMethods.Get, "/api/certificate/admin/acme/subscriptions"),
+        ("system.certificates.create", HttpMethods.Post, "/api/certificate/admin/certificates/generate"),
+        ("system.certificates.create", HttpMethods.Post, "/api/certificate/admin/certificates/import"),
+        ("system.certificates.create", HttpMethods.Post, "/api/certificate/admin/acme/subscriptions"),
+        ("system.certificates.edit", HttpMethods.Put, "/api/certificate/admin/certificates/{id}"),
+        ("system.certificates.edit", HttpMethods.Post, "/api/certificate/admin/certificates/{id}/activate"),
+        ("system.certificates.edit", HttpMethods.Put, "/api/certificate/admin/acme/subscriptions/{id}"),
+        ("system.certificates.edit", HttpMethods.Post, "/api/certificate/admin/acme/subscriptions/{id}/renew"),
+        ("system.certificates.edit", HttpMethods.Post, "/api/certificate/admin/renewal/run"),
+        ("system.certificates.delete", HttpMethods.Post, "/api/certificate/admin/certificates/{id}/revoke"),
+        ("system.certificates.delete", HttpMethods.Delete, "/api/certificate/admin/acme/subscriptions/{id}"),
+        ("system.certificate-keys.query", HttpMethods.Post, "/api/certificate/admin/certificates/{id}/export-private")
+    ];
 
     private static Guid StableGuid(string value)
     {

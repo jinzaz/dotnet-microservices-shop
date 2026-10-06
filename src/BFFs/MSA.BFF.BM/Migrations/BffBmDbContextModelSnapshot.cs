@@ -582,6 +582,70 @@ namespace MSA.BFF.BM.Migrations
                             Code = "system.messaging.delete",
                             DisplayName = "消息运维-删除",
                             Module = "system.messaging"
+                        },
+                        new
+                        {
+                            Id = new Guid("acd15c3d-e54a-cfe4-dd3b-7ba59375c9f9"),
+                            Action = "Query",
+                            Code = "system.certificates.query",
+                            DisplayName = "证书管理-查询",
+                            Module = "system.certificates"
+                        },
+                        new
+                        {
+                            Id = new Guid("1a401cb2-b234-dcd4-8295-04e3c9029ec3"),
+                            Action = "Create",
+                            Code = "system.certificates.create",
+                            DisplayName = "证书管理-创建",
+                            Module = "system.certificates"
+                        },
+                        new
+                        {
+                            Id = new Guid("f061c20a-fb57-53d7-4310-a938e1ab25e8"),
+                            Action = "Edit",
+                            Code = "system.certificates.edit",
+                            DisplayName = "证书管理-编辑",
+                            Module = "system.certificates"
+                        },
+                        new
+                        {
+                            Id = new Guid("da5d96e2-6b0c-3df9-2658-2b0da2f17ce6"),
+                            Action = "Delete",
+                            Code = "system.certificates.delete",
+                            DisplayName = "证书管理-删除",
+                            Module = "system.certificates"
+                        },
+                        new
+                        {
+                            Id = new Guid("7e3e8c45-1c13-4a95-ec96-83b4a6abdf37"),
+                            Action = "Query",
+                            Code = "system.certificate-keys.query",
+                            DisplayName = "证书私钥-查询",
+                            Module = "system.certificate-keys"
+                        },
+                        new
+                        {
+                            Id = new Guid("bfdd5cbd-25b7-2e41-2832-1bbe095f3c80"),
+                            Action = "Create",
+                            Code = "system.certificate-keys.create",
+                            DisplayName = "证书私钥-创建",
+                            Module = "system.certificate-keys"
+                        },
+                        new
+                        {
+                            Id = new Guid("d35d9d27-d1f8-76d9-0e2c-6552c3bbbb36"),
+                            Action = "Edit",
+                            Code = "system.certificate-keys.edit",
+                            DisplayName = "证书私钥-编辑",
+                            Module = "system.certificate-keys"
+                        },
+                        new
+                        {
+                            Id = new Guid("6fa551e3-61b1-22c0-e5b3-6a95a4d8fbc6"),
+                            Action = "Delete",
+                            Code = "system.certificate-keys.delete",
+                            DisplayName = "证书私钥-删除",
+                            Module = "system.certificate-keys"
                         });
                 });
 
@@ -913,6 +977,46 @@ namespace MSA.BFF.BM.Migrations
                         {
                             PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
                             PermissionId = new Guid("4da30147-3c51-9f58-50d6-98e543a2258b")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("acd15c3d-e54a-cfe4-dd3b-7ba59375c9f9")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("1a401cb2-b234-dcd4-8295-04e3c9029ec3")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("f061c20a-fb57-53d7-4310-a938e1ab25e8")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("da5d96e2-6b0c-3df9-2658-2b0da2f17ce6")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("7e3e8c45-1c13-4a95-ec96-83b4a6abdf37")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("bfdd5cbd-25b7-2e41-2832-1bbe095f3c80")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("d35d9d27-d1f8-76d9-0e2c-6552c3bbbb36")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("6fa551e3-61b1-22c0-e5b3-6a95a4d8fbc6")
                         });
                 });
 
@@ -1859,6 +1963,142 @@ namespace MSA.BFF.BM.Migrations
                             Order = 109,
                             PathTemplate = "/api/notification/admin/messaging/dead-letters/replay",
                             PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
+                        },
+                        new
+                        {
+                            Id = new Guid("3efd1dc7-7931-9e90-7e35-4dc619da2a5e"),
+                            HttpMethod = "GET",
+                            Order = 110,
+                            PathTemplate = "/api/certificate/admin/catalog",
+                            PermissionId = new Guid("acd15c3d-e54a-cfe4-dd3b-7ba59375c9f9")
+                        },
+                        new
+                        {
+                            Id = new Guid("715d89e4-4224-e687-0025-8c5139ee8b75"),
+                            HttpMethod = "GET",
+                            Order = 111,
+                            PathTemplate = "/api/certificate/admin/certificates",
+                            PermissionId = new Guid("acd15c3d-e54a-cfe4-dd3b-7ba59375c9f9")
+                        },
+                        new
+                        {
+                            Id = new Guid("00f3c905-6d21-4216-4046-22bf13a2f2ab"),
+                            HttpMethod = "GET",
+                            Order = 112,
+                            PathTemplate = "/api/certificate/admin/certificates/{id}",
+                            PermissionId = new Guid("acd15c3d-e54a-cfe4-dd3b-7ba59375c9f9")
+                        },
+                        new
+                        {
+                            Id = new Guid("89af7dbd-0243-be46-e106-6f5f991bedf8"),
+                            HttpMethod = "GET",
+                            Order = 113,
+                            PathTemplate = "/api/certificate/admin/certificates/{id}/export",
+                            PermissionId = new Guid("acd15c3d-e54a-cfe4-dd3b-7ba59375c9f9")
+                        },
+                        new
+                        {
+                            Id = new Guid("b89d9d6d-eb2f-e6b8-abbb-c39d35949bab"),
+                            HttpMethod = "GET",
+                            Order = 114,
+                            PathTemplate = "/api/certificate/admin/audits",
+                            PermissionId = new Guid("acd15c3d-e54a-cfe4-dd3b-7ba59375c9f9")
+                        },
+                        new
+                        {
+                            Id = new Guid("9a714b5a-a5e8-a742-8a71-7b937b35475e"),
+                            HttpMethod = "GET",
+                            Order = 115,
+                            PathTemplate = "/api/certificate/admin/acme/subscriptions",
+                            PermissionId = new Guid("acd15c3d-e54a-cfe4-dd3b-7ba59375c9f9")
+                        },
+                        new
+                        {
+                            Id = new Guid("fcb063a0-6249-3919-e25e-455d004a116c"),
+                            HttpMethod = "POST",
+                            Order = 116,
+                            PathTemplate = "/api/certificate/admin/certificates/generate",
+                            PermissionId = new Guid("1a401cb2-b234-dcd4-8295-04e3c9029ec3")
+                        },
+                        new
+                        {
+                            Id = new Guid("c9c9f1e1-bc17-481a-2492-cf2eab6fe8b1"),
+                            HttpMethod = "POST",
+                            Order = 117,
+                            PathTemplate = "/api/certificate/admin/certificates/import",
+                            PermissionId = new Guid("1a401cb2-b234-dcd4-8295-04e3c9029ec3")
+                        },
+                        new
+                        {
+                            Id = new Guid("ee577a27-9d2c-9a89-a06c-2745543ad94b"),
+                            HttpMethod = "POST",
+                            Order = 118,
+                            PathTemplate = "/api/certificate/admin/acme/subscriptions",
+                            PermissionId = new Guid("1a401cb2-b234-dcd4-8295-04e3c9029ec3")
+                        },
+                        new
+                        {
+                            Id = new Guid("ccdbdd8d-fb9b-a9bf-5d74-21337b4d197d"),
+                            HttpMethod = "PUT",
+                            Order = 119,
+                            PathTemplate = "/api/certificate/admin/certificates/{id}",
+                            PermissionId = new Guid("f061c20a-fb57-53d7-4310-a938e1ab25e8")
+                        },
+                        new
+                        {
+                            Id = new Guid("f989668d-4b89-8e87-fddc-c8032d35824c"),
+                            HttpMethod = "POST",
+                            Order = 120,
+                            PathTemplate = "/api/certificate/admin/certificates/{id}/activate",
+                            PermissionId = new Guid("f061c20a-fb57-53d7-4310-a938e1ab25e8")
+                        },
+                        new
+                        {
+                            Id = new Guid("6fbf2e3e-f67a-8b66-8137-9529191ba311"),
+                            HttpMethod = "PUT",
+                            Order = 121,
+                            PathTemplate = "/api/certificate/admin/acme/subscriptions/{id}",
+                            PermissionId = new Guid("f061c20a-fb57-53d7-4310-a938e1ab25e8")
+                        },
+                        new
+                        {
+                            Id = new Guid("467fa577-543d-ed36-5e94-dae356c0253c"),
+                            HttpMethod = "POST",
+                            Order = 122,
+                            PathTemplate = "/api/certificate/admin/acme/subscriptions/{id}/renew",
+                            PermissionId = new Guid("f061c20a-fb57-53d7-4310-a938e1ab25e8")
+                        },
+                        new
+                        {
+                            Id = new Guid("ab0f5101-5128-d21a-d3f3-ebcea47b4a74"),
+                            HttpMethod = "POST",
+                            Order = 123,
+                            PathTemplate = "/api/certificate/admin/renewal/run",
+                            PermissionId = new Guid("f061c20a-fb57-53d7-4310-a938e1ab25e8")
+                        },
+                        new
+                        {
+                            Id = new Guid("1bb94eeb-75b8-1cd6-94df-e6ec04b63c7b"),
+                            HttpMethod = "POST",
+                            Order = 124,
+                            PathTemplate = "/api/certificate/admin/certificates/{id}/revoke",
+                            PermissionId = new Guid("da5d96e2-6b0c-3df9-2658-2b0da2f17ce6")
+                        },
+                        new
+                        {
+                            Id = new Guid("07b4bec9-3040-0469-f7b5-4418c609db02"),
+                            HttpMethod = "DELETE",
+                            Order = 125,
+                            PathTemplate = "/api/certificate/admin/acme/subscriptions/{id}",
+                            PermissionId = new Guid("da5d96e2-6b0c-3df9-2658-2b0da2f17ce6")
+                        },
+                        new
+                        {
+                            Id = new Guid("7502414f-3a4f-7848-04a6-0400d66b1dc8"),
+                            HttpMethod = "POST",
+                            Order = 126,
+                            PathTemplate = "/api/certificate/admin/certificates/{id}/export-private",
+                            PermissionId = new Guid("7e3e8c45-1c13-4a95-ec96-83b4a6abdf37")
                         });
                 });
 

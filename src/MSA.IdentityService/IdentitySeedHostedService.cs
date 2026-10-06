@@ -52,7 +52,10 @@ internal sealed class IdentitySeedHostedService(
 
             (IdentityServiceConstants.Scopes.Payment, "Payment API", IdentityServiceConstants.Resources.Payment),
             (IdentityServiceConstants.Scopes.PaymentAdminRead, "Payment Admin Read", IdentityServiceConstants.Resources.Payment),
-            (IdentityServiceConstants.Scopes.PaymentAdminWrite, "Payment Admin Write", IdentityServiceConstants.Resources.Payment)
+            (IdentityServiceConstants.Scopes.PaymentAdminWrite, "Payment Admin Write", IdentityServiceConstants.Resources.Payment),
+
+            (IdentityServiceConstants.Scopes.CertificateAdminRead, "Certificate Admin Read", IdentityServiceConstants.Resources.Certificate),
+            (IdentityServiceConstants.Scopes.CertificateAdminWrite, "Certificate Admin Write", IdentityServiceConstants.Resources.Certificate)
         })
         {
             await UpsertScope(scopes, name, displayName, resource, cancellationToken);

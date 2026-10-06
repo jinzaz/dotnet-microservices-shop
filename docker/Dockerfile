@@ -87,6 +87,10 @@ FROM runtime AS notification-service
 COPY --from=publish /app/notification-service .
 ENTRYPOINT ["dotnet", "MSA.NotificationService.dll"]
 
+FROM runtime AS certificate-service
+COPY --from=publish /app/certificate-service .
+ENTRYPOINT ["dotnet", "MSA.CertificateService.dll"]
+
 FROM runtime AS bff-web
 COPY --from=publish /app/bff-web .
 ENTRYPOINT ["dotnet", "MSA.BFF.Web.dll"]

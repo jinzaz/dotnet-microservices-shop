@@ -11,7 +11,7 @@ Keep dependencies pointing inward: API/Infrastructure -> Application -> Domain. 
 
 ## HTTP route conventions
 
-Business-service endpoints never include an `api` segment. Use lowercase kebab-case paths beginning with the bounded-context name: `/{business}/{subbusiness}/...`. Put administrative endpoints under `/{business}/admin/{subbusiness}/...`; never use `/admin/{business}`. Canonical business segments are `catalog`, `inventory`, `order`, `payment`, `basket`, `notification`, and `user`.
+Business-service endpoints never include an `api` segment. Use lowercase kebab-case paths beginning with the bounded-context name: `/{business}/{subbusiness}/...`. Put administrative endpoints under `/{business}/admin/{subbusiness}/...`; never use `/admin/{business}`. Canonical business segments are `catalog`, `inventory`, `order`, `payment`, `basket`, `notification`, `user`, and `certificate`.
 
 The API gateway owns the public `/api` prefix. Its public routes match `/api/{business}/...` and remove only `/api`, preserving the business segment forwarded to the service. BFF-owned endpoints retain their `/api` prefix because they may be called directly. A BFF YARP catch-all forwards other `/api/{business}/...` requests unchanged to the gateway. Identity protocol and authentication endpoints are not business-service routes and may retain their protocol or `/api/auth` paths.
 
