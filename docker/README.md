@@ -198,7 +198,16 @@ ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 
 - **定时任务**：证书服务每小时检查一轮（`Renewal__Interval`），后台可以"立即检查续期"。失败的 ACME 申请按 1、2、4…24 小时退避重试。
 - **ACME**：普通域名可用 HTTP-01（nginx 80 端口已把 `/.well-known/acme-challenge/` 转给证书服务）；通配符域名只能用 DNS-01，
   需要配置阿里云或 Cloudflare 凭据。先用"测试环境"跑通再切正式环境。
-- **nginx 生效**：nginx 不会自己重新读证书，宿主机加一条每天 `nginx -t && nginx -s reload` 的定时任务（见 `nginx/msa.conf`）。
+- **nginx 生效**：nginx 不会自己重新读证书。把 `nginx/cert-reload.sh` 挂进 nginx 容器（官方镜像启动时会执行 `/docker-entrypoint.d/` 下的脚本），
+  它每 60 秒比较一次证书目录的校验和，变了就 `nginx -t` 通过后 `nginx -s reload`（平滑重载，不断开连接）；校验失败不重载，日志里带原因，下一轮重试：
+  ```yaml
+  volumes:
+    - ./docker/nginx/cert-reload.sh:/docker-entrypoint.d/40-msa-cert-reload.sh:ro   # 需要可执行权限（仓库里已是 100755）
+    - ${MSA_TLS_DEPLOY_DIR}:/etc/nginx/certs:ro
+  environment:
+    NGINX_CERT_RELOAD_INTERVAL: "60"   # 可选，检查间隔（秒）
+  ```
+  不要为此把 `docker.sock` 挂给证书服务：那等于把宿主机 root 交给一个持有全部 KEK、还提供 Web API 的进程。
 
 **升级步骤**（已有部署）：先执行证书服务的迁移（`Database__MigrateOnStartup=true` 或 `dotnet ef database update`），在 `.env` 里填好四个 KEK，
 再到后台把现有的 `*-openiddict.pfx` 按用途导入（认证中心那张同时导入为 `oidc-signing` 和 `oidc-encryption`）并立即生效，最后启用自动轮换。
