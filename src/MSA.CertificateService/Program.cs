@@ -15,8 +15,7 @@ var connectionString = builder.Configuration.GetConnectionString("Postgresql");
 if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
 
-builder.Services.AddDbContext<CertificateDbContext>(options => options.UseNpgsql(connectionString, npgsql =>
-        npgsql.MigrationsHistoryTable("__EFMigrationsHistory", CertificateDbContext.Schema)));
+builder.Services.AddDbContext<CertificateDbContext>(options => options.UseNpgsql(connectionString, CertificateDbContext.ConfigureNpgsql));
 builder.Services.AddSingleton(TimeProvider.System);
 // 全部使用方的 KEK，缺一个就起不来。
 builder.Services.AddSingleton(CertificateKekRing.FromEnvironment());

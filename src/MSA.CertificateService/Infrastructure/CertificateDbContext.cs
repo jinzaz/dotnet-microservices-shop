@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure;
 using MSA.CertificateService.Domain;
 using MSA.Infrastrucute;
 
@@ -8,6 +9,13 @@ namespace MSA.CertificateService.Infrastructure;
 public sealed class CertificateDbContext(DbContextOptions<CertificateDbContext> options) : DbContext(options)
 {
     public const string Schema = "pki";
+
+    /// <summary>
+    /// 迁移历史表也放进 pki。运行时（Program.cs）和 dotnet ef（设计时工厂，不走 Program.cs）都要调用它，
+    /// 否则两边找的是不同的历史表。
+    /// </summary>
+    public static void ConfigureNpgsql(NpgsqlDbContextOptionsBuilder npgsql) =>
+        npgsql.MigrationsHistoryTable("__EFMigrationsHistory", Schema);
 
     public DbSet<ManagedCertificate> Certificates => Set<ManagedCertificate>();
     public DbSet<AcmeSubscription> AcmeSubscriptions => Set<AcmeSubscription>();
@@ -24,7 +32,12 @@ public sealed class CertificateDbContext(DbContextOptions<CertificateDbContext> 
     }
 }
 
-public sealed class CertificateDesignTimeDbContextFactory : BaseDesignTimeDbContextFactory<CertificateDbContext>;
+public sealed class CertificateDesignTimeDbContextFactory : BaseDesignTimeDbContextFactory<CertificateDbContext>
+{
+    // 基类已经用连接串调过 UseNpgsql；再调一次只补充 Npgsql 选项，连接串保留。
+    protected override void ConfigureDbContext(DbContextOptionsBuilder options) =>
+        options.UseNpgsql(CertificateDbContext.ConfigureNpgsql);
+}
 
 internal sealed class ManagedCertificateConfiguration : IEntityTypeConfiguration<ManagedCertificate>
 {
