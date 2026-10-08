@@ -100,7 +100,7 @@ public sealed class OrderAdminQueryTests
     {
         var order = new Order(Guid.NewGuid(), "buyer-1", Guid.NewGuid().ToString("N"), new string('F', 64), "Alipay",
             new ShippingAddressSnapshot(null, "Buyer", phone, "CN", "Province", "City", "District", "Street", null, null),
-            [new OrderLine(Guid.NewGuid(), Guid.NewGuid(), null, sku, "Product", "Variant", "{}", 1, 10m, 10m)],
+            [new OrderLine(Guid.NewGuid(), Guid.NewGuid(), null, sku, "Product", "Variant", "{}", 1, 10m, 0m)],
             [], "CNY", null, null, Guid.NewGuid(), PriceHash, createdOnUtc.AddMinutes(20), createdOnUtc);
         if (confirm)
         {

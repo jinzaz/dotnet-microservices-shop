@@ -62,8 +62,8 @@ public sealed class OrderApplicationTests
 
         Assert.AreEqual(40m, new FixedAmountOffBenefit().Calculate("{\"amount\":60}", context, 45m));
         Assert.AreEqual(30m, new FixedAmountOffBenefit().Calculate("{\"amount\":60}", context, 30m));
-        Assert.IsTrue(new MinimumOrderAmountRule().IsSatisfied("{\"amount\":45}", context));
-        Assert.IsFalse(new MinimumOrderAmountRule().IsSatisfied("{\"amount\":45.01}", context));
+        Assert.IsTrue(new MinimumOrderAmountRule().IsSatisfied("{\"amount\":40}", context));
+        Assert.IsFalse(new MinimumOrderAmountRule().IsSatisfied("{\"amount\":40.01}", context));
         Assert.IsTrue(new MinimumItemQuantityRule().IsSatisfied("{\"quantity\":3}", context));
         Assert.IsFalse(new MinimumItemQuantityRule().IsSatisfied("{\"quantity\":4}", context));
         Assert.ThrowsExactly<InvalidOperationException>(() => new MinimumItemQuantityRule().IsSatisfied("{\"quantity\":0}", context));
@@ -259,7 +259,7 @@ public sealed class OrderApplicationTests
     private static Order NewOrder() =>
         new(
             Guid.NewGuid(), "buyer-1", "order-key", new string('F', 64), "Alipay", Address(),
-            [new OrderLine(Guid.NewGuid(), Guid.NewGuid(), null, "SKU-1", "Product", "Variant", "{}", 1, 10m, 10m)],
+            [new OrderLine(Guid.NewGuid(), Guid.NewGuid(), null, "SKU-1", "Product", "Variant", "{}", 1, 10m, 0m)],
             [], "CNY", null, null, Guid.NewGuid(), PriceHash, Now.AddMinutes(20), Now);
 
     private static Order ConfirmedOrder()

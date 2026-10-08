@@ -185,7 +185,7 @@ internal sealed class CreateOrderCommandHandler(
             fingerprint,
             request.PaymentMethod,
             shippingAddress,
-            pricingItems.Select(item =>
+            pricingItems.Select((item, index) =>
             {
                 var requestItem = requestedItems.Single(value => value.Sku == item.Product.Sku);
                 return new OrderLine(
@@ -198,7 +198,7 @@ internal sealed class CreateOrderCommandHandler(
                     item.Product.AttributesJson,
                     item.Quantity,
                     item.Product.Price,
-                    item.Product.Price);
+                    price.LineDiscounts[index]);
             }),
             price.Discounts,
             currencies[0],

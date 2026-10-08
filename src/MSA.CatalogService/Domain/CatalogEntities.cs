@@ -25,8 +25,8 @@ public enum PromotionTriggerType
 
 public enum PromotionStatus
 {
+    // 1 曾是 Scheduled：发布即 Active、是否生效由订单侧按时间判断，因此不再需要待激活状态。数值保留不复用。
     Draft = 0,
-    Scheduled = 1,
     Active = 2,
     Paused = 3,
     Ended = 4,

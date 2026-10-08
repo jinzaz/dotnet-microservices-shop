@@ -113,7 +113,7 @@ internal sealed class OrderLineConfiguration : IEntityTypeConfiguration<OrderLin
         entity.ToTable("order_lines", table =>
         {
             table.HasCheckConstraint("CK_order_lines_quantity", "\"Quantity\" > 0");
-            table.HasCheckConstraint("CK_order_lines_prices", "\"ListUnitPrice\" >= 0 AND \"UnitPrice\" >= 0 AND \"UnitPrice\" <= \"ListUnitPrice\" AND \"LineSubtotal\" = round(\"ListUnitPrice\" * \"Quantity\", 2) AND \"DiscountAmount\" = round((\"ListUnitPrice\" - \"UnitPrice\") * \"Quantity\", 2) AND \"LineAmount\" = round(\"UnitPrice\" * \"Quantity\", 2)");
+            table.HasCheckConstraint("CK_order_lines_prices", "\"ListUnitPrice\" >= 0 AND \"UnitPrice\" >= 0 AND \"UnitPrice\" <= \"ListUnitPrice\" AND \"LineSubtotal\" = round(\"ListUnitPrice\" * \"Quantity\", 2) AND \"DiscountAmount\" BETWEEN 0 AND \"LineSubtotal\" AND \"LineAmount\" = \"LineSubtotal\" - \"DiscountAmount\" AND \"UnitPrice\" = round(\"LineAmount\" / \"Quantity\", 2)");
             table.HasCheckConstraint("CK_order_lines_variant_attributes", "jsonb_typeof(\"VariantAttributesJson\") = 'object'");
         });
         entity.HasKey(line => line.Id);

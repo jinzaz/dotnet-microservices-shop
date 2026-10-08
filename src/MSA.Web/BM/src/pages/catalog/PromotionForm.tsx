@@ -120,7 +120,7 @@ function validate(draft: Draft, targetsCount: number) {
   if (draft.benefitType === 'FixedAmountOff' && amount > 0 && value >= amount) warnings.push('减免金额不低于门槛金额，订单可能接近免费。');
   if (draft.benefitType === 'FixedAmountOff' && !(amount > 0) && value >= 50) warnings.push('无门槛大额立减，请确认是否需要设置门槛。');
   if (draft.benefitType === 'PercentageOff' && value >= 30 && !(Number(draft.maximumDiscount) > 0)) warnings.push('折扣力度较大且未设置最高优惠金额，大额订单让利可能过高。');
-  if (draft.triggerType === 'Automatic' && draft.stackPolicy === 'Exclusive') warnings.push('独占的自动活动命中后，后续活动与优惠券都不会再计算。');
+  if (draft.triggerType === 'Automatic' && draft.stackPolicy === 'Exclusive') warnings.push('独占的自动活动命中后，优先级更低的活动与优惠券都不会再计算；优先级更高的活动仍会先于它叠加。');
   return { errors, warnings };
 }
 
@@ -213,7 +213,7 @@ export function PromotionForm({ item, duplicateOf, categories, busy, error, onSu
       <Field label="触发方式" hint={draft.triggerType === 'Coupon' ? '发布后到「优惠券」发放券码，用户凭券享受' : '满足条件自动计算，无需领券'}>
         <select value={draft.triggerType} onChange={(event) => set('triggerType', event.target.value)} disabled={editing}><option value="Automatic">自动生效</option><option value="Coupon">凭券使用</option></select>
       </Field>
-      <Field label="叠加策略"><select value={draft.stackPolicy} onChange={(event) => set('stackPolicy', event.target.value)}><option value="Stackable">可叠加</option><option value="Exclusive">独占（命中后不再计算后续活动）</option></select></Field>
+      <Field label="叠加策略"><select value={draft.stackPolicy} onChange={(event) => set('stackPolicy', event.target.value)}><option value="Stackable">可叠加</option><option value="Exclusive">独占（命中后，优先级更低的活动与优惠券不再计算）</option></select></Field>
     </div>
     <div className="form-row">
       <Field label="开始时间"><input type="datetime-local" value={draft.startsOn} onChange={(event) => set('startsOn', event.target.value)} required /></Field>

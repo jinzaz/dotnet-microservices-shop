@@ -61,6 +61,8 @@ public sealed class Order : AggregateRoot<Guid>
             throw new InvalidOperationException("Order subtotal must be positive.");
         if (discount < 0 || discount >= subtotal)
             throw new InvalidOperationException("Order discount must be non-negative and less than the subtotal.");
+        if (Money.Round(orderLines.Sum(line => line.DiscountAmount)) != discount)
+            throw new InvalidOperationException("Order line discounts must add up to the order discount.");
 
         Id = id;
         OrderNumber = $"O{createdOnUtc:yyyyMMdd}{id:N}";
@@ -488,14 +490,17 @@ public sealed class OrderLine
         string variantAttributesJson,
         int quantity,
         decimal listUnitPrice,
-        decimal unitPrice)
+        decimal discountAmount)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sku);
         ArgumentException.ThrowIfNullOrWhiteSpace(productName);
         if (quantity <= 0)
             throw new ArgumentOutOfRangeException(nameof(quantity));
-        if (listUnitPrice < 0 || unitPrice < 0 || unitPrice > listUnitPrice)
-            throw new ArgumentOutOfRangeException(nameof(unitPrice));
+        if (listUnitPrice < 0)
+            throw new ArgumentOutOfRangeException(nameof(listUnitPrice));
+        var lineSubtotal = Money.Round(Money.Round(listUnitPrice) * quantity);
+        if (discountAmount < 0 || Money.Round(discountAmount) > lineSubtotal)
+            throw new ArgumentOutOfRangeException(nameof(discountAmount));
         if (productId == Guid.Empty || variantId == Guid.Empty || offerId == Guid.Empty)
             throw new ArgumentException("Snapshot identifiers cannot be empty GUID values.");
 
@@ -510,10 +515,11 @@ public sealed class OrderLine
             : variantAttributesJson.Trim();
         Quantity = quantity;
         ListUnitPrice = Money.Round(listUnitPrice);
-        UnitPrice = Money.Round(unitPrice);
-        LineSubtotal = Money.Round(ListUnitPrice * quantity);
-        DiscountAmount = Money.Round((ListUnitPrice - UnitPrice) * quantity);
-        LineAmount = Money.Round(UnitPrice * quantity);
+        LineSubtotal = lineSubtotal;
+        DiscountAmount = Money.Round(discountAmount);
+        LineAmount = LineSubtotal - DiscountAmount;
+        // 成交单价只用于展示：数量大于 1 时可能有不足一分的尾差，行金额以 LineAmount 为准。
+        UnitPrice = Money.Round(LineAmount / quantity);
     }
 
     public long Id { get; private set; }

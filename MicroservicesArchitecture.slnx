@@ -17,6 +17,7 @@
     <File Path="docker/base/dotnet-service.yaml" />
   </Folder>
   <Folder Name="/0.Root/docker/nginx/">
+    <File Path="docker/nginx/cert-reload.sh" />
     <File Path="docker/nginx/msa.conf" />
   </Folder>
   <Folder Name="/0.Root/docker/scripts/">

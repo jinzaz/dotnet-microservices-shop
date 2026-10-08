@@ -398,19 +398,6 @@ public sealed class Promotion : RevisionedCatalogAggregateRoot<Guid>
         AddSnapshotChanged("Published");
     }
 
-    public void Activate(string actor, DateTimeOffset occurredOnUtc)
-    {
-        if (Status == PromotionStatus.Active)
-            return;
-        if (Status != PromotionStatus.Scheduled)
-            throw new InvalidOperationException("Only a scheduled promotion can be activated.");
-
-        var utc = CatalogDomainGuard.Utc(occurredOnUtc);
-        EnsureWithinWindow(utc);
-        Status = PromotionStatus.Active;
-        CompleteStatusChange(actor, utc, "Activated");
-    }
-
     public void Pause(string actor, DateTimeOffset occurredOnUtc)
     {
         if (Status == PromotionStatus.Paused)
@@ -429,8 +416,10 @@ public sealed class Promotion : RevisionedCatalogAggregateRoot<Guid>
         if (Status != PromotionStatus.Paused)
             throw new InvalidOperationException("Only a paused promotion can be resumed.");
 
+        // 与发布一致：开始前也可以恢复，是否生效由订单侧按时间判断；只拒绝已经过期的活动。
         var utc = CatalogDomainGuard.Utc(occurredOnUtc);
-        EnsureWithinWindow(utc);
+        if (utc >= EndsOnUtc)
+            throw new InvalidOperationException("The promotion validity window has ended.");
         Status = PromotionStatus.Active;
         CompleteStatusChange(actor, utc, "Resumed");
     }
@@ -464,7 +453,7 @@ public sealed class Promotion : RevisionedCatalogAggregateRoot<Guid>
     {
         if (Status == PromotionStatus.Archived)
             return;
-        if (Status is PromotionStatus.Active or PromotionStatus.Scheduled or PromotionStatus.Paused)
+        if (Status is PromotionStatus.Active or PromotionStatus.Paused)
             throw new InvalidOperationException("A live promotion must be ended before it can be archived.");
 
         Status = PromotionStatus.Archived;
@@ -485,14 +474,6 @@ public sealed class Promotion : RevisionedCatalogAggregateRoot<Guid>
     {
         if (Status != PromotionStatus.Draft)
             throw new InvalidOperationException("Published promotion definitions are immutable; start a new draft revision first.");
-    }
-
-    private void EnsureWithinWindow(DateTimeOffset utc)
-    {
-        if (utc < StartsOnUtc)
-            throw new InvalidOperationException("The promotion start time has not been reached.");
-        if (utc >= EndsOnUtc)
-            throw new InvalidOperationException("The promotion validity window has ended.");
     }
 
     private static void ValidateDefinition(

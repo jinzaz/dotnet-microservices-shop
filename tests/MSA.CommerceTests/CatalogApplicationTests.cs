@@ -234,6 +234,27 @@ public sealed class CatalogApplicationTests
     }
 
     [TestMethod]
+    public void Promotion_PausedBeforeItStarts_CanResumeButNotAfterItEnds()
+    {
+        var promotion = new Promotion(Guid.NewGuid(), "early", "Early", PromotionTriggerType.Automatic,
+            Now.AddDays(1), Now.AddDays(2), 0, PromotionStackPolicy.Stackable, null, "operator", Now);
+        promotion.ReplaceDefinition(
+            Array.Empty<PromotionRuleDefinition>(),
+            [new PromotionBenefitDefinition("FixedAmountOff", 1, "{\"amount\":5}", 0)],
+            Array.Empty<PromotionTargetDefinition>(),
+            "operator",
+            Now);
+        promotion.Publish("operator", Now);
+        promotion.Pause("operator", Now);
+
+        promotion.Resume("operator", Now);
+        Assert.AreEqual(PromotionStatus.Active, promotion.Status);
+
+        promotion.Pause("operator", Now);
+        Assert.ThrowsExactly<InvalidOperationException>(() => promotion.Resume("operator", Now.AddDays(2)));
+    }
+
+    [TestMethod]
     public async Task CouponBatch_IssuesOneActivePersonalCouponPerUserWithUniqueCodes()
     {
         var promotion = new Promotion(Guid.NewGuid(), "welcome", "Welcome", PromotionTriggerType.Coupon,

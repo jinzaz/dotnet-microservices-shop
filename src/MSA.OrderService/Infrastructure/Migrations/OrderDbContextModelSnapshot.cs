@@ -25,7 +25,6 @@ namespace MSA.OrderService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.EventBusOutbox.OutboxMessage", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("EventType")
@@ -84,7 +83,6 @@ namespace MSA.OrderService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.OrderService.Domain.CouponProjection", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("AssignedUserId")
@@ -198,7 +196,6 @@ namespace MSA.OrderService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.OrderService.Domain.InventoryAllocationProjection", b =>
                 {
                     b.Property<Guid>("AllocationId")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasComment("库存配额内部标识");
 
@@ -252,7 +249,6 @@ namespace MSA.OrderService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.OrderService.Domain.Order", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<decimal>("Amount")
@@ -430,7 +426,6 @@ namespace MSA.OrderService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.OrderService.Domain.OrderCouponRedemption", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("CouponId")
@@ -499,7 +494,6 @@ namespace MSA.OrderService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.OrderService.Domain.OrderDiscount", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<decimal>("Amount")
@@ -549,7 +543,6 @@ namespace MSA.OrderService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.OrderService.Domain.OrderFulfillmentStatusHistory", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Actor")
@@ -689,7 +682,7 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.ToTable("order_lines", null, t =>
                         {
-                            t.HasCheckConstraint("CK_order_lines_prices", "\"ListUnitPrice\" >= 0 AND \"UnitPrice\" >= 0 AND \"UnitPrice\" <= \"ListUnitPrice\" AND \"LineSubtotal\" = round(\"ListUnitPrice\" * \"Quantity\", 2) AND \"DiscountAmount\" = round((\"ListUnitPrice\" - \"UnitPrice\") * \"Quantity\", 2) AND \"LineAmount\" = round(\"UnitPrice\" * \"Quantity\", 2)");
+                            t.HasCheckConstraint("CK_order_lines_prices", "\"ListUnitPrice\" >= 0 AND \"UnitPrice\" >= 0 AND \"UnitPrice\" <= \"ListUnitPrice\" AND \"LineSubtotal\" = round(\"ListUnitPrice\" * \"Quantity\", 2) AND \"DiscountAmount\" BETWEEN 0 AND \"LineSubtotal\" AND \"LineAmount\" = \"LineSubtotal\" - \"DiscountAmount\" AND \"UnitPrice\" = round(\"LineAmount\" / \"Quantity\", 2)");
 
                             t.HasCheckConstraint("CK_order_lines_quantity", "\"Quantity\" > 0");
 
@@ -700,7 +693,6 @@ namespace MSA.OrderService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.OrderService.Domain.OrderProductProjection", b =>
                 {
                     b.Property<Guid>("VariantId")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasComment("目录 SKU 变体标识");
 
@@ -769,7 +761,6 @@ namespace MSA.OrderService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.OrderService.Domain.OrderStatusHistory", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Actor")
@@ -806,7 +797,6 @@ namespace MSA.OrderService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.OrderService.Domain.PromotionProjection", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("BenefitsJson")
@@ -910,7 +900,6 @@ namespace MSA.OrderService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.Saga.SagaState", b =>
                 {
                     b.Property<Guid>("CorrelationId")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasComment("跨服务流程的关联标识");
 

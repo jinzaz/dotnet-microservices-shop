@@ -101,6 +101,9 @@ public sealed record OrderPricingResult(
     string SnapshotHash)
 {
     public IReadOnlyList<PromotionOpportunity> Opportunities { get; init; } = [];
+
+    /// <summary>每个计价行分摊到的优惠，与传入的 items 一一对应，合计等于 <see cref="DiscountTotal"/>。</summary>
+    public IReadOnlyList<decimal> LineDiscounts { get; init; } = [];
 }
 
 public sealed class OrderPricingService(
@@ -162,22 +165,30 @@ public sealed class OrderPricingService(
         if (inactive is not null)
             throw new CouponRejectedException(CouponRejectionReason.PromotionInactive, "A coupon's promotion is not currently active.", inactive.Id);
 
-        var context = new PromotionEvaluationContext(items, subtotal, subtotal);
         var discounts = new List<OrderDiscount>();
         var appliedCoupons = new List<AppliedCoupon>();
         var opportunities = new List<PromotionOpportunity>();
         var claimedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var remaining = subtotal;
+        // 每行优惠后还剩多少。门槛和权益都按适用行的剩余金额算，并把优惠分摊回这些行：
+        // 同一件商品被多个活动命中时，后面的活动只能在前面减剩的金额上继续减，单行永远不会被减成负数。
+        var lineRemaining = items.Select(item => Round(item.Product.Price * item.Quantity)).ToArray();
+        var lineDiscounts = new decimal[items.Count];
 
         // 促销按优先级稳定计算；每步最多抵扣到剩余 0.01，确保订单始终保留正的应付金额。
         foreach (var promotion in promotions)
         {
-            var promotionContext = ApplyTargets(promotion.TargetsJson, context);
-            if (promotionContext is null)
+            var eligibleLines = EligibleLines(promotion.TargetsJson, items);
+            if (eligibleLines.Length == 0)
             {
                 EnsureRequestedCouponCanApply(promotion, couponByPromotion, CouponRejectionReason.TargetMismatch, "Coupon target does not match this order.");
                 continue;
             }
+
+            var promotionContext = new PromotionEvaluationContext(
+                eligibleLines.Select(index => items[index]).ToArray(),
+                subtotal,
+                Round(eligibleLines.Sum(index => lineRemaining[index])));
 
             if (!RulesMatch(promotion.RulesJson, promotionContext))
             {
@@ -198,7 +209,12 @@ public sealed class OrderPricingService(
                 continue;
             }
 
-            var calculated = CalculateBenefits(promotion.BenefitsJson, promotionContext, remaining);
+            if (CalculateBenefits(promotion.BenefitsJson, promotionContext, remaining) is not { } calculated)
+            {
+                // 不认识的权益（例如目录先于订单发布了新类型）只让这一个活动不生效，不拖垮所有下单。
+                EnsureRequestedCouponCanApply(promotion, couponByPromotion, CouponRejectionReason.NoDiscount, "Coupon benefit is not supported yet.");
+                continue;
+            }
             var amount = Round(Math.Min(calculated, Math.Max(0, remaining - 0.01m)));
             if (amount <= 0)
             {
@@ -230,6 +246,7 @@ public sealed class OrderPricingService(
                 promotion.Name,
                 amount,
                 snapshot));
+            Allocate(amount, eligibleLines, lineRemaining, lineDiscounts);
             remaining = Round(remaining - amount);
 
             if (coupon is not null)
@@ -255,7 +272,8 @@ public sealed class OrderPricingService(
         var snapshotHash = PricingSnapshotHash.Create(items, discounts, subtotal, discountTotal);
         return new OrderPricingResult(subtotal, discountTotal, discounts, appliedCoupons, snapshotHash)
         {
-            Opportunities = opportunities
+            Opportunities = opportunities,
+            LineDiscounts = lineDiscounts
         };
     }
 
@@ -326,7 +344,7 @@ public sealed class OrderPricingService(
         {
             if (rule.SchemaVersion == 1 && string.Equals(rule.RuleType, "MinimumOrderAmount", StringComparison.OrdinalIgnoreCase))
             {
-                var missing = PromotionJson.RequiredDecimal(rule.ConfigurationJson, "amount") - context.Subtotal;
+                var missing = PromotionJson.RequiredDecimal(rule.ConfigurationJson, "amount") - context.EligibleSubtotal;
                 if (missing > 0)
                     amount = Round(missing);
             }
@@ -360,48 +378,70 @@ public sealed class OrderPricingService(
         return true;
     }
 
-    private decimal CalculateBenefits(
+    /// <summary>
+    /// 一个活动内的多条权益依次在前一条减剩的金额上计算，合计不超过适用行的剩余金额。
+    /// 含有本服务不认识的权益时返回 null，由调用方让整个活动不生效。
+    /// </summary>
+    private decimal? CalculateBenefits(
         string benefitsJson,
         PromotionEvaluationContext context,
         decimal remaining)
     {
         var benefits = JsonSerializer.Deserialize<IReadOnlyList<PromotionBenefitContract>>(benefitsJson) ?? [];
+        var cap = Math.Min(remaining, context.EligibleSubtotal);
         var discount = 0m;
         foreach (var benefit in benefits)
         {
             if (!_benefits.TryGetValue(benefit.BenefitType, out var calculator)
                 || calculator.SchemaVersion != benefit.SchemaVersion)
             {
-                throw new InvalidOperationException($"Unsupported promotion benefit '{benefit.BenefitType}' v{benefit.SchemaVersion}.");
+                return null;
             }
 
-            var benefitAmount = calculator.Calculate(benefit.ConfigurationJson, context, remaining - discount);
-            discount = Round(discount + Math.Max(0, benefitAmount));
+            var benefitAmount = calculator.Calculate(benefit.ConfigurationJson, context, cap - discount);
+            discount = Round(discount + Math.Clamp(benefitAmount, 0, cap - discount));
         }
         return discount;
     }
 
-    private static PromotionEvaluationContext? ApplyTargets(
-        string targetsJson,
-        PromotionEvaluationContext context)
+    /// <summary>活动适用的计价行下标；没有目标表示全部适用，排除项优先于包含项。</summary>
+    private static int[] EligibleLines(string targetsJson, IReadOnlyList<PricingItem> items)
     {
         var targets = JsonSerializer.Deserialize<IReadOnlyList<PromotionTargetContract>>(targetsJson) ?? [];
-        if (targets.Count == 0)
-            return context;
-
         var included = targets.Where(target => !target.IsExcluded).ToArray();
         var excluded = targets.Where(target => target.IsExcluded).ToArray();
-        var eligible = context.Items
-            .Where(item =>
-                (included.Length == 0 || included.Any(target => TargetMatches(target, item)))
-                && !excluded.Any(target => TargetMatches(target, item)))
+        return Enumerable.Range(0, items.Count)
+            .Where(index =>
+                (included.Length == 0 || included.Any(target => TargetMatches(target, items[index])))
+                && !excluded.Any(target => TargetMatches(target, items[index])))
             .ToArray();
-        if (eligible.Length == 0)
-            return null;
-        return new PromotionEvaluationContext(
-            eligible,
-            context.Subtotal,
-            eligible.Sum(item => item.Product.Price * item.Quantity));
+    }
+
+    /// <summary>
+    /// 把一笔优惠按适用行剩余金额的比例分摊回去：先向下取整到分，零头再依次补给仍有余额的行。
+    /// 比例份额不会超过该行余额，适用行余额之和又不小于优惠金额，所以每一分都能分完且没有行变负数。
+    /// </summary>
+    private static void Allocate(decimal amount, int[] lines, decimal[] lineRemaining, decimal[] lineDiscounts)
+    {
+        var basis = lines.Sum(index => lineRemaining[index]);
+        var shares = lines
+            .Select(index => Math.Floor(amount * lineRemaining[index] / basis * 100m) / 100m)
+            .ToArray();
+        var leftover = amount - shares.Sum();
+        for (var i = 0; i < lines.Length && leftover > 0; i++)
+        {
+            var extra = Math.Min(leftover, lineRemaining[lines[i]] - shares[i]);
+            shares[i] += extra;
+            leftover -= extra;
+        }
+        if (leftover != 0)
+            throw new InvalidOperationException("Discount exceeds the remaining amount of its eligible lines.");
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            lineRemaining[lines[i]] -= shares[i];
+            lineDiscounts[lines[i]] += shares[i];
+        }
     }
 
     private static bool TargetMatches(PromotionTargetContract target, PricingItem item) =>
@@ -430,6 +470,9 @@ public sealed class OrderPricingService(
         decimal.Round(value, 2, MidpointRounding.AwayFromZero);
 }
 
+/// <param name="Items">活动适用的计价行。</param>
+/// <param name="Subtotal">整单原价小计，仅供参考；门槛与权益都不应基于它计算。</param>
+/// <param name="EligibleSubtotal">适用行扣除前序活动优惠后的剩余金额。</param>
 public sealed record PromotionEvaluationContext(
     IReadOnlyList<PricingItem> Items,
     decimal Subtotal,
@@ -457,8 +500,9 @@ public sealed class MinimumOrderAmountRule : IPromotionRuleEvaluator
     public string RuleType => "MinimumOrderAmount";
     public int SchemaVersion => 1;
 
+    // 只看适用商品优惠后的金额：品类满减不能靠其他商品凑单，同一笔金额也不能被多个满减重复用作门槛。
     public bool IsSatisfied(string configurationJson, PromotionEvaluationContext context) =>
-        context.Subtotal >= PromotionJson.RequiredDecimal(configurationJson, "amount");
+        context.EligibleSubtotal >= PromotionJson.RequiredDecimal(configurationJson, "amount");
 }
 
 public sealed class MinimumItemQuantityRule : IPromotionRuleEvaluator

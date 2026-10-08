@@ -89,7 +89,7 @@ public sealed class OrderAggregateTests
         Guid.NewGuid(), "buyer-1", "order-key", new string('F', 64), "Alipay",
         new ShippingAddressSnapshot(null, "Buyer", "13800000000", "CN", "Province", "City",
             "District", "Street", null, null),
-        [new OrderLine(Guid.NewGuid(), Guid.NewGuid(), null, "SKU-1", "Product", "Variant", "{}", 1, 10m, 10m)],
+        [new OrderLine(Guid.NewGuid(), Guid.NewGuid(), null, "SKU-1", "Product", "Variant", "{}", 1, 10m, 0m)],
         [], "CNY", basketId, basketVersion, Guid.NewGuid(), PriceHash,
         Created.AddMinutes(20), Created);
 }

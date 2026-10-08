@@ -14,8 +14,8 @@ export function promotionActions(row: Promotion) {
   if (row.status === 'Draft') actions.push({ action: 'publish', label: '发布', primary: true, options: { name: row.name, detail: '发布后定义不可修改，订单服务将立即按活动周期计算优惠。' } });
   if (row.status === 'Active') actions.push({ action: 'pause', label: '暂停', options: { name: row.name, detail: '暂停期间不参与计算，可随时恢复。' } });
   if (row.status === 'Paused') actions.push({ action: 'resume', label: '恢复', primary: true, options: { name: row.name } });
-  if (['Paused', 'Scheduled', 'Ended'].includes(row.status)) actions.push({ action: 'revise', label: '重新编辑', options: { name: row.name, detail: '活动回到草稿并立即停止参与计算，修改后需要重新发布。' } });
-  if (['Active', 'Paused', 'Scheduled'].includes(row.status)) actions.push({ action: 'end', label: '结束', options: { name: row.name, danger: true, detail: '结束后活动不再参与计算；之后可以重新编辑或归档。' } });
+  if (['Paused', 'Ended'].includes(row.status)) actions.push({ action: 'revise', label: '重新编辑', options: { name: row.name, detail: '活动回到草稿并立即停止参与计算，修改后需要重新发布。' } });
+  if (['Active', 'Paused'].includes(row.status)) actions.push({ action: 'end', label: '结束', options: { name: row.name, danger: true, detail: '结束后活动不再参与计算；之后可以重新编辑或归档。' } });
   if (['Draft', 'Ended'].includes(row.status)) actions.push({ action: 'archive', label: '归档', options: { name: row.name, danger: true, detail: '归档是终态，活动将不能再编辑或发布。' } });
   return actions;
 }
