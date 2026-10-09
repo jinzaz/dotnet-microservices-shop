@@ -16,6 +16,7 @@ const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const AccessPage = lazy(() => import('./pages/AccessPage'));
 const MessagingPage = lazy(() => import('./pages/MessagingPage'));
 const CertificatesPage = lazy(() => import('./pages/CertificatesPage'));
+const SearchPage = lazy(() => import('./pages/SearchPage'));
 
 const nav: NavEntry[] = [
   { path: '/', label: '运营概览', icon: 'overview' },
@@ -26,6 +27,7 @@ const nav: NavEntry[] = [
   { path: '/payments', label: '支付', icon: 'payment', modules: ['payment.transactions'] },
   { path: '/notifications', label: '通知', icon: 'notification', modules: ['notification.messages'] },
   { path: '/messaging', label: '消息运维', icon: 'activity', modules: ['system.messaging'] },
+  { path: '/search', label: '搜索索引', icon: 'search', modules: ['system.search'] },
   { path: '/certificates', label: '证书', icon: 'key', modules: ['system.certificates'] },
   { path: '/access', label: '权限', icon: 'shield', modules: ['system.authorization'] },
 ];
@@ -89,6 +91,7 @@ function AppShell() {
         <Route path="/payments" element={<PaymentsPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/messaging" element={<MessagingPage />} />
+        <Route path="/search" element={<SearchPage />} />
         <Route path="/certificates" element={<CertificatesPage />} />
         <Route path="/access" element={<AccessPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

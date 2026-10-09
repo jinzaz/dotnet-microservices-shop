@@ -165,6 +165,7 @@ button.command-search > span { min-width: 0; flex: 1; overflow: hidden; font-siz
 .detail-list { display: grid; border-top: 1px solid var(--line); }
 .detail-list > div { display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 11px; }
 .detail-list dt { color: var(--muted); font-size: 10px; }
+.detail-list--wide > div { grid-template-columns: minmax(140px, 220px) minmax(0, 1fr); }
 .detail-list dd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; overflow-wrap: anywhere; }
 .detail-list small { color: var(--quiet); }
 .order-detail__summary > div > strong.summary-date { font-size: 16px; letter-spacing: -.01em; }

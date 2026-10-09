@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package msa.catalog.v1;
+
+option csharp_namespace = "MSA.Grpc.Contracts.Catalog";
+
+// 搜索服务读取商品的唯一入口：目录是商品数据的权威，搜索索引只是它的一份投影。
+// 增量同步按 id 批量取最新快照；全量重建按主键分页导出（keyset，不用 OFFSET）。
+service CatalogSearchFeed {
+  rpc GetProducts (GetSearchProductsRequest) returns (SearchProductsResponse);
+  rpc ExportProducts (ExportSearchProductsRequest) returns (SearchProductsResponse);
+}
+
+message GetSearchProductsRequest {
+  repeated string product_ids = 1;
+}
+
+message ExportSearchProductsRequest {
+  // 上一页最后一个商品 id；空表示从头开始。
+  string after_id = 1;
+  int32 page_size = 2;
+  // 只导出这个分类下的商品（分类改名后刷新用）；空表示全部。
+  string category_id = 3;
+}
+
+message SearchProductsResponse {
+  // GetProducts：已删除的商品不在结果里；ExportProducts：只含可搜索的商品。
+  repeated SearchProduct products = 1;
+  // ExportProducts 下一页的起点；空表示已经导出完毕。
+  string next_after_id = 2;
+}
+
+message SearchProduct {
+  string id = 1;
+  string category_id = 2;
+  string category_name = 3;
+  string name = 4;
+  string description = 5;
+  // 商品的乐观并发版本号，单调递增：搜索服务用它做外部版本号，旧快照永远覆盖不了新快照。
+  int64 version = 6;
+  // 已发布、可售、至少一个可售规格。false 时搜索服务删除文档。
+  bool searchable = 7;
+  // ISO 8601 UTC。定时上架的商品生效时间在未来，照样可搜索，由搜索服务按当前时间过滤。
+  string effective_on_utc = 8;
+  string updated_on_utc = 9;
+  // 只含可售规格，默认规格排第一。
+  repeated SearchProductVariant variants = 10;
+  // 第一张前台可见的图片；没有时为空。
+  string image_url = 11;
+}
+
+message SearchProductVariant {
+  string sku = 1;
+  string normalized_sku = 2;
+  string display_name = 3;
+  string attributes_json = 4;
+  string barcode = 5;
+  // 金额用字符串传递，避免 double 的精度误差。
+  string price = 6;
+  string currency = 7;
+  bool is_default = 8;
+}

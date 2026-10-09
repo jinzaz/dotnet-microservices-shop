@@ -91,6 +91,10 @@ FROM runtime AS certificate-service
 COPY --from=publish /app/certificate-service .
 ENTRYPOINT ["dotnet", "MSA.CertificateService.dll"]
 
+FROM runtime AS search-service
+COPY --from=publish /app/search-service .
+ENTRYPOINT ["dotnet", "MSA.SearchService.dll"]
+
 FROM runtime AS bff-web
 COPY --from=publish /app/bff-web .
 ENTRYPOINT ["dotnet", "MSA.BFF.Web.dll"]

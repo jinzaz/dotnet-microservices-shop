@@ -1,0 +1,97 @@
+# 单节点 Elasticsearch（带 IK）。和 PostgreSQL、RabbitMQ 一样属于基础设施：不在 docker/compose.yaml 里，单独部署、单独升级。
+#   cd docker/elasticsearch && docker compose up -d --build                              # 生产：只在容器内网访问
+#   cd docker/elasticsearch && docker compose -f compose.yaml -f compose.dev.yaml up -d --build   # 本地开发：映射 9200 到宿主机
+# 口令写在本目录的 .env（ELASTIC_PASSWORD=...，不入库）。启动后把 msa.env / docker/.env 的 INFRA_ELASTICSEARCH_* 指向它。
+#
+# 生产问题 #11（传输安全）：默认走容器内网明文 http://elasticsearch:9200，和本仓库其他内部流量（服务间 HTTP / gRPC、
+# PostgreSQL、Redis、RabbitMQ）同一个安全模型——靠网络隔离（不映射端口、只加入 dotnet-infra_backend），
+# 再加最小权限的 API Key 限制凭据泄露的影响面（见 README.md）。
+# ES 与搜索服务不在同一台宿主机、跨物理网络通信时，打开下面注释掉的 TLS 配置（setup 容器、ssl 设置、证书卷、健康检查）。
+name: msa-elasticsearch
+
+services:
+  # ---- TLS：一次性生成 CA 与节点证书（与 Elastic 官方 compose 示例同一做法），证书放进 es-certs 卷 ----
+  # setup:
+  #   image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/elasticsearch-ik:${ES_VERSION:-9.1.5}
+  #   user: "0"
+  #   command: >
+  #     bash -c '
+  #       if [ ! -f config/certs/ca.zip ]; then
+  #         bin/elasticsearch-certutil ca --silent --pem -out config/certs/ca.zip && unzip -q config/certs/ca.zip -d config/certs;
+  #       fi;
+  #       if [ ! -f config/certs/certs.zip ]; then
+  #         printf "instances:\n  - name: elasticsearch\n    dns: [elasticsearch, localhost]\n    ip: [127.0.0.1]\n" > config/certs/instances.yml;
+  #         bin/elasticsearch-certutil cert --silent --pem -out config/certs/certs.zip --in config/certs/instances.yml
+  #           --ca-cert config/certs/ca/ca.crt --ca-key config/certs/ca/ca.key && unzip -q config/certs/certs.zip -d config/certs;
+  #       fi;
+  #       chown -R root:root config/certs;
+  #       find config/certs -type d -exec chmod 750 {} \;;
+  #       find config/certs -type f -exec chmod 640 {} \;
+  #     '
+  #   volumes:
+  #     - es-certs:/usr/share/elasticsearch/config/certs
+  #   # 证书里的主机名要和搜索服务连接用的地址一致（这里是容器名 elasticsearch；跨机器时改成对方访问的域名 / IP）。
+
+  elasticsearch:
+    build:
+      context: .
+      args:
+        ES_VERSION: ${ES_VERSION:-9.1.5}
+    image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/elasticsearch-ik:${ES_VERSION:-9.1.5}
+    container_name: elasticsearch
+    restart: unless-stopped
+    # depends_on:
+    #   setup:
+    #     condition: service_completed_successfully
+    environment:
+      discovery.type: single-node
+      cluster.name: msa-search
+      # 认证始终开启：没有口令 / API Key 访问不了。口令首次启动时写入。
+      xpack.security.enabled: "true"
+      ELASTIC_PASSWORD: "${ELASTIC_PASSWORD:?set ELASTIC_PASSWORD in docker/elasticsearch/.env}"
+      # HTTP 层明文。显式写 false：不写的话官方镜像首次启动会自动生成一套自签证书并强制 HTTPS。
+      xpack.security.http.ssl.enabled: "false"
+      # ---- TLS：注释掉上面这行，打开下面四行 ----
+      # xpack.security.http.ssl.enabled: "true"
+      # xpack.security.http.ssl.key: certs/elasticsearch/elasticsearch.key
+      # xpack.security.http.ssl.certificate: certs/elasticsearch/elasticsearch.crt
+      # xpack.security.http.ssl.certificate_authorities: certs/ca/ca.crt
+      # 多节点集群时，节点之间的 9300 传输层开启认证后必须配 TLS（ES 启动检查强制），同样用 es-certs 里的证书：
+      # xpack.security.transport.ssl.enabled: "true"
+      # xpack.security.transport.ssl.key: certs/elasticsearch/elasticsearch.key
+      # xpack.security.transport.ssl.certificate: certs/elasticsearch/elasticsearch.crt
+      # xpack.security.transport.ssl.certificate_authorities: certs/ca/ca.crt
+      # xpack.security.transport.ssl.verification_mode: certificate
+      # 堆内存给机器内存的一半、且不超过 31g（压缩指针上限）；50 万商品 1g 足够。
+      ES_JAVA_OPTS: "-Xms${ES_HEAP:-1g} -Xmx${ES_HEAP:-1g}"
+      # 磁盘水位：默认 85% 起停止分配分片、95% 起索引只读，满盘前给运维留出处理时间。
+      cluster.routing.allocation.disk.watermark.low: "85%"
+      cluster.routing.allocation.disk.watermark.high: "90%"
+      # 生产问题 #19：禁止写入时自动建索引——写错名字时报错，而不是悄悄建出一个动态映射的索引。
+      # 只放行 ES 自己的系统索引（以 . 开头）。
+      action.auto_create_index: ".*"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+      # - es-certs:/usr/share/elasticsearch/config/certs
+    # 不映射端口：只有 dotnet-infra_backend 里的容器（msa-search）能访问。本地开发用 compose.dev.yaml 映射。
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs -u elastic:$$ELASTIC_PASSWORD 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' || exit 1"]
+      # TLS：
+      # test: ["CMD-SHELL", "curl -fs --cacert config/certs/ca/ca.crt -u elastic:$$ELASTIC_PASSWORD 'https://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    networks:
+      - backend
+
+volumes:
+  es-data:
+  # es-certs:
+
+networks:
+  backend:
+    name: dotnet-infra_backend
+    external: true

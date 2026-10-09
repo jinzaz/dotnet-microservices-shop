@@ -186,6 +186,16 @@ public sealed class ProductVariantChangedIntegrationEvent : IntegrationEvent
     public DateTimeOffset? EffectiveOnUtc { get; init; }
 }
 
+/// <summary>
+/// 搜索索引失效通知：只说「这些商品 / 这些分类（改了名）变了」，不带内容。搜索服务收到后经 gRPC 读目录的最新快照，
+/// 所以消息重复、乱序、丢了中间某条都不影响最终结果。目录在业务写入的同一事务里经 Outbox 发出。
+/// </summary>
+public sealed class CatalogSearchInvalidatedIntegrationEvent : IntegrationEvent
+{
+    public IReadOnlyList<Guid> ProductIds { get; init; } = [];
+    public IReadOnlyList<Guid> CategoryIds { get; init; } = [];
+}
+
 public sealed record PromotionRuleContract(
     string RuleType,
     int SchemaVersion,

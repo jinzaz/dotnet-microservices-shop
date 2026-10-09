@@ -36,6 +36,8 @@ include:
     env_file: [.env, certs/cert-passwords.env]
   - path: services/commerce/payment.yaml
     env_file: [.env, certs/cert-passwords.env]
+  - path: services/commerce/search.yaml
+    env_file: [.env, certs/cert-passwords.env]
   # 平台服务
   - path: services/platform/notification.yaml
     env_file: [.env, certs/cert-passwords.env]

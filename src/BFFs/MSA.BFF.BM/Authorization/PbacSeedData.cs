@@ -25,7 +25,8 @@ internal static class PbacSeedData
         ("system.messaging", "消息运维"),
         ("system.certificates", "证书管理"),
         // 导出私钥单独授权：能管理证书不等于能把私钥带走。只用到 query。
-        ("system.certificate-keys", "证书私钥")
+        ("system.certificate-keys", "证书私钥"),
+        ("system.search", "搜索索引")
     ];
 
     internal static readonly BmRole[] SystemAdministratorRole =
@@ -174,7 +175,8 @@ internal static class PbacSeedData
             ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/end"),
             ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/quantity"),
             .. MessagingRoutes(),
-            .. CertificateRoutes()
+            .. CertificateRoutes(),
+            .. SearchRoutes()
         ];
 
         return definitions
@@ -222,6 +224,23 @@ internal static class PbacSeedData
         ("system.certificates.delete", HttpMethods.Post, "/api/certificate/admin/certificates/{id}/revoke"),
         ("system.certificates.delete", HttpMethods.Delete, "/api/certificate/admin/acme/subscriptions/{id}"),
         ("system.certificate-keys.query", HttpMethods.Post, "/api/certificate/admin/certificates/{id}/export-private")
+    ];
+
+    /// <summary>
+    /// 搜索服务（MSA.SearchService）：索引状态、全量重建，以及按前台同样的条件预览搜索结果（核对相关度与可见性）。
+    /// 重建只是从目录重新投影，不改业务数据，归 edit。
+    /// </summary>
+    private static (string Permission, string Method, string Path)[] SearchRoutes() =>
+    [
+        ("system.search.query", HttpMethods.Get, "/api/search/admin/status"),
+        ("system.search.query", HttpMethods.Get, "/api/search/products"),
+        ("system.search.query", HttpMethods.Get, "/api/search/suggestions"),
+        ("system.search.edit", HttpMethods.Post, "/api/search/admin/rebuild"),
+        // 搜索服务的死信同样在「消息运维」页处理，归 system.messaging（它没有 Outbox 与 Saga，那两个接口恒为空）。
+        ("system.messaging.query", HttpMethods.Get, "/api/search/admin/messaging/outbox/failed"),
+        ("system.messaging.query", HttpMethods.Get, "/api/search/admin/messaging/sagas/stalled"),
+        ("system.messaging.query", HttpMethods.Get, "/api/search/admin/messaging/dead-letters"),
+        ("system.messaging.edit", HttpMethods.Post, "/api/search/admin/messaging/dead-letters/replay")
     ];
 
     private static Guid StableGuid(string value)

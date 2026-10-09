@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="AWSSDK.S3" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- 读 msa.env 拼连接串（MsaEnvironment）、搜索同步消息的契约、Outbox 消息格式，都和服务用同一份代码 -->
+    <ProjectReference Include="..\..\src\MSA.Common\MSA.Common.csproj" />
+    <ProjectReference Include="..\..\src\MSA.Contracts\MSA.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\MSA.EventBusOutbox\MSA.EventBusOutbox.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="MSA.CommerceTests" />
+  </ItemGroup>
+</Project>

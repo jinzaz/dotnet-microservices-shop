@@ -15,7 +15,7 @@ docker/
 ├── services/
 │   ├── edge/        gateway.yaml  bff-web.yaml  bff-bm.yaml
 │   ├── identity/    identity.yaml user.yaml
-│   ├── commerce/    catalog.yaml  inventory.yaml basket.yaml order.yaml payment.yaml
+│   ├── commerce/    catalog.yaml  inventory.yaml basket.yaml order.yaml payment.yaml search.yaml
 │   └── platform/    notification.yaml certificate.yaml
 ├── config/                      # 结构化配置覆盖，挂载为 /app/appsettings.<环境>.json
 │   ├── gateway/appsettings.json     # YARP 集群地址
@@ -91,6 +91,7 @@ docker compose logs -f msa-order
 | 购物车 | msa-basket | 8080 | — | 否 |
 | 订单 | msa-order | 8080 | 8081 | 否 |
 | 支付 | msa-payment | 8080 | 8081 | 只有 `/payment/callbacks/` |
+| 搜索 | msa-search | 8080 | — | 否（Elasticsearch 单独部署，见 `elasticsearch/README.md`） |
 | 通知 | msa-notification | 8080 | — | 否 |
 | 证书 | msa-certificate | 8080 | — | 只有 80 端口的 `/.well-known/acme-challenge/`（HTTP-01 验证） |
 | 商城 BFF | msa-bff-web | 8080 | — | `https://shop.${MSA_DOMAIN}` 下的 `/api`、`/bff`（与商城前端同域） |

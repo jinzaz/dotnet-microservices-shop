@@ -54,6 +54,9 @@ internal sealed class IdentitySeedHostedService(
             (IdentityServiceConstants.Scopes.PaymentAdminRead, "Payment Admin Read", IdentityServiceConstants.Resources.Payment),
             (IdentityServiceConstants.Scopes.PaymentAdminWrite, "Payment Admin Write", IdentityServiceConstants.Resources.Payment),
 
+            (IdentityServiceConstants.Scopes.SearchAdminRead, "Search Admin Read", IdentityServiceConstants.Resources.Search),
+            (IdentityServiceConstants.Scopes.SearchAdminWrite, "Search Admin Write", IdentityServiceConstants.Resources.Search),
+
             (IdentityServiceConstants.Scopes.CertificateAdminRead, "Certificate Admin Read", IdentityServiceConstants.Resources.Certificate),
             (IdentityServiceConstants.Scopes.CertificateAdminWrite, "Certificate Admin Write", IdentityServiceConstants.Resources.Certificate)
         })

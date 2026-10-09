@@ -12,6 +12,7 @@ const services = [
   { id: 'payment', label: '支付' },
   { id: 'basket', label: '购物车' },
   { id: 'notification', label: '通知' },
+  { id: 'search', label: '搜索' },
 ] as const;
 
 type FailedOutboxMessage = { id: string; eventType: string; retryCount: number; occurredOnUtc: string; lastError?: string | null };

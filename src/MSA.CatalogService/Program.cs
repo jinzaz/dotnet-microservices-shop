@@ -28,9 +28,11 @@ if (string.IsNullOrWhiteSpace(postgresql))
 // 商品详情、列表、价格确认走 Cache Aside；商品、规格、图片、活动一落库，提交后按规则失效。
 builder.Services.AddMsaRedis(builder.Configuration, "catalog");
 builder.Services.AddMsaCacheInvalidation(CatalogCacheKeys.Configure);
+// 商品、规格、图片、分类名一有变化，就在同一事务里经 Outbox 通知搜索服务刷新索引。
 builder.Services.AddDbContext<CatalogDbContext>((services, options) => options
     .UseNpgsql(postgresql)
-    .UseMsaCacheInvalidation(services));
+    .UseMsaCacheInvalidation(services)
+    .AddInterceptors(new SearchInvalidationInterceptor()));
 builder.Services.AddScoped<MSADbContext>(services => services.GetRequiredService<CatalogDbContext>());
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddMediatR(configuration =>
@@ -91,5 +93,6 @@ app.MapCatalogEndpoints();
 app.MapCatalogAdminEndpoints();
 app.MapMsaGrpcService<CatalogPricingGrpcService>("catalog-api");
 app.MapMsaGrpcService<CouponQueryGrpcService>("catalog-api");
+app.MapMsaGrpcService<CatalogSearchFeedGrpcService>("catalog-api");
 app.MapMessagingAdminEndpoints("catalog", "catalog.admin.read", "catalog.admin.write");
 app.Run();

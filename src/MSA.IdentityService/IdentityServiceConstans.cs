@@ -50,6 +50,9 @@ internal static class IdentityServiceConstants
         internal const string PaymentAdminRead = "payment.admin.read";
         internal const string PaymentAdminWrite = "payment.admin.write";
 
+        internal const string SearchAdminRead = "search.admin.read";
+        internal const string SearchAdminWrite = "search.admin.write";
+
         internal const string CertificateAdminRead = "certificate.admin.read";
         internal const string CertificateAdminWrite = "certificate.admin.write";
     }
@@ -68,6 +71,7 @@ internal static class IdentityServiceConstants
         internal const string Order = "order-api";
         internal const string Payment = "payment-api";
         internal const string Certificate = "certificate-api";
+        internal const string Search = "search-api";
     }
     #endregion
 }

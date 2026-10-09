@@ -55,4 +55,7 @@ export type CatalogCategory = {
 export type DisplayProduct = CatalogProduct & {
   categoryLabel: string;
   image: string;
+  /** Search results only: the name with hit markers, and the variant count (they carry no variant list). */
+  nameHighlight?: string | null;
+  variantCount?: number;
 };

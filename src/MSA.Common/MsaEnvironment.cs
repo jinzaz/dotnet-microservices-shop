@@ -17,6 +17,7 @@ namespace MSA.Common;
 /// <item>INFRA_REDIS_HOST / PORT / PASSWORD → ConnectionStrings:Redis</item>
 /// <item>INFRA_RABBITMQ_HOST / PORT / USER / PASSWORD / VHOST → RabbitMQ:*</item>
 /// <item>INFRA_OSS_ENDPOINT / ACCESS_KEY / SECRET_KEY → ObjectStorage:*</item>
+/// <item>INFRA_ELASTICSEARCH_URL / API_KEY / USER / PASSWORD / CA_CERT → Elasticsearch:*</item>
 /// <item>MSA_SERVICE_AUTHORITY → ServiceAuthentication:Authority</item>
 /// <item>MSA_OTLP_ENDPOINT → OpenTelemetry:OtlpEndpoint</item>
 /// <item>MSA_GRPC_&lt;名称大写&gt;_ADDRESS → GrpcClients:&lt;名称&gt;:Address（按被调用的服务命名，例如 MSA_GRPC_CATALOG_ADDRESS）</item>
@@ -58,6 +59,15 @@ public static class MsaEnvironment
             Map(values, env, "INFRA_OSS_ENDPOINT", "ObjectStorage:Endpoint");
             Map(values, env, "INFRA_OSS_ACCESS_KEY", "ObjectStorage:AccessKey");
             Map(values, env, "INFRA_OSS_SECRET_KEY", "ObjectStorage:SecretKey");
+        }
+
+        if (current.GetSection("Elasticsearch").Exists())
+        {
+            Map(values, env, "INFRA_ELASTICSEARCH_URL", "Elasticsearch:Url");
+            Map(values, env, "INFRA_ELASTICSEARCH_API_KEY", "Elasticsearch:ApiKey");
+            Map(values, env, "INFRA_ELASTICSEARCH_USER", "Elasticsearch:Username");
+            Map(values, env, "INFRA_ELASTICSEARCH_PASSWORD", "Elasticsearch:Password");
+            Map(values, env, "INFRA_ELASTICSEARCH_CA_CERT", "Elasticsearch:CaCertificatePath");
         }
 
         if (current.GetSection("ServiceAuthentication").Exists())

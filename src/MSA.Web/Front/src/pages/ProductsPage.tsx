@@ -1,11 +1,12 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { categoriesQuery, listProducts } from '../features/catalog/catalog-api';
+import { categoriesQuery } from '../features/catalog/catalog-api';
 import { editorialProducts } from '../features/catalog/editorial-products';
 import { ProductCard } from '../features/catalog/ProductCard';
 import { ProductPreviewDialog } from '../features/catalog/ProductPreviewDialog';
 import { toDisplayProduct } from '../features/catalog/product-view';
+import { searchProducts, suggestProducts, type SearchSort } from '../features/catalog/search-api';
 import type { DisplayProduct } from '../features/catalog/types';
 import { getErrorMessage } from '../shared/api/api-error';
 import { isDemoMode } from '../shared/config/api';
@@ -15,28 +16,78 @@ import { Icon } from '../shared/ui/Icon';
 
 const PAGE_SIZE = 12;
 
+const sortOptions: { value: SearchSort; label: string }[] = [
+  { value: 'relevance', label: '综合排序' },
+  { value: 'newest', label: '新品优先' },
+  { value: 'price_asc', label: '价格从低到高' },
+  { value: 'price_desc', label: '价格从高到低' },
+];
+
+function readSort(value: string | null): SearchSort {
+  return sortOptions.some((option) => option.value === value) ? value as SearchSort : 'relevance';
+}
+
+function readPrice(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const price = Number(value);
+  return Number.isFinite(price) && price >= 0 ? price : undefined;
+}
+
+/** Waits until typing pauses so autocomplete does not fire a request per keystroke. */
+function useDebounced<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
 export default function ProductsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const demoMode = isDemoMode(`?${searchParams}`);
   const search = searchParams.get('q')?.trim() ?? '';
   const categoryId = searchParams.get('category') ?? '';
+  const sort = readSort(searchParams.get('sort'));
+  const minPrice = readPrice(searchParams.get('min'));
+  const maxPrice = readPrice(searchParams.get('max'));
   const [draft, setDraft] = useState(search);
+  const [priceDraft, setPriceDraft] = useState({ min: searchParams.get('min') ?? '', max: searchParams.get('max') ?? '' });
   const [previewProduct, setPreviewProduct] = useState<DisplayProduct | null>(null);
   const categories = useQuery({ ...categoriesQuery, enabled: !demoMode });
+  const prefix = useDebounced(draft.trim(), 200);
+  const suggestions = useQuery({
+    queryKey: ['search', 'suggestions', prefix],
+    queryFn: () => suggestProducts(prefix),
+    enabled: !demoMode && prefix.length > 0 && prefix !== search,
+    staleTime: 60_000,
+  });
   const productsQuery = useInfiniteQuery({
-    queryKey: ['catalog', 'products', { search, categoryId }],
-    queryFn: ({ pageParam }) => listProducts({ skip: pageParam, take: PAGE_SIZE, search, categoryId: categoryId || undefined }),
+    queryKey: ['search', 'products', { search, categoryId, sort, minPrice, maxPrice }],
+    queryFn: ({ pageParam }) => searchProducts({
+      q: search,
+      categoryId: categoryId || undefined,
+      sort,
+      minPrice,
+      maxPrice,
+      skip: pageParam,
+      take: PAGE_SIZE,
+    }),
     initialPageParam: 0,
-    getNextPageParam: (lastPage) => lastPage.skip + lastPage.items.length < lastPage.total ? lastPage.skip + lastPage.items.length : undefined,
+    getNextPageParam: (lastPage) => {
+      const next = lastPage.skip + lastPage.items.length;
+      return lastPage.items.length > 0 && next < lastPage.total ? next : undefined;
+    },
     enabled: !demoMode,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
   });
 
-  // Keep the input in sync when the header search or browser history changes the query.
+  // Keep the inputs in sync when the header search or browser history changes the query.
   useEffect(() => setDraft(search), [search]);
+  useEffect(() => setPriceDraft({ min: searchParams.get('min') ?? '', max: searchParams.get('max') ?? '' }), [searchParams]);
 
-  const updateParams = (next: { q?: string; category?: string }) => {
+  const updateParams = (next: Record<string, string | undefined>) => {
     const params = new URLSearchParams(searchParams);
     for (const [key, value] of Object.entries(next)) {
       if (value) params.set(key, value);
@@ -50,12 +101,26 @@ export default function ProductsPage() {
     updateParams({ q: draft.trim() });
   };
 
-  const products = demoMode
+  const submitPrice = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    updateParams({ min: priceDraft.min.trim(), max: priceDraft.max.trim() });
+  };
+
+  const firstPage = productsQuery.data?.pages[0];
+  // The search engine fell back to the plain catalog listing: no facets, sorting or price filters.
+  const advanced = firstPage?.engine !== 'database';
+  const facetCounts = new Map((firstPage?.facets?.categories ?? []).map((bucket) => [bucket.id, bucket.count]));
+  const products: DisplayProduct[] = demoMode
     ? editorialProducts.filter((product) => !search || product.name.includes(search))
-    : (productsQuery.data?.pages.flatMap((page) => page.items) ?? []).map((product) => toDisplayProduct(product, categories.data));
-  const total = demoMode ? products.length : productsQuery.data?.pages[0]?.total ?? 0;
+    : (productsQuery.data?.pages.flatMap((page) => page.items) ?? []).map((item) => {
+      const display = toDisplayProduct(item, categories.data);
+      return item.image ? { ...display, image: item.image } : display;
+    });
+  const total = demoMode ? products.length : firstPage?.total ?? 0;
+  const totalLabel = `${total}${firstPage?.totalIsLowerBound ? '+' : ''}`;
   const activeCategory = categories.data?.find((category) => category.id === categoryId);
-  const hasFilters = Boolean(search || categoryId);
+  const hasFilters = Boolean(search || categoryId || minPrice !== undefined || maxPrice !== undefined);
+  const showCounts = Boolean(firstPage?.facets && (search || minPrice !== undefined || maxPrice !== undefined));
 
   return (
     <CommerceShell>
@@ -63,12 +128,23 @@ export default function ProductsPage() {
         <header className="catalog-page__header">
           <div>
             <h1>{activeCategory?.name ?? (search ? '搜索结果' : '全部商品')}</h1>
-            <p>{productsQuery.isFetching && !productsQuery.isFetchingNextPage ? '正在更新商品…' : `共 ${total} 件商品${search ? `，与“${search}”相关` : ''}`}</p>
+            <p>{productsQuery.isFetching && !productsQuery.isFetchingNextPage ? '正在更新商品…' : `共 ${totalLabel} 件商品${search ? `，与“${search}”相关` : ''}`}</p>
           </div>
           <form className="catalog-search" role="search" onSubmit={submit}>
             <Icon name="search" />
             <label className="sr-only" htmlFor="catalog-search">搜索商品</label>
-            <input id="catalog-search" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="商品名称或 SKU" maxLength={80} />
+            <input
+              id="catalog-search"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="商品名称、品类或 SKU"
+              maxLength={80}
+              list="catalog-search-suggestions"
+              autoComplete="off"
+            />
+            <datalist id="catalog-search-suggestions">
+              {(suggestions.data ?? []).map((suggestion) => <option key={suggestion} value={suggestion} />)}
+            </datalist>
             {draft ? <button type="button" className="catalog-search__clear" aria-label="清空搜索" onClick={() => { setDraft(''); updateParams({ q: '' }); }}><Icon name="close" /></button> : null}
             <button type="submit">搜索</button>
           </form>
@@ -77,18 +153,57 @@ export default function ProductsPage() {
         {categories.data?.length ? (
           <nav className="chip-row" aria-label="商品分类筛选">
             <button type="button" className={!categoryId ? 'is-active' : undefined} aria-pressed={!categoryId} onClick={() => updateParams({ category: '' })}>全部</button>
-            {categories.data.map((category) => (
-              <button
-                key={category.id}
-                type="button"
-                className={categoryId === category.id ? 'is-active' : undefined}
-                aria-pressed={categoryId === category.id}
-                onClick={() => updateParams({ category: category.id })}
-              >
-                {category.name}
-              </button>
-            ))}
+            {categories.data.map((category) => {
+              const count = facetCounts.get(category.id) ?? 0;
+              return (
+                <button
+                  key={category.id}
+                  type="button"
+                  className={[categoryId === category.id ? 'is-active' : '', showCounts && !count ? 'is-empty' : ''].filter(Boolean).join(' ') || undefined}
+                  aria-pressed={categoryId === category.id}
+                  onClick={() => updateParams({ category: category.id })}
+                >
+                  {category.name}
+                  {showCounts ? <small className="chip-row__count">{count}</small> : null}
+                </button>
+              );
+            })}
           </nav>
+        ) : null}
+
+        {!demoMode && advanced ? (
+          <div className="catalog-toolbar">
+            <label className="catalog-toolbar__sort">
+              <span className="sr-only">排序</span>
+              <select value={sort} onChange={(event) => updateParams({ sort: event.target.value === 'relevance' ? '' : event.target.value })}>
+                {sortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <form className="catalog-toolbar__price" onSubmit={submitPrice} aria-label="价格区间">
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="any"
+                aria-label="最低价"
+                placeholder={firstPage?.facets?.minPrice != null ? `¥${Math.floor(firstPage.facets.minPrice)}` : '最低价'}
+                value={priceDraft.min}
+                onChange={(event) => setPriceDraft((value) => ({ ...value, min: event.target.value }))}
+              />
+              <span aria-hidden="true">–</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="any"
+                aria-label="最高价"
+                placeholder={firstPage?.facets?.maxPrice != null ? `¥${Math.ceil(firstPage.facets.maxPrice)}` : '最高价'}
+                value={priceDraft.max}
+                onChange={(event) => setPriceDraft((value) => ({ ...value, max: event.target.value }))}
+              />
+              <Button type="submit" size="small" variant="secondary">确定</Button>
+            </form>
+          </div>
         ) : null}
 
         {!demoMode && productsQuery.isPending ? (
@@ -114,7 +229,7 @@ export default function ProductsPage() {
           <div className="orders-empty">
             <Icon name="search" />
             <h2>没有找到相关商品</h2>
-            <p>{hasFilters ? '换个关键词或分类试试。' : '商家还没有发布商品。'}</p>
+            <p>{hasFilters ? '换个关键词、分类或价格区间试试。' : '商家还没有发布商品。'}</p>
             {hasFilters ? <Button type="button" variant="secondary" size="small" onClick={() => setSearchParams({}, { replace: true })}>清除筛选</Button> : null}
           </div>
         ) : null}
@@ -122,7 +237,7 @@ export default function ProductsPage() {
         {productsQuery.hasNextPage ? (
           <div className="load-more">
             <Button type="button" variant="secondary" loading={productsQuery.isFetchingNextPage} onClick={() => void productsQuery.fetchNextPage()}>
-              加载更多（已显示 {products.length} / {total}）
+              加载更多（已显示 {products.length} / {totalLabel}）
             </Button>
           </div>
         ) : null}

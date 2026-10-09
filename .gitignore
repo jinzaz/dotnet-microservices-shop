@@ -363,8 +363,12 @@ MigrationBackup/
 FodyWeavers.xsd
 # docker compose：本地口令与生成的开发证书不入库
 docker/.env
+docker/elasticsearch/.env
 docker/certs/
 
 # web dist
 # 前端构建产物（npm run build），由 nginx 部署时单独拷贝，不入库
 src/MSA.Web/*/dist/
+
+# 造数工具写到前端 public 下的商品示例图（tools/MSA.CatalogSeeder --image-dir）
+src/MSA.Web/*/public/catalog/seed/

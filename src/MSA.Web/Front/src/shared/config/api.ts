@@ -12,6 +12,7 @@ export const serviceRoutes = {
   identity: '/Auth',
   user: '/user',
   catalog: '/catalog',
+  search: '/search',
   basket: '/basket',
   ordering: '/order',
   inventory: '/inventory',

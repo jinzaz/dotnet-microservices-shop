@@ -1,0 +1,37 @@
+# 商品搜索：Elasticsearch + IK 分词的索引与查询（经网关 /api/search/** 对外）。
+# 只在 dotnet-infra_backend 网络内访问（不映射端口）：容器名 msa-search，监听 8080（HTTP）。没有自己的数据库；
+# 订阅 RabbitMQ 队列 msa.search 的目录变更，经 gRPC（MSA_GRPC_CATALOG_ADDRESS）回读商品。
+# Elasticsearch 本身不在这里部署，见 docker/elasticsearch/README.md。
+# 公共部分（环境、Issuer、OTLP、转发头、PostgreSQL / Redis / RabbitMQ 地址与口令）在 base/dotnet-service.yaml；这里只写这个服务自己的东西。
+services:
+  msa-search:
+    extends:
+      file: ../../base/dotnet-service.yaml
+      service: dotnet-infra-service
+    # 镜像由 scripts/build-images.* 构建并推送到 Harbor（清单见 images.txt），这里只拉取。
+    image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/search-service:${MSA_IMAGE_TAG:-latest}
+    pull_policy: ${MSA_PULL_POLICY:-missing}
+    container_name: msa-search
+    environment:
+      ASPNETCORE_URLS: "http://+:8080"
+      ServiceAuthentication__ClientId: "MSA_Svc_Search"
+      MSA_SERVICE_AUTHORITY: "${MSA_SERVICE_AUTHORITY}"
+      MSA_CLIENT_SECRET_MSA_SVC_SEARCH: "${MSA_CLIENT_SECRET_MSA_SVC_SEARCH}"
+      INFRA_ELASTICSEARCH_URL: "${INFRA_ELASTICSEARCH_URL}"
+      INFRA_ELASTICSEARCH_API_KEY: "${INFRA_ELASTICSEARCH_API_KEY:-}"
+      INFRA_ELASTICSEARCH_USER: "${INFRA_ELASTICSEARCH_USER:-}"
+      INFRA_ELASTICSEARCH_PASSWORD: "${INFRA_ELASTICSEARCH_PASSWORD:-}"
+      INFRA_ELASTICSEARCH_CA_CERT: "${INFRA_ELASTICSEARCH_CA_CERT:-}"
+    # TLS（默认关闭，走容器内网明文）：ES 打开 TLS 后，把它的 CA 拷出来：
+    #   docker cp elasticsearch:/usr/share/elasticsearch/config/certs/ca/ca.crt docker/certs/es-http-ca.crt
+    # 再打开下面的挂载，并在 .env 里设 INFRA_ELASTICSEARCH_URL=https://elasticsearch:9200、INFRA_ELASTICSEARCH_CA_CERT=/certs/es-http-ca.crt。
+    # 只挂 CA 公钥证书，不挂 ca.key：搜索服务只需要「信任谁」，不需要签发能力。
+    # volumes:
+    #   - ../../certs/es-http-ca.crt:/certs/es-http-ca.crt:ro
+    networks:
+      - backend
+
+networks:
+  backend:
+    name: dotnet-infra_backend
+    external: true

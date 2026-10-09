@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Icon } from '../../shared/ui/Icon';
 import { formatMoney } from '../../shared/utils/format';
+import { HighlightedText } from './HighlightedText';
 import { priceLabel } from './product-view';
 import type { DisplayProduct } from './types';
 
@@ -13,7 +14,7 @@ type ProductCardProps = {
 
 export function ProductCard({ product, priority = false, onPreview, linkSuffix = '' }: ProductCardProps) {
   const price = priceLabel(product);
-  const variantCount = product.variants?.filter((variant) => variant.isActive).length ?? 0;
+  const variantCount = product.variantCount ?? product.variants?.filter((variant) => variant.isActive).length ?? 0;
   const href = `/products/${product.id}${linkSuffix}`;
 
   return (
@@ -35,7 +36,7 @@ export function ProductCard({ product, priority = false, onPreview, linkSuffix =
         </button>
       </div>
       <Link className="product-card__body" to={href}>
-        <h3>{product.name}</h3>
+        <h3><HighlightedText text={product.name} highlight={product.nameHighlight} /></h3>
         <span className="product-card__meta">
           <span>{product.categoryLabel}</span>
           <strong>{formatMoney(price.amount, product.currency)}{price.from ? <small> 起</small> : null}</strong>

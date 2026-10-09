@@ -22,5 +22,7 @@
     <ProjectReference Include="../../src/MSA.BasketService/MSA.BasketService.csproj" />
     <ProjectReference Include="../../src/MSA.PaymentService/MSA.PaymentService.csproj" />
     <ProjectReference Include="../../src/MSA.UserService/MSA.UserService.csproj" />
+    <ProjectReference Include="../../src/MSA.SearchService/MSA.SearchService.csproj" />
+    <ProjectReference Include="../../tools/MSA.CatalogSeeder/MSA.CatalogSeeder.csproj" />
   </ItemGroup>
 </Project>

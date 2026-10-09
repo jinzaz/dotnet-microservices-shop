@@ -1,0 +1,7 @@
+# 本地开发叠加文件：把 9200 映射到宿主机，让本机 IDE 里跑的搜索服务能连上（msa.env 的 INFRA_ELASTICSEARCH_URL）。
+# 生产不要带它——映射后口令会在局域网里明文传输。
+#   docker compose -f compose.yaml -f compose.dev.yaml up -d --build
+services:
+  elasticsearch:
+    ports:
+      - "${ES_PORT:-9200}:9200"

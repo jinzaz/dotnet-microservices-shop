@@ -646,6 +646,38 @@ namespace MSA.BFF.BM.Migrations
                             Code = "system.certificate-keys.delete",
                             DisplayName = "证书私钥-删除",
                             Module = "system.certificate-keys"
+                        },
+                        new
+                        {
+                            Id = new Guid("6ec21774-4480-0970-7d66-0ee7651064b4"),
+                            Action = "Query",
+                            Code = "system.search.query",
+                            DisplayName = "搜索索引-查询",
+                            Module = "system.search"
+                        },
+                        new
+                        {
+                            Id = new Guid("ec3e1c25-2687-6178-1863-709e8eeadba2"),
+                            Action = "Create",
+                            Code = "system.search.create",
+                            DisplayName = "搜索索引-创建",
+                            Module = "system.search"
+                        },
+                        new
+                        {
+                            Id = new Guid("5ad8288f-49b2-cf41-3749-8b3b1a9109aa"),
+                            Action = "Edit",
+                            Code = "system.search.edit",
+                            DisplayName = "搜索索引-编辑",
+                            Module = "system.search"
+                        },
+                        new
+                        {
+                            Id = new Guid("ea970552-8c1c-db55-fa4d-610b30f4b690"),
+                            Action = "Delete",
+                            Code = "system.search.delete",
+                            DisplayName = "搜索索引-删除",
+                            Module = "system.search"
                         });
                 });
 
@@ -1017,6 +1049,26 @@ namespace MSA.BFF.BM.Migrations
                         {
                             PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
                             PermissionId = new Guid("6fa551e3-61b1-22c0-e5b3-6a95a4d8fbc6")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("6ec21774-4480-0970-7d66-0ee7651064b4")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("ec3e1c25-2687-6178-1863-709e8eeadba2")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("5ad8288f-49b2-cf41-3749-8b3b1a9109aa")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("ea970552-8c1c-db55-fa4d-610b30f4b690")
                         });
                 });
 
@@ -2099,6 +2151,70 @@ namespace MSA.BFF.BM.Migrations
                             Order = 126,
                             PathTemplate = "/api/certificate/admin/certificates/{id}/export-private",
                             PermissionId = new Guid("7e3e8c45-1c13-4a95-ec96-83b4a6abdf37")
+                        },
+                        new
+                        {
+                            Id = new Guid("0b83b6e8-4754-8a81-221e-8c3573eadb93"),
+                            HttpMethod = "GET",
+                            Order = 127,
+                            PathTemplate = "/api/search/admin/status",
+                            PermissionId = new Guid("6ec21774-4480-0970-7d66-0ee7651064b4")
+                        },
+                        new
+                        {
+                            Id = new Guid("b334f238-fab9-5d17-e224-9507762220f2"),
+                            HttpMethod = "GET",
+                            Order = 128,
+                            PathTemplate = "/api/search/products",
+                            PermissionId = new Guid("6ec21774-4480-0970-7d66-0ee7651064b4")
+                        },
+                        new
+                        {
+                            Id = new Guid("237c4752-235a-f222-311b-c23afb7da5bd"),
+                            HttpMethod = "GET",
+                            Order = 129,
+                            PathTemplate = "/api/search/suggestions",
+                            PermissionId = new Guid("6ec21774-4480-0970-7d66-0ee7651064b4")
+                        },
+                        new
+                        {
+                            Id = new Guid("035d5895-0032-853a-8cf1-567c31355533"),
+                            HttpMethod = "POST",
+                            Order = 130,
+                            PathTemplate = "/api/search/admin/rebuild",
+                            PermissionId = new Guid("5ad8288f-49b2-cf41-3749-8b3b1a9109aa")
+                        },
+                        new
+                        {
+                            Id = new Guid("388dc0d5-0b10-f020-2764-bbc4463413f3"),
+                            HttpMethod = "GET",
+                            Order = 131,
+                            PathTemplate = "/api/search/admin/messaging/outbox/failed",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("33fdfee6-44c4-1891-61eb-14bd3fc71a59"),
+                            HttpMethod = "GET",
+                            Order = 132,
+                            PathTemplate = "/api/search/admin/messaging/sagas/stalled",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("bb0b575b-48f3-883a-159b-ec7326d565c2"),
+                            HttpMethod = "GET",
+                            Order = 133,
+                            PathTemplate = "/api/search/admin/messaging/dead-letters",
+                            PermissionId = new Guid("a6d5add6-b76b-6ed2-8940-daab08f0c27a")
+                        },
+                        new
+                        {
+                            Id = new Guid("a5f1be16-526a-2b53-a3be-5d05d591a494"),
+                            HttpMethod = "POST",
+                            Order = 134,
+                            PathTemplate = "/api/search/admin/messaging/dead-letters/replay",
+                            PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
                         });
                 });
 

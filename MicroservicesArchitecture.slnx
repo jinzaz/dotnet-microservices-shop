@@ -16,6 +16,7 @@
   <Folder Name="/0.Root/docker/base/">
     <File Path="docker/base/dotnet-service.yaml" />
   </Folder>
+  <Folder Name="/0.Root/docker/elasticsearch/" />
   <Folder Name="/0.Root/docker/nginx/">
     <File Path="docker/nginx/cert-reload.sh" />
     <File Path="docker/nginx/msa.conf" />
@@ -94,6 +95,7 @@
     <Project Path="src/MSA.NotificationService/MSA.NotificationService.csproj" />
     <Project Path="src/MSA.OrderService/MSA.OrderService.csproj" Id="0e1fa2f9-ed25-4616-b033-53f2801f9348" />
     <Project Path="src/MSA.PaymentService/MSA.PaymentService.csproj" />
+    <Project Path="src/MSA.SearchService/MSA.SearchService.csproj" />
     <Project Path="src/MSA.UserService/MSA.UserService.csproj" Id="9a9806f8-c9a2-4512-b64f-ac9f5a11cc35" />
   </Folder>
   <Folder Name="/3.Tests/">
@@ -101,5 +103,8 @@
     <Project Path="tests/MSA.Certificates.Tests/MSA.Certificates.Tests.csproj" />
     <Project Path="tests/MSA.CommerceTests/MSA.CommerceTests.csproj" />
     <Project Path="tests/MSA.DistributedTransactionTests/MSA.DistributedTransactionTests.csproj" />
+  </Folder>
+  <Folder Name="/4.Tools/">
+    <Project Path="tools/MSA.CatalogSeeder/MSA.CatalogSeeder.csproj" />
   </Folder>
 </Solution>
