@@ -16,7 +16,8 @@ body {
   background: var(--color-white);
   color: var(--color-ink);
   font-family: var(--font-sans);
-  font-size: 16px;
+  font-size: 15px;
+  letter-spacing: -0.006em;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -62,17 +63,24 @@ dd {
   margin: 0;
 }
 
+h1,
+h2,
+h3 {
+  font-weight: var(--weight-strong);
+  letter-spacing: var(--tracking-heading);
+}
+
 address {
   font-style: normal;
 }
 
 :focus-visible {
-  outline: 3px solid rgb(11 77 191 / 28%);
+  outline: 3px solid rgb(84 51 235 / 28%);
   outline-offset: 3px;
 }
 
 ::selection {
-  background: rgb(255 61 18 / 18%);
+  background: rgb(84 51 235 / 18%);
 }
 
 .sr-only {

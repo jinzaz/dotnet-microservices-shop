@@ -1,28 +1,58 @@
+/*
+ * Design tokens — see ../../SKILL.md (Shop style reference).
+ * White surfaces, a faint cool-gray canvas, hairline borders, near-black text and a single violet accent.
+ * The legacy token names (blue / accent / surface-blue) are kept so existing rules pick up the new palette.
+ */
 :root {
   color-scheme: light;
+
+  /* Palette */
   --color-white: #ffffff;
-  --color-ink: #071a3d;
-  --color-ink-soft: #243556;
-  --color-muted: #66728a;
-  --color-subtle: #8c96a9;
-  --color-border: #dce2ea;
-  --color-border-strong: #c7d0dc;
-  --color-surface: #f6f8fb;
-  --color-surface-blue: #edf4fb;
-  --color-blue: #0b4dbf;
-  --color-blue-dark: #073f9e;
-  --color-accent: #ff3d12;
-  --color-accent-hover: #e82f08;
+  --color-canvas: #f2f4f5;
+  --color-ink: #000000;
+  --color-ink-soft: #332f2d;
+  --color-muted: #787574;
+  --color-subtle: #9c9896;
+  --color-stone: #cccccc;
+  --color-border: #ebebeb;
+  --color-border-strong: #dedede;
+  --color-surface: #f2f4f5;
+  --color-surface-blue: #f2f4f5;
+  --color-violet: #5433eb;
+  --color-violet-hover: #4325d6;
+  --color-violet-wash: #c0b5f3;
+  --color-violet-tint: #f1eefd;
+  --color-blue: var(--color-violet);
+  --color-blue-dark: #3a1fc2;
+  --color-accent: var(--color-violet);
+  --color-accent-hover: var(--color-violet-hover);
   --color-danger: #d92d20;
   --color-success: #14804a;
-  --shadow-soft: 0 16px 40px rgb(7 26 61 / 9%);
-  --shadow-float: 0 28px 70px rgb(7 26 61 / 18%);
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --container: 1336px;
-  --header-height: 64px;
+  --color-price: var(--color-ink);
+
+  /* Elevation */
+  --shadow-pill: rgb(0 0 0 / 6%) 0 2px 8px 0;
+  --shadow-soft: rgb(0 0 0 / 10%) 0 4px 6px -1px, rgb(0 0 0 / 10%) 0 2px 4px -2px;
+  --shadow-float: rgb(0 0 0 / 12%) 0 4px 24px 0;
+  --shadow-violet: rgb(69 36 219 / 34%) 0 4px 24px 0;
+
+  /* Shape — controls are pills, cards are pillow-soft */
+  --radius-sm: 12px;
+  --radius-md: 20px;
+  --radius-lg: 28px;
+  --radius-pill: 9999px;
+
+  /* Layout */
+  --container: 1200px;
+  --header-height: 68px;
+  --section-gap: 64px;
+
+  /* Type — tight negative tracking carries the hierarchy, not heavy weights */
   --font-sans: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  --tracking-display: -0.04em;
+  --tracking-heading: -0.025em;
+  --weight-strong: 600;
+
   --transition-fast: 160ms ease;
   --transition-base: 220ms ease;
 }

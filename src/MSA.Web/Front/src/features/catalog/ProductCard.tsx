@@ -20,7 +20,7 @@ export function ProductCard({ product, priority = false, onPreview, linkSuffix =
   return (
     <article className="product-card">
       <div className="product-card__media">
-        <Link to={href} aria-label={`查看${product.name}详情`}>
+        <Link to={href} aria-label={`查看${product.name}详情`} tabIndex={-1}>
           <img
             src={product.image}
             alt={product.name}
@@ -36,10 +36,11 @@ export function ProductCard({ product, priority = false, onPreview, linkSuffix =
         </button>
       </div>
       <Link className="product-card__body" to={href}>
+        <span className="product-card__label">{product.brandName ?? product.categoryLabel}</span>
         <h3><HighlightedText text={product.name} highlight={product.nameHighlight} /></h3>
         <span className="product-card__meta">
-          <span>{product.categoryLabel}</span>
           <strong>{formatMoney(price.amount, product.currency)}{price.from ? <small> 起</small> : null}</strong>
+          {product.brandName ? <span>{product.categoryLabel}</span> : null}
         </span>
       </Link>
     </article>

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation } from 'react-router-dom';
-import { categoriesQuery, listProducts } from '../features/catalog/catalog-api';
+import { categoriesQuery } from '../features/catalog/catalog-api';
 import { editorialProducts } from '../features/catalog/editorial-products';
 import { ProductCard } from '../features/catalog/ProductCard';
+import { ProductGridSkeleton } from '../features/catalog/ProductGridSkeleton';
 import { ProductPreviewDialog } from '../features/catalog/ProductPreviewDialog';
 import { toDisplayProduct } from '../features/catalog/product-view';
+import { searchProducts } from '../features/catalog/search-api';
 import type { DisplayProduct } from '../features/catalog/types';
 import { describePromotion, describeTargets } from '../features/promotions/describe';
 import { storefrontPromotionsQuery } from '../features/promotions/promotions-api';
@@ -26,20 +28,6 @@ const demoCategories = [
   { id: 'life', name: '生活' },
 ];
 
-function ProductGridSkeleton({ count }: { count: number }) {
-  return (
-    <div className="product-grid" aria-hidden="true">
-      {Array.from({ length: count }, (_, index) => (
-        <div className="product-card product-card--skeleton" key={index}>
-          <div className="skeleton skeleton--media" />
-          <div className="skeleton skeleton--line" />
-          <div className="skeleton skeleton--line skeleton--short" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export default function HomePage() {
   const location = useLocation();
   const demoMode = isDemoMode(location.search);
@@ -49,8 +37,9 @@ export default function HomePage() {
   const promotions = useQuery({ ...storefrontPromotionsQuery, enabled: !demoMode });
   const categoryNames = new Map((categories.data ?? []).map((category) => [category.id, category.name]));
   const catalogQuery = useQuery({
-    queryKey: ['catalog', 'featured-products'],
-    queryFn: () => listProducts({ take: 8 }),
+    // 走搜索服务：带品牌名、主图与价格区间；搜索不可用时 searchProducts 自己回退到目录列表。
+    queryKey: ['search', 'featured-products'],
+    queryFn: () => searchProducts({ sort: 'newest', take: 8 }),
     enabled: !demoMode,
     staleTime: 60_000,
   });
@@ -64,25 +53,28 @@ export default function HomePage() {
 
   const products = demoMode
     ? editorialProducts
-    : (catalogQuery.data?.items ?? []).map((product) => toDisplayProduct(product, categories.data));
+    : (catalogQuery.data?.items ?? []).map((item) => {
+      const display = toDisplayProduct(item, categories.data);
+      return item.image ? { ...display, image: item.image } : display;
+    });
   const categoryLinks = demoMode ? demoCategories : categories.data ?? [];
 
   return (
     <CommerceShell>
-      <HeroCarousel />
+      <div className="home-stage">
+        <HeroCarousel />
 
-      {categoryLinks.length ? (
-        <nav className="category-rail" id="new" aria-label="商品分类">
-          <div className="category-rail__inner">
-            {categoryLinks.slice(0, 6).map((category, index) => (
+        {categoryLinks.length ? (
+          <nav className="category-pills" id="new" aria-label="商品分类">
+            {categoryLinks.slice(0, 8).map((category, index) => (
               <Link to={`/products?category=${encodeURIComponent(category.id)}${demoMode ? '&demo=1' : ''}`} key={category.id}>
-                <Icon name={categoryIcons[index % categoryIcons.length] ?? 'package'} />
-                <span>{category.name}</span>
+                <span aria-hidden="true"><Icon name={categoryIcons[index % categoryIcons.length] ?? 'package'} /></span>
+                {category.name}
               </Link>
             ))}
-          </div>
-        </nav>
-      ) : null}
+          </nav>
+        ) : null}
+      </div>
 
       {promotions.data?.length ? (
         <section className="promotion-strip" aria-label="正在进行的活动">
@@ -102,8 +94,8 @@ export default function HomePage() {
       <section className="featured-products" id="featured">
         <div className="section-heading">
           <div>
-            <h2>本周精选</h2>
-            {catalogQuery.data ? <p>共 {catalogQuery.data.total} 件在售商品</p> : null}
+            <h2><Link to={`/products?sort=newest${demoMode ? '&demo=1' : ''}`}>新品上架 <Icon name="chevron-right" /></Link></h2>
+            {catalogQuery.data ? <p>共 {catalogQuery.data.total}{catalogQuery.data.totalIsLowerBound ? '+' : ''} 件在售商品</p> : null}
           </div>
           <Link className="text-link" to={`/products${demoSuffix}`}>
             查看全部 <Icon name="arrow-right" />

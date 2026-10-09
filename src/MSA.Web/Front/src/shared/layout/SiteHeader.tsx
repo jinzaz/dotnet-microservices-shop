@@ -1,9 +1,12 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useEffect, useId, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/auth/AuthProvider';
 import { useBasket } from '../../features/basket/basket-store';
+import { suggestProducts } from '../../features/catalog/search-api';
 import { isDemoMode } from '../config/api';
 import { Icon } from '../ui/Icon';
+import { useDebounced } from '../utils/use-debounced';
 
 const navigation = [
   { label: '首页', to: '/', match: (pathname: string) => pathname === '/' },
@@ -13,11 +16,64 @@ const navigation = [
   { label: '我的账户', to: '/account', match: (pathname: string) => ['/account', '/coupons'].some((path) => pathname.startsWith(path)) },
 ] as const;
 
+/** The one product search on the site: pill input, violet submit, search-engine suggestions. */
+function HeaderSearch({ demoMode, autoFocus, onDone }: { demoMode: boolean; autoFocus?: boolean; onDone?: () => void }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const listId = useId();
+  const currentQuery = location.pathname === '/products' ? new URLSearchParams(location.search).get('q') ?? '' : '';
+  const [value, setValue] = useState(currentQuery);
+  const prefix = useDebounced(value.trim(), 200);
+  const suggestions = useQuery({
+    queryKey: ['search', 'suggestions', prefix],
+    queryFn: () => suggestProducts(prefix),
+    enabled: !demoMode && prefix.length > 0 && prefix !== currentQuery,
+    staleTime: 60_000,
+  });
+
+  // Follow the URL when the query changes elsewhere (filters cleared, browser history).
+  useEffect(() => setValue(currentQuery), [currentQuery]);
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const params = location.pathname === '/products' ? new URLSearchParams(location.search) : new URLSearchParams();
+    const query = value.trim();
+    if (query) params.set('q', query);
+    else params.delete('q');
+    if (demoMode) params.set('demo', '1');
+    navigate(`/products${params.size ? `?${params}` : ''}`);
+    onDone?.();
+  };
+
+  return (
+    <form className="header-search" role="search" onSubmit={submit}>
+      <label className="sr-only" htmlFor={`${listId}-input`}>搜索商品</label>
+      <input
+        id={`${listId}-input`}
+        type="search"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={(event) => { if (event.key === 'Escape') onDone?.(); }}
+        placeholder="今天想买点什么？"
+        maxLength={80}
+        list={`${listId}-list`}
+        autoComplete="off"
+        autoFocus={autoFocus}
+        enterKeyHint="search"
+      />
+      <datalist id={`${listId}-list`}>
+        {(suggestions.data ?? []).map((suggestion) => <option key={suggestion} value={suggestion} />)}
+      </datalist>
+      <button className="search-submit" type="submit" aria-label="搜索">
+        <Icon name="arrow-right" />
+      </button>
+    </form>
+  );
+}
+
 export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated, user, login } = useAuth();
   const { itemCount } = useBasket();
@@ -30,16 +86,6 @@ export function SiteHeader() {
     setMenuOpen(false);
     setSearchOpen(false);
   }, [location.pathname]);
-
-  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const query = search.trim();
-    const params = new URLSearchParams();
-    if (query) params.set('q', query);
-    if (demoMode) params.set('demo', '1');
-    navigate(`/products${params.size ? `?${params}` : ''}`);
-    setSearchOpen(false);
-  };
 
   return (
     <header className="site-header">
@@ -60,21 +106,23 @@ export function SiteHeader() {
           ))}
         </nav>
 
+        <HeaderSearch demoMode={demoMode} />
+
         <div className="site-header__actions">
           <button
-            className="header-action"
+            className="header-action header-action--search"
             type="button"
             onClick={() => setSearchOpen((current) => !current)}
             aria-expanded={searchOpen}
             aria-controls="site-search"
+            aria-label="搜索"
           >
-            <Icon name="search" />
-            <span>搜索</span>
+            <Icon name={searchOpen ? 'close' : 'search'} />
           </button>
           {hasAccountAccess ? (
             <Link className="header-action" to={`/account${suffix}`} title={user?.email ?? undefined}>
               <Icon name="user" />
-              <span>{user?.name ? user.name.slice(0, 8) : '我的账户'}</span>
+              <span>{user?.name ? user.name.slice(0, 8) : '我的'}</span>
             </Link>
           ) : (
             <button className="header-action" type="button" onClick={() => login(`${location.pathname}${location.search}`)}>
@@ -101,20 +149,7 @@ export function SiteHeader() {
 
       {searchOpen ? (
         <div className="site-search" id="site-search">
-          <form onSubmit={submitSearch} role="search">
-            <Icon name="search" />
-            <label className="sr-only" htmlFor="global-search">搜索商品</label>
-            <input
-              id="global-search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Escape') setSearchOpen(false); }}
-              placeholder="搜索商品名称或 SKU"
-              maxLength={80}
-              autoFocus
-            />
-            <button type="submit">搜索</button>
-          </form>
+          <HeaderSearch demoMode={demoMode} autoFocus onDone={() => setSearchOpen(false)} />
         </div>
       ) : null}
     </header>

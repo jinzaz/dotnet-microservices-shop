@@ -58,7 +58,8 @@ export type CatalogBrand = CatalogCategory;
 export type DisplayProduct = CatalogProduct & {
   categoryLabel: string;
   image: string;
-  /** Search results only: the name with hit markers, and the variant count (they carry no variant list). */
+  /** Search results only: the name with hit markers, the brand name and the variant count (they carry no variant list). */
   nameHighlight?: string | null;
+  brandName?: string | null;
   variantCount?: number;
 };
