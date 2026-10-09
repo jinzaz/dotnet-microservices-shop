@@ -3,7 +3,7 @@ import { listStorefrontPromotions } from '../promotions/promotions-api';
 import type { StorefrontPromotion } from '../promotions/types';
 import { demoProductReviews } from '../reviews/demo-reviews';
 import type { ProductReviewResult } from '../reviews/types';
-import { getProduct, listCategories } from './catalog-api';
+import { getProduct, listBrands, listCategories } from './catalog-api';
 import { editorialProducts } from './editorial-products';
 import type { ProductDetail, ProductSku } from './product-detail-types';
 import { productImagesOf, productSkusOf, toDisplayProduct } from './product-view';
@@ -81,13 +81,16 @@ export async function getProductDetail(productId: string): Promise<ProductDetail
   const editorialProduct = findEditorialProduct(productId);
   if (editorialProduct) return buildEditorialDetail(editorialProduct);
 
-  const [product, categories, promotions] = await Promise.all([
+  const [product, categories, brands, promotions] = await Promise.all([
     getProduct(productId),
     listCategories().catch(() => []),
+    // 品牌只是展示信息，读不到时不显示这一行即可。
+    listBrands().catch(() => []),
     // Promotions only decorate the page; a failure must not hide the product.
     listStorefrontPromotions().catch(() => [] as StorefrontPromotion[]),
   ]);
   const display = toDisplayProduct(product, categories);
+  const brandName = product.brandId ? brands.find((brand) => brand.id === product.brandId)?.name : undefined;
   const skus = productSkusOf(product);
   const priceRange = skus.length > 1
     ? `${Math.min(...skus.map((sku) => sku.price))} – ${Math.max(...skus.map((sku) => sku.price))} ${product.currency}`
@@ -95,10 +98,12 @@ export async function getProductDetail(productId: string): Promise<ProductDetail
 
   return {
     ...display,
+    brandLabel: brandName,
     images: productImagesOf(product),
     longDescription: product.description || '商家暂未填写详细描述。',
     specifications: [
       { label: '商品分类', value: display.categoryLabel },
+      ...(brandName ? [{ label: '品牌', value: brandName }] : []),
       { label: '可选规格', value: `${skus.length} 款` },
       ...(priceRange ? [{ label: '价格区间', value: priceRange }] : []),
       { label: '售后服务', value: '签收后 7 天内可申请退换' },

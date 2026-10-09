@@ -11,6 +11,14 @@ public interface ICategoryRepository
     void Add(Category category);
 }
 
+public interface IBrandRepository
+{
+    Task<Brand?> FindAsync(Guid id, CancellationToken cancellationToken);
+    Task<bool> CodeExistsAsync(string normalizedCode, Guid? exceptId, CancellationToken cancellationToken);
+    Task<bool> HasPublishedProductsAsync(Guid brandId, CancellationToken cancellationToken);
+    void Add(Brand brand);
+}
+
 public interface IProductRepository
 {
     Task<Product?> FindAsync(Guid id, CancellationToken cancellationToken);
@@ -74,6 +82,12 @@ public interface ICatalogReadService
         int take,
         string? status,
         CancellationToken cancellationToken);
+    Task<PagedResult<BrandDto>> ListBrandsAsync(
+        int skip,
+        int take,
+        string? status,
+        string? search,
+        CancellationToken cancellationToken);
     Task<PromotionDto?> GetPromotionAsync(Guid id, CancellationToken cancellationToken);
     Task<PagedResult<PromotionDto>> ListPromotionsAsync(
         int skip,
@@ -118,6 +132,13 @@ public static class CatalogRepositoryExtensions
         CancellationToken cancellationToken) =>
         await categories.FindAsync(id, cancellationToken)
         ?? throw new KeyNotFoundException("Category was not found.");
+
+    public static async Task<Brand> GetRequiredAsync(
+        this IBrandRepository brands,
+        Guid id,
+        CancellationToken cancellationToken) =>
+        await brands.FindAsync(id, cancellationToken)
+        ?? throw new KeyNotFoundException("Brand was not found.");
 
     public static async Task<Product> GetRequiredAsync(
         this IProductRepository products,

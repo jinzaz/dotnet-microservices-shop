@@ -102,16 +102,15 @@ internal sealed class ProductSearchService(
                     source["currency"]!.ToString(),
                     source["variantCount"]?.GetValue<int>() ?? 1,
                     source["image"]?.ToString(),
-                    source["updatedOnUtc"]!.GetValue<DateTimeOffset>());
+                    source["updatedOnUtc"]!.GetValue<DateTimeOffset>(),
+                    BrandId: source["brandId"] is JsonValue brandId ? brandId.GetValue<Guid>() : null,
+                    BrandName: source["brandName"]?.ToString());
             })
             .ToArray();
 
         var aggregations = body["aggregations"];
-        var categories = (aggregations?["categories"]?["buckets"]?.AsArray() ?? [])
-            .Select(bucket => new SearchFacetBucket(
-                Guid.Parse(bucket!["key"]!.ToString()),
-                bucket["doc_count"]!.GetValue<long>()))
-            .ToArray();
+        var categories = Buckets(aggregations?["categories"]);
+        var brands = Buckets(aggregations?["brands"]);
         var price = aggregations?["price"]?["range"];
         return new ProductSearchResultDto(
             items,
@@ -119,9 +118,16 @@ internal sealed class ProductSearchService(
             request.Take,
             total,
             isLowerBound,
-            new ProductSearchFacets(categories, Money(price?["min"]), Money(price?["max"])),
+            new ProductSearchFacets(categories, Money(price?["min"]), Money(price?["max"]), brands),
             "elasticsearch");
     }
+
+    private static SearchFacetBucket[] Buckets(JsonNode? facet) =>
+        (facet?["ids"]?["buckets"]?.AsArray() ?? [])
+            .Select(bucket => new SearchFacetBucket(
+                Guid.Parse(bucket!["key"]!.ToString()),
+                bucket["doc_count"]!.GetValue<long>()))
+            .ToArray();
 
     /// <summary>stats 聚合在没有命中时返回 null；scaled_float 换回的 double 四舍五入到分。</summary>
     private static decimal? Money(JsonNode? value) =>

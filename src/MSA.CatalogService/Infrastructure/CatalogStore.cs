@@ -8,6 +8,7 @@ namespace MSA.CatalogService.Infrastructure;
 
 internal sealed class CatalogStore(CatalogDbContext db, TimeProvider clock) :
     ICategoryRepository,
+    IBrandRepository,
     IProductRepository,
     IPromotionRepository,
     ICouponRepository,
@@ -37,6 +38,21 @@ internal sealed class CatalogStore(CatalogDbContext db, TimeProvider clock) :
             cancellationToken);
 
     void ICategoryRepository.Add(Category category) => db.Categories.Add(category);
+
+    Task<Brand?> IBrandRepository.FindAsync(Guid id, CancellationToken cancellationToken) =>
+        db.Brands.SingleOrDefaultAsync(brand => brand.Id == id, cancellationToken);
+
+    Task<bool> IBrandRepository.CodeExistsAsync(string normalizedCode, Guid? exceptId, CancellationToken cancellationToken) =>
+        db.Brands.AnyAsync(
+            brand => brand.NormalizedCode == normalizedCode && (!exceptId.HasValue || brand.Id != exceptId.Value),
+            cancellationToken);
+
+    Task<bool> IBrandRepository.HasPublishedProductsAsync(Guid brandId, CancellationToken cancellationToken) =>
+        db.Products.AnyAsync(
+            product => product.BrandId == brandId && product.LifecycleStatus == ProductLifecycleStatus.Published,
+            cancellationToken);
+
+    void IBrandRepository.Add(Brand brand) => db.Brands.Add(brand);
 
     async Task<Product?> IProductRepository.FindAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -209,6 +225,38 @@ internal sealed class CatalogStore(CatalogDbContext db, TimeProvider clock) :
         return new PagedResult<CategoryDto>(categories.Select(ToDto).ToArray(), skip, take, total);
     }
 
+    async Task<PagedResult<BrandDto>> ICatalogReadService.ListBrandsAsync(
+        int skip,
+        int take,
+        string? status,
+        string? search,
+        CancellationToken cancellationToken)
+    {
+        skip = Math.Max(0, skip);
+        take = Math.Clamp(take, 1, 500);
+        var query = db.Brands.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            var parsed = ParseStatus<BrandLifecycleStatus>(status);
+            query = query.Where(brand => brand.Status == parsed);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var pattern = $"%{search.Trim()}%";
+            query = query.Where(brand => EF.Functions.ILike(brand.Name, pattern) || EF.Functions.ILike(brand.Code, pattern));
+        }
+
+        var total = await query.CountAsync(cancellationToken);
+        var brands = await query
+            .OrderBy(brand => brand.Name)
+            .ThenBy(brand => brand.Id)
+            .Skip(skip)
+            .Take(take)
+            .ToArrayAsync(cancellationToken);
+        return new PagedResult<BrandDto>(brands.Select(ToDto).ToArray(), skip, take, total);
+    }
+
     async Task<PromotionDto?> ICatalogReadService.GetPromotionAsync(
         Guid id,
         CancellationToken cancellationToken)
@@ -349,8 +397,20 @@ internal sealed class CatalogStore(CatalogDbContext db, TimeProvider clock) :
                 item.AltText,
                 item.SortOrder)).ToArray(),
             variants.Min(variant => variant.Price),
-            variants.Max(variant => variant.Price));
+            variants.Max(variant => variant.Price),
+            product.BrandId);
     }
+
+    private static BrandDto ToDto(Brand brand) => new(
+        brand.Id,
+        brand.Code,
+        brand.Name,
+        brand.Status.ToString(),
+        brand.CreatedOnUtc,
+        brand.UpdatedOnUtc,
+        brand.CreatedBy,
+        brand.UpdatedBy,
+        brand.Version);
 
     private static CategoryDto ToDto(Category category) => new(
         category.Id,

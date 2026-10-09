@@ -1,7 +1,7 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { categoriesQuery } from '../features/catalog/catalog-api';
+import { brandsQuery, categoriesQuery } from '../features/catalog/catalog-api';
 import { editorialProducts } from '../features/catalog/editorial-products';
 import { ProductCard } from '../features/catalog/ProductCard';
 import { ProductPreviewDialog } from '../features/catalog/ProductPreviewDialog';
@@ -48,6 +48,7 @@ export default function ProductsPage() {
   const demoMode = isDemoMode(`?${searchParams}`);
   const search = searchParams.get('q')?.trim() ?? '';
   const categoryId = searchParams.get('category') ?? '';
+  const brandId = searchParams.get('brand') ?? '';
   const sort = readSort(searchParams.get('sort'));
   const minPrice = readPrice(searchParams.get('min'));
   const maxPrice = readPrice(searchParams.get('max'));
@@ -55,6 +56,7 @@ export default function ProductsPage() {
   const [priceDraft, setPriceDraft] = useState({ min: searchParams.get('min') ?? '', max: searchParams.get('max') ?? '' });
   const [previewProduct, setPreviewProduct] = useState<DisplayProduct | null>(null);
   const categories = useQuery({ ...categoriesQuery, enabled: !demoMode });
+  const brands = useQuery({ ...brandsQuery, enabled: !demoMode });
   const prefix = useDebounced(draft.trim(), 200);
   const suggestions = useQuery({
     queryKey: ['search', 'suggestions', prefix],
@@ -63,10 +65,11 @@ export default function ProductsPage() {
     staleTime: 60_000,
   });
   const productsQuery = useInfiniteQuery({
-    queryKey: ['search', 'products', { search, categoryId, sort, minPrice, maxPrice }],
+    queryKey: ['search', 'products', { search, categoryId, brandId, sort, minPrice, maxPrice }],
     queryFn: ({ pageParam }) => searchProducts({
       q: search,
       categoryId: categoryId || undefined,
+      brandId: brandId || undefined,
       sort,
       minPrice,
       maxPrice,
@@ -110,6 +113,10 @@ export default function ProductsPage() {
   // The search engine fell back to the plain catalog listing: no facets, sorting or price filters.
   const advanced = firstPage?.engine !== 'database';
   const facetCounts = new Map((firstPage?.facets?.categories ?? []).map((bucket) => [bucket.id, bucket.count]));
+  // 品牌很多（几十上百个），只列当前结果里命中最多的那些；选中的品牌即使不在其中也要显示，方便取消。
+  const brandNames = new Map((brands.data ?? []).map((brand) => [brand.id, brand.name]));
+  const brandFacets = (firstPage?.facets?.brands ?? []).filter((bucket) => brandNames.has(bucket.id));
+  const selectedBrandMissing = brandId && !brandFacets.some((bucket) => bucket.id === brandId);
   const products: DisplayProduct[] = demoMode
     ? editorialProducts.filter((product) => !search || product.name.includes(search))
     : (productsQuery.data?.pages.flatMap((page) => page.items) ?? []).map((item) => {
@@ -119,7 +126,7 @@ export default function ProductsPage() {
   const total = demoMode ? products.length : firstPage?.total ?? 0;
   const totalLabel = `${total}${firstPage?.totalIsLowerBound ? '+' : ''}`;
   const activeCategory = categories.data?.find((category) => category.id === categoryId);
-  const hasFilters = Boolean(search || categoryId || minPrice !== undefined || maxPrice !== undefined);
+  const hasFilters = Boolean(search || categoryId || brandId || minPrice !== undefined || maxPrice !== undefined);
   const showCounts = Boolean(firstPage?.facets && (search || minPrice !== undefined || maxPrice !== undefined));
 
   return (
@@ -168,6 +175,19 @@ export default function ProductsPage() {
                 </button>
               );
             })}
+          </nav>
+        ) : null}
+
+        {!demoMode && advanced && (brandFacets.length || brandId) ? (
+          <nav className="chip-row chip-row--compact" aria-label="品牌筛选">
+            <button type="button" className={!brandId ? 'is-active' : undefined} aria-pressed={!brandId} onClick={() => updateParams({ brand: '' })}>全部品牌</button>
+            {selectedBrandMissing ? <button type="button" className="is-active" aria-pressed onClick={() => updateParams({ brand: '' })}>{brandNames.get(brandId) ?? '已选品牌'}</button> : null}
+            {brandFacets.map((bucket) => (
+              <button key={bucket.id} type="button" className={brandId === bucket.id ? 'is-active' : undefined} aria-pressed={brandId === bucket.id} onClick={() => updateParams({ brand: brandId === bucket.id ? '' : bucket.id })}>
+                {brandNames.get(bucket.id)}
+                <small className="chip-row__count">{bucket.count}</small>
+              </button>
+            ))}
           </nav>
         ) : null}
 

@@ -21,6 +21,7 @@ internal sealed record SeedVariant(
 internal sealed record SeedProduct(
     Guid Id,
     Guid CategoryId,
+    Guid? BrandId,
     string Name,
     string Description,
     int LifecycleStatus,
@@ -42,7 +43,13 @@ internal sealed record SeedProduct(
 /// <item>库存：约 8% 缺货、12% 紧张（1–9 件），其余按价位分布——便宜的备货多、贵的备货少。</item>
 /// </list>
 /// </summary>
-internal sealed partial class ProductGenerator(IReadOnlyList<SeedCategory> categories, IReadOnlyDictionary<string, string[]> images, int seed, DateTimeOffset now)
+/// <param name="brands">品牌名 → 品牌 id。商品名里用了哪个品牌，商品就挂哪个品牌，名字和品牌不会对不上。</param>
+internal sealed partial class ProductGenerator(
+    IReadOnlyList<SeedCategory> categories,
+    IReadOnlyDictionary<string, Guid> brands,
+    IReadOnlyDictionary<string, string[]> images,
+    int seed,
+    DateTimeOffset now)
 {
     private const int Published = 1;
     private const int Unpublished = 2;
@@ -51,12 +58,13 @@ internal sealed partial class ProductGenerator(IReadOnlyList<SeedCategory> categ
     private readonly Random _random = new(seed);
     private readonly double[] _cumulativeWeights = Cumulative(categories);
     private long _variantSequence;
+    private readonly HashSet<string> _names = new(StringComparer.Ordinal);
 
     public SeedProduct Next(long sequence)
     {
         var category = PickCategory();
         var spec = category.Spec;
-        var name = Name(spec);
+        var (name, brand) = UniqueName(spec);
         var basePrice = NicePrice(LogUniform(spec.MinPrice, spec.MaxPrice));
         var variants = Variants(spec, sequence, basePrice);
 
@@ -94,9 +102,12 @@ internal sealed partial class ProductGenerator(IReadOnlyList<SeedCategory> categ
         var imageCount = Math.Min(pool.Length, _random.NextDouble() switch { < .3 => 1, < .65 => 2, < .9 => 3, _ => 4 });
         var picked = pool.OrderBy(_ => _random.Next()).Take(imageCount).ToArray();
 
+        // 主键用「现在」生成的 UUIDv7，按写入顺序递增：B-tree 只在最右边追加。
+        // 用随机的创建时间生成的话，主键在两年的时间范围里乱序插入，每行都可能落到不同的索引页，越写越慢。
         return new SeedProduct(
-            Guid.CreateVersion7(created),
+            Guid.CreateVersion7(),
             category.Id,
+            brand is null ? null : brands.GetValueOrDefault(brand),
             name,
             Description(spec, name),
             status,
@@ -132,21 +143,50 @@ internal sealed partial class ProductGenerator(IReadOnlyList<SeedCategory> categ
     [GeneratedRegex(@"\s{2,}")]
     private static partial Regex Spaces();
 
-    internal string Name(CategorySpec spec)
+    /// <summary>
+    /// 商品名不重复：词表组合少的品类（例如天幕只有 品牌 × 款式 16 种）随机几次仍然撞名时，像真实商品一样带上型号，
+    /// 例如「野径 加厚银胶天幕 TE-4071」。否则 50 万商品里会有成百上千个同名商品，后台按名字查到的未必是前台看到的那一个。
+    /// </summary>
+    private (string Name, string? Brand) UniqueName(CategorySpec spec)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var candidate = Name(spec, out var candidateBrand);
+            if (_names.Add(candidate))
+                return (candidate, candidateBrand);
+        }
+
+        var baseName = Name(spec, out var brand);
+        var prefix = spec.Code[..2];
+        while (true)
+        {
+            var candidate = string.Create(CultureInfo.InvariantCulture, $"{baseName} {prefix}-{_random.Next(1000, 10000)}");
+            if (_names.Add(candidate))
+                return (candidate, brand);
+        }
+    }
+
+    internal string Name(CategorySpec spec, out string? brand)
     {
         var template = spec.Templates[_random.Next(spec.Templates.Length)];
+        string? chosenBrand = null;
         var name = Token().Replace(template, match =>
         {
             if (match.Groups["slot"].Success)
             {
-                var words = spec.Slots[match.Groups["slot"].Value];
-                return words[_random.Next(words.Length)];
+                var slot = match.Groups["slot"].Value;
+                var words = spec.Slots[slot];
+                var word = words[_random.Next(words.Length)];
+                if (slot == "brand")
+                    chosenBrand = word;
+                return word;
             }
 
             var from = int.Parse(match.Groups["from"].Value, CultureInfo.InvariantCulture);
             var to = int.Parse(match.Groups["to"].Value, CultureInfo.InvariantCulture);
             return _random.Next(from, to + 1).ToString(CultureInfo.InvariantCulture);
         });
+        brand = chosenBrand;
         return Spaces().Replace(name, " ").Trim();
     }
 

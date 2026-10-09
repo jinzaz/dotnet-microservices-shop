@@ -26,7 +26,8 @@ internal static class PbacSeedData
         ("system.certificates", "证书管理"),
         // 导出私钥单独授权：能管理证书不等于能把私钥带走。只用到 query。
         ("system.certificate-keys", "证书私钥"),
-        ("system.search", "搜索索引")
+        ("system.search", "搜索索引"),
+        ("catalog.brands", "商品品牌")
     ];
 
     internal static readonly BmRole[] SystemAdministratorRole =
@@ -176,7 +177,8 @@ internal static class PbacSeedData
             ("catalog.coupons.edit", HttpMethods.Post, "/api/catalog/admin/coupon-campaigns/{id}/quantity"),
             .. MessagingRoutes(),
             .. CertificateRoutes(),
-            .. SearchRoutes()
+            .. SearchRoutes(),
+            .. BrandRoutes()
         ];
 
         return definitions
@@ -241,6 +243,17 @@ internal static class PbacSeedData
         ("system.messaging.query", HttpMethods.Get, "/api/search/admin/messaging/sagas/stalled"),
         ("system.messaging.query", HttpMethods.Get, "/api/search/admin/messaging/dead-letters"),
         ("system.messaging.edit", HttpMethods.Post, "/api/search/admin/messaging/dead-letters/replay")
+    ];
+
+    /// <summary>品牌管理归 catalog.brands；给商品换品牌是改商品，归 catalog.products.edit。</summary>
+    private static (string Permission, string Method, string Path)[] BrandRoutes() =>
+    [
+        ("catalog.brands.query", HttpMethods.Get, "/api/catalog/admin/brands"),
+        ("catalog.brands.create", HttpMethods.Post, "/api/catalog/admin/brands"),
+        ("catalog.brands.edit", HttpMethods.Put, "/api/catalog/admin/brands/{id}/name"),
+        ("catalog.brands.edit", HttpMethods.Post, "/api/catalog/admin/brands/{id}/activate"),
+        ("catalog.brands.edit", HttpMethods.Post, "/api/catalog/admin/brands/{id}/archive"),
+        ("catalog.products.edit", HttpMethods.Put, "/api/catalog/admin/products/{id}/brand")
     ];
 
     private static Guid StableGuid(string value)

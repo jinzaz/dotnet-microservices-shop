@@ -31,13 +31,28 @@ Elasticsearch + IK 中文分词的商品搜索。目录服务（Catalog）是商
 
 | 方法 | 路径 | 权限 | 说明 |
 |---|---|---|---|
-| GET | `/search/products?q=&categoryId=&minPrice=&maxPrice=&sort=&skip=&take=` | 匿名 | `sort`：`relevance`（默认）/ `newest` / `price_asc` / `price_desc` |
+| GET | `/search/products?q=&categoryId=&brandId=&minPrice=&maxPrice=&sort=&skip=&take=` | 匿名 | `sort`：`relevance`（默认）/ `newest` / `price_asc` / `price_desc` |
 | GET | `/search/suggestions?q=` | 匿名 | 搜索框联想，失败时返回 `[]` |
 | GET | `/search/admin/status` | `search.admin.read` | 别名指向、文档数、重建状态、最近错误 |
 | POST | `/search/admin/rebuild?force=false` | `search.admin.write` | 后台全量重建；`force=true` 清掉崩溃遗留的锁 |
 | GET / POST | `/search/admin/messaging/*` | `search.admin.read` / `write` | 与其他服务一致的消息运维接口；搜索服务只有死信（Outbox、Saga 两个接口恒为空） |
 
+## 品牌
+
+- 目录新增品牌（`catalog_brands`，生命周期与分类相同：草稿 → 启用 → 归档）。商品的品牌可选，只能挂启用的品牌；还有在售商品的品牌不能归档。
+- 后台接口：`/catalog/admin/brands`（列表、新建、改名、启用、归档），给商品换品牌用 `PUT /catalog/admin/products/{id}/brand`。这个接口和详情保存分开，旧客户端保存名称、描述时不会把品牌清空。前台接口：`GET /catalog/brands`（启用的品牌）。
+- 搜索：
+  - 文档带 `brandId` / `brandName`，品牌名参与相关度（权重仅次于商品名）。
+  - 支持 `brandId` 筛选和品牌分面：分类分面只套品牌条件，品牌分面只套分类条件，选了一个仍能横向切换另一个。
+  - 品牌改名后，经同步消息刷新它下面的商品。
+- 部署：
+  - 先执行目录迁移 `AddBrands`（给 50 万行的商品表加列建索引，建索引期间商品写入会阻塞几秒），以及后台 BFF 迁移 `AddBrandRoutes`。
+  - 搜索服务启动后会因为映射版本升到 2 自动重建一次索引（见 #20）。
+- 降级到数据库搜索时（ES 不可用）不支持品牌筛选，前台的品牌条件此时不生效。
+
 ## 后台管理（BM）
+
+- 「商品目录」新增「品牌」页签；新建商品和商品工作台里可以选品牌（PBAC 模块 `catalog.brands`，换品牌归 `catalog.products.edit`）。
 
 - **搜索索引**页（`/search`，PBAC 模块 `system.search`）：
   - 显示当前索引、文档数，并与目录已发布商品数对照（相差过大说明同步有积压或丢失）。
@@ -74,6 +89,7 @@ Elasticsearch + IK 中文分词的商品搜索。目录服务（Catalog）是商
 | 16 | 同步链路没有监控 | 消费卡住、重建失败没人知道，搜索结果悄悄过期 | `/search/admin/status`；告警看 RabbitMQ `msa.search` 队列积压与 `msa.search.dlq` 死信数 |
 | 17 | ES 故障拖垮服务 | 每个请求都等超时，线程池占满，连带服务不可用；恢复期被积压请求打死 | 失败后熔断 30 秒，期间直接 503；前台收到 503 回退到目录的数据库搜索；索引任务指数退避 |
 | 18 | bulk 部分失败 | HTTP 200 里也可能有单条失败，不检查就悄悄丢数据 | 逐条检查：409 / 删除 404 成功；429 / 5xx 整条消息重试；其余 4xx 记错误日志后跳过，不让一条坏数据堵死队列 |
+| 20 | 映射升级 | 加字段（如品牌）、改分词后，strict 映射的旧索引会逐条拒绝带新字段的文档；不重建的话新字段永远查不到 | 映射里记 `_meta.schemaVersion`（`ProductSearchIndex.SchemaVersion`），服务启动发现当前索引版本更旧就自动零停机重建；重建期间旧索引拒掉的写入只记一条汇总警告，新索引经 building 别名照样收到 |
 | 19 | 写入时自动建索引 | 别名不存在时 ES 会按文档建一个同名的动态映射索引，没有 IK 分词，而且之后别名再也建不出来 | 写入带 `require_alias=true`；ES 侧 `action.auto_create_index: ".*"` 只放行系统索引 |
 
 ## 现在还没部署 ES 时
@@ -102,7 +118,9 @@ Elasticsearch + IK 中文分词的商品搜索。目录服务（Catalog）是商
 - 单规格商品约 35%，2–12 个规格的商品约 65%。规格由颜色、存储、尺码等销售属性组合而成，升级档自动加价。
 - 约 92% 的商品已发布（其中 1% 定时上架），另有少量已下架和草稿，用来验证可见性规则。
 - 库存直接写进库存服务的 `InventoryDb`（默认沿用 `msa.env` 的地址口令，库名换成 InventoryDb）。约 8% 缺货、12% 紧张（1–9 件），其余按价位分布，便宜的备货多、贵的备货少。每个有货的规格还有一条「入库」流水，和后台「新增库存」写出的数据一致。用 `--no-inventory` 可以跳过。
-- 商品名按品类词表生成，例如「曜石 Vista 76 Pro+ 电竞智能手机」「青衿 春夏重磅修身圆领T恤 男女同款」，不会出现跨品类乱拼。
+- 同时写入购物车（`BasketDb`）和订单（`OrderDb`）的商品投影：加购、报价、下单都只认本地投影，不写的话商品前台能看到、却加不进购物车。正常情况下这两份投影由目录的 `ProductVariantChanged` 事件维护；导入时逐规格补发一百多万条事件要十几个小时，所以直接写入，内容与事件处理器写出的一致，之后后台改商品发出的事件会正常覆盖。
+- 品牌来自品类词表里的品牌词（67 个，编码 `SEED-B001` 起，直接是启用状态），每个商品挂的就是它名字开头的那个品牌。
+- 商品名按品类词表生成，例如「曜石 Vista 76 Pro+ 电竞智能手机」「青衿 春夏重磅修身圆领T恤 男女同款」，不会出现跨品类乱拼。名字保证不重复：词表组合不够时会像真实商品一样带上型号（例如「野径 加厚银胶天幕 TE-4071」）。
 
 ```bash
 dotnet run --project tools/MSA.CatalogSeeder -- --dry-run 20
@@ -117,8 +135,9 @@ dotnet run --project tools/MSA.CatalogSeeder -c Release -- --reset
 ```
 
 - 第一条：只打印样例，不连数据库，先看看商品名是否合意。
+- 速度：生成是单线程的（每秒两万个以上），写库按 `--parallel`（默认 4）并行，每批里目录、库存、两份投影四个库也同时写；连接设置了 `synchronous_commit=off`，提交不等 WAL 落盘。结束时会打印各库的累计耗时，最大的那项就是瓶颈。数据库服务器核数多、磁盘快可以调大 `--parallel`。
 - 第二条：导入 50 万商品，地址口令读仓库根目录的 `msa.env`。
-- 第三条：删掉上次导入的商品、库存（含流水）后重新导入（用 `--products 0` 则只删除）。导入的 SKU 都以 `SD-` 开头，清理只按这个前缀，不碰后台手工建的数据。
+- 第三条：删掉上次导入的商品、库存（含流水）、购物车 / 订单投影后重新导入（用 `--products 0` 则只删除）。导入的 SKU 都以 `SD-` 开头，清理只按这个前缀，不碰后台手工建的数据。
 
 **图片**：不按商品生成。每个品类准备一小池图片（默认 8 张），商品从池里随机挑 1–4 张，总共只有约 300 个文件。
 
@@ -135,4 +154,3 @@ dotnet run --project tools/MSA.CatalogSeeder -c Release -- --reset
 **不会补的部分**：
 
 - 审计日志、Redis 缓存（列表缓存 30 秒内自然过期）。
-- 购物车 / 订单的商品投影。订单下单时经 gRPC 实时确认价格，不依赖投影。

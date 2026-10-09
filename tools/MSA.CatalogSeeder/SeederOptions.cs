@@ -12,6 +12,7 @@ internal sealed class SeederOptions
           --products <N>         导入的商品数，默认 500000；0 表示只执行 --reset
           --seed <N>             随机种子，同一个种子生成同一批商品，默认 20261008
           --batch <N>            每个事务写入的商品数，默认 5000
+          --parallel <N>         同时写入的批数，默认 4；数据库服务器核数多、磁盘快可以调大
           --reset                先删除上次导入的商品（CreatedBy = seed:catalog）及其规格、图片
           --dry-run [N]          不连数据库，只打印 N 个（默认 20）生成的商品看看效果
           --images <svg|pexels>  图片来源：svg 本地生成占位图（默认）；pexels 下载真实照片（需要 --pexels-key）
@@ -28,6 +29,7 @@ internal sealed class SeederOptions
     public int Products { get; private set; } = 500_000;
     public int Seed { get; private set; } = 20261008;
     public int BatchSize { get; private set; } = 5_000;
+    public int Parallelism { get; private set; } = 4;
     public bool Reset { get; private set; }
     public bool DryRun { get; private set; }
     public int DryRunCount { get; private set; } = 20;
@@ -58,6 +60,7 @@ internal sealed class SeederOptions
                 case "--products": options.Products = Number(); break;
                 case "--seed": options.Seed = Number(); break;
                 case "--batch": options.BatchSize = Number(); break;
+                case "--parallel": options.Parallelism = Number(); break;
                 case "--reset": options.Reset = true; break;
                 case "--dry-run":
                     options.DryRun = true;
@@ -81,8 +84,9 @@ internal sealed class SeederOptions
             }
         }
 
-        if (options.Products < 0 || options.BatchSize is < 1 or > 50_000 || options.ImagesPerCategory is < 1 or > 40)
-            throw new ArgumentException("--products 不能为负；--batch 取 1–50000；--images-per-category 取 1–40。");
+        if (options.Products < 0 || options.BatchSize is < 1 or > 50_000 || options.ImagesPerCategory is < 1 or > 40
+            || options.Parallelism is < 1 or > 16)
+            throw new ArgumentException("--products 不能为负；--batch 取 1–50000；--parallel 取 1–16；--images-per-category 取 1–40。");
         if (options.ImageSource is not ("svg" or "pexels"))
             throw new ArgumentException("--images 只能是 svg 或 pexels。");
         if (options.ImageSource == "pexels" && string.IsNullOrWhiteSpace(options.PexelsApiKey))

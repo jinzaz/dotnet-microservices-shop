@@ -9,8 +9,10 @@ import { PromotionForm, type CategoryOption } from './catalog/PromotionForm';
 import { PromotionDetailView, PromotionTable, type Promotion } from './catalog/PromotionPanels';
 import { campaignLink, CampaignDetailView, CampaignForm, CampaignTable, type Campaign } from './catalog/CampaignTools';
 
-type Tab = 'products' | 'categories' | 'promotions' | 'coupons' | 'coupon-campaigns';
+type Tab = 'products' | 'categories' | 'brands' | 'promotions' | 'coupons' | 'coupon-campaigns';
 type Category = CategoryOption & { version: number; updatedOnUtc: string; updatedBy?: string };
+/** Brands share the category lifecycle (draft → active → archived) and table. */
+type Brand = Category;
 type CatalogRow = Category | Product | Promotion | Coupon | Campaign;
 type StateAction = { path: string; body: unknown; success: string };
 
@@ -18,6 +20,7 @@ const PAGE_SIZE = 20;
 const tabs: Array<{ id: Tab; label: string; module: string; statuses: string[] }> = [
   { id: 'products', label: '商品', module: 'catalog.products', statuses: ['Draft', 'Published', 'Unpublished', 'Archived'] },
   { id: 'categories', label: '分类', module: 'catalog.categories', statuses: ['Draft', 'Active', 'Archived'] },
+  { id: 'brands', label: '品牌', module: 'catalog.brands', statuses: ['Draft', 'Active', 'Archived'] },
   { id: 'promotions', label: '促销', module: 'catalog.promotions', statuses: ['Draft', 'Active', 'Paused', 'Ended', 'Archived'] },
   { id: 'coupons', label: '优惠券', module: 'catalog.coupons', statuses: ['Draft', 'Active', 'Disabled', 'Expired'] },
   { id: 'coupon-campaigns', label: '领券活动', module: 'catalog.coupons', statuses: ['Draft', 'Active', 'Paused', 'Ended'] },
@@ -54,7 +57,7 @@ export default function CatalogPage() {
     queryKey: ['catalog', tab, { status, search, page, promotionFilter }],
     queryFn: ({ signal }) => api<Paged<CatalogRow>>(`/api/catalog/admin/${tab}?${query({
       status,
-      search: tab === 'products' ? search : '',
+      search: tab === 'products' || tab === 'brands' ? search : '',
       promotionId: tab === 'coupons' || tab === 'coupon-campaigns' ? promotionFilter : '',
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
@@ -66,6 +69,12 @@ export default function CatalogPage() {
     queryKey: ['catalog', 'category-options'],
     queryFn: () => api<Paged<Category>>('/api/catalog/admin/categories?skip=0&take=200'),
     enabled: can('catalog.categories.query'),
+    staleTime: 60_000,
+  });
+  const brandsQuery = useQuery({
+    queryKey: ['catalog', 'brand-options'],
+    queryFn: () => api<Paged<Brand>>('/api/catalog/admin/brands?skip=0&take=500'),
+    enabled: can('catalog.brands.query'),
     staleTime: 60_000,
   });
   const promotionsQuery = useQuery({
@@ -92,6 +101,7 @@ export default function CatalogPage() {
   });
 
   const categoryNames = useMemo(() => new Map(categoriesQuery.data?.items.map((item) => [item.id, item.name]) ?? []), [categoriesQuery.data]);
+  const brandNames = useMemo(() => new Map(brandsQuery.data?.items.map((item) => [item.id, item.name]) ?? []), [brandsQuery.data]);
   const promotionById = useMemo(() => new Map(promotionsQuery.data?.items.map((item) => [item.id, item]) ?? []), [promotionsQuery.data]);
   const invalidateCatalog = () => client.invalidateQueries({ queryKey: ['catalog'] });
 
@@ -147,12 +157,13 @@ export default function CatalogPage() {
     setBatchOpen(true);
   };
 
-  const renameCategory = async (row: Category) => {
-    const result = await confirm({ title: '重命名分类', confirmLabel: '保存', input: { label: '分类名称', defaultValue: row.name, required: true, maxLength: 120 } });
+  const renameCategory = async (row: Category, resource: 'categories' | 'brands' = 'categories') => {
+    const noun = resource === 'brands' ? '品牌' : '分类';
+    const result = await confirm({ title: `重命名${noun}`, confirmLabel: '保存', input: { label: `${noun}名称`, defaultValue: row.name, required: true, maxLength: 120 } });
     if (!result || result.value === row.name) return;
     try {
-      await api(`/api/catalog/admin/categories/${row.id}/name`, { method: 'PUT', body: { name: result.value, expectedVersion: row.version } });
-      toast.success(`分类已重命名为「${result.value}」`);
+      await api(`/api/catalog/admin/${resource}/${row.id}/name`, { method: 'PUT', body: { name: result.value, expectedVersion: row.version } });
+      toast.success(`${noun}已重命名为「${result.value}」`);
       await invalidateCatalog();
     } catch (error) {
       toast.error(error);
@@ -290,6 +301,7 @@ export default function CatalogPage() {
         <ChipFilter label="状态筛选" value={status} onChange={setStatus} chips={[{ value: '', label: '全部' }, ...tabMeta.statuses.map((value) => ({ value, label: statusLabel(value) }))]} />
         <div className="list-toolbar__filters">
           {tab === 'products' ? <SearchInput value={search} onChange={setSearch} placeholder="商品名称或 SKU" /> : null}
+          {tab === 'brands' ? <SearchInput value={search} onChange={setSearch} placeholder="品牌名称或代码" /> : null}
           {(tab === 'coupons' || tab === 'coupon-campaigns') && couponPromotions.length ? <select className="catalog-filter-select" aria-label="按促销活动筛选" value={promotionFilter} onChange={(event) => setPromotionFilter(event.target.value)}>
             <option value="">全部活动</option>
             {couponPromotions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -301,8 +313,9 @@ export default function CatalogPage() {
       {!canQuery ? <Empty title="没有查询权限" detail={`需要 ${module}.query 才能查看${tabMeta.label}列表。`} />
         : listQuery.isPending ? <SkeletonRows rows={8} />
           : rows.length ? <div className={`data-table${listQuery.isPlaceholderData ? ' is-stale' : ''}`}>
-            {tab === 'products' ? <ProductTable rows={rows as Product[]} canEdit={canEdit} categoryNames={categoryNames} onOpen={setProductId} onAction={runAction} /> : null}
+            {tab === 'products' ? <ProductTable rows={rows as Product[]} canEdit={canEdit} categoryNames={categoryNames} brandNames={brandNames} onOpen={setProductId} onAction={runAction} /> : null}
             {tab === 'categories' ? <CategoryTable rows={rows as Category[]} canEdit={canEdit} onRename={(row) => void renameCategory(row)} onAction={runAction} /> : null}
+            {tab === 'brands' ? <CategoryTable noun="品牌" rows={rows as Brand[]} canEdit={canEdit} onRename={(row) => void renameCategory(row, 'brands')} onAction={runAction} /> : null}
             {tab === 'promotions' ? <PromotionTable rows={rows as Promotion[]} canEdit={canEdit} categoryNames={categoryNames} onOpen={setPromotionId} onAction={(row, action, label, options) => void runAction(row, action, label, options, 'promotions')} /> : null}
             {tab === 'coupon-campaigns' ? <CampaignTable rows={rows as Campaign[]} canEdit={canEdit} promotions={promotionById} onOpen={setCampaignId} onCopyLink={(row) => void copyCampaignLink(row)} onAction={(row, action, label, options) => void runAction(row, action, label, options, 'coupon-campaigns')} /> : null}
             {tab === 'coupons' ? <CouponList key={`${page}-${status}-${promotionFilter}`} rows={rows as Coupon[]} canEdit={canEdit} promotions={promotionById} usage={usageQuery.data} usageError={usageQuery.isError} onAction={(row, action, label, options) => void runAction(row, action, label, options, 'coupons')} onBulk={runCouponBulk} /> : null}
@@ -318,10 +331,14 @@ export default function CatalogPage() {
     <p className="capability-note"><Icon name="alert" />商品采用下架 / 归档而不是物理删除；已发布商品需先下架再归档。SKU 与媒体在商品工作台内管理。</p>
 
     <Modal open={createOpen} wide={tab === 'products' || tab === 'promotions' || tab === 'coupon-campaigns'} title={duplicateSource ? `复制活动「${duplicateSource.name}」` : duplicateCampaign ? `复制领券活动「${duplicateCampaign.title}」` : `新建${createLabel}`} description={tab === 'products' ? '先创建 SPU 和默认 SKU，保存后自动进入商品工作台。' : undefined} onClose={() => setCreateOpen(false)}>
-      {tab === 'products' ? <ProductCreateForm categories={categoriesQuery.data?.items ?? []} canReadCategories={can('catalog.categories.query')} canUploadMedia={can('catalog.products.edit')} busy={createMutation.isPending} error={createMutation.error} onCancel={() => setCreateOpen(false)} onSubmit={(body, uploads, onUpload) => createMutation.mutate({ body, uploads, onUpload })} /> : null}
+      {tab === 'products' ? <ProductCreateForm categories={categoriesQuery.data?.items ?? []} canReadCategories={can('catalog.categories.query')} brands={brandsQuery.data?.items ?? []} canUploadMedia={can('catalog.products.edit')} busy={createMutation.isPending} error={createMutation.error} onCancel={() => setCreateOpen(false)} onSubmit={(body, uploads, onUpload) => createMutation.mutate({ body, uploads, onUpload })} /> : null}
       {tab === 'categories' ? <SimpleCreateForm busy={createMutation.isPending} error={createMutation.error} onCancel={() => setCreateOpen(false)} onSubmit={(data) => createMutation.mutate({ body: { code: data.get('code'), name: data.get('name') } })}>
         <div className="form-row"><Field label="分类代码" hint="创建后不可修改，建议使用英文大写"><input name="code" required maxLength={60} autoFocus placeholder="例如 PHONES" /></Field><Field label="分类名称"><input name="name" required maxLength={120} /></Field></div>
         <p className="muted-copy">新分类为草稿状态，启用后才能挂载商品。</p>
+      </SimpleCreateForm> : null}
+      {tab === 'brands' ? <SimpleCreateForm busy={createMutation.isPending} error={createMutation.error} onCancel={() => setCreateOpen(false)} onSubmit={(data) => createMutation.mutate({ body: { code: data.get('code'), name: data.get('name') } })}>
+        <div className="form-row"><Field label="品牌代码" hint="创建后不可修改，建议使用英文大写"><input name="code" required maxLength={60} autoFocus placeholder="例如 XINGLAN" /></Field><Field label="品牌名称"><input name="name" required maxLength={120} /></Field></div>
+        <p className="muted-copy">新品牌为草稿状态，启用后才能挂到商品上。商品的品牌是可选的。</p>
       </SimpleCreateForm> : null}
       {tab === 'promotions' && createOpen ? <PromotionForm key={duplicateSource?.id ?? 'new'} duplicateOf={duplicateSource ?? undefined} categories={categoriesQuery.data?.items ?? []} busy={createMutation.isPending} error={createMutation.isError ? <ErrorNotice error={createMutation.error} /> : null} onCancel={() => setCreateOpen(false)} onSubmit={(body) => createMutation.mutate({ body })} /> : null}
       {tab === 'coupons' && createOpen ? promotionOptionsGate ?? <CouponCreateForm promotions={promotionsQuery.data?.items ?? []} canReadPromotions={can('catalog.promotions.query')} canSearchUsers={can('identity.users.query')} initialPromotionId={promotionFilter || undefined} busy={createMutation.isPending} error={createMutation.error} onCancel={() => setCreateOpen(false)} onSubmit={(body) => createMutation.mutate({ body })} /> : null}
@@ -339,7 +356,7 @@ export default function CatalogPage() {
     <Modal open={Boolean(productId)} wide title={productQuery.data?.name ?? '商品工作台'} description={productQuery.data ? `${productQuery.data.variants?.length ?? 0} 个 SKU · ${productQuery.data.media?.length ?? 0} 个媒体 · 更新于 ${formatRelative(productQuery.data.updatedOnUtc)}` : '读取商品信息'} onClose={() => setProductId('')}>
       {productQuery.isPending ? <Loading label="正在读取商品配置" /> : null}
       {productQuery.isError ? <div className="modal-form"><ErrorNotice error={productQuery.error} onRetry={() => void productQuery.refetch()} /></div> : null}
-      {productQuery.data ? <ProductStudio product={productQuery.data} categoryName={categoryNames.get(productQuery.data.categoryId)} canEdit={can('catalog.products.edit')} /> : null}
+      {productQuery.data ? <ProductStudio product={productQuery.data} categoryName={categoryNames.get(productQuery.data.categoryId)} brands={brandsQuery.data?.items ?? []} canEdit={can('catalog.products.edit')} /> : null}
     </Modal>
 
     <Modal open={Boolean(promotionId)} wide title={promotionQuery.data?.name ?? '促销活动'} description={promotionQuery.data ? `${promotionQuery.data.code} · 修订 r${promotionQuery.data.revision} · ${statusLabel(promotionQuery.data.status)}` : undefined} onClose={() => { setPromotionId(''); promotionMutation.reset(); }}>
@@ -393,13 +410,13 @@ export default function CatalogPage() {
 
 type ActionHandler = (row: CatalogRow & { version: number }, action: string, label: string, options: { name: string; reason?: boolean; danger?: boolean; detail?: string }) => void;
 
-function ProductTable({ rows, canEdit, categoryNames, onOpen, onAction }: { rows: Product[]; canEdit: boolean; categoryNames: Map<string, string>; onOpen: (id: string) => void; onAction: ActionHandler }) {
-  return <table><thead><tr><th>商品</th><th>分类</th><th>SKU</th><th>价格区间</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead><tbody>{rows.map((row) => {
+function ProductTable({ rows, canEdit, categoryNames, brandNames, onOpen, onAction }: { rows: Product[]; canEdit: boolean; categoryNames: Map<string, string>; brandNames: Map<string, string>; onOpen: (id: string) => void; onAction: ActionHandler }) {
+  return <table><thead><tr><th>商品</th><th>分类 / 品牌</th><th>SKU</th><th>价格区间</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead><tbody>{rows.map((row) => {
     const cover = [...(row.media ?? [])].sort((left, right) => left.sortOrder - right.sortOrder).find((item) => item.mediaType === 'Image');
     const range = row.maxPrice !== undefined && row.maxPrice !== (row.minPrice ?? row.price);
     return <tr key={row.id} className="is-clickable" onClick={() => onOpen(row.id)}>
       <td><div className="product-cell">{cover ? <img src={cover.url} alt="" loading="lazy" /> : <span><Icon name="image" /></span>}<div><strong>{row.name}</strong><small>{row.description}</small></div></div></td>
-      <td>{categoryNames.get(row.categoryId) ?? row.categoryId.slice(0, 8)}</td>
+      <td>{categoryNames.get(row.categoryId) ?? row.categoryId.slice(0, 8)}<small>{row.brandId ? brandNames.get(row.brandId) ?? row.brandId.slice(0, 8) : '无品牌'}</small></td>
       <td><strong>{row.variants?.length ?? 1} 个</strong><small className="mono">{row.sku}</small></td>
       <td>{formatMoney(row.minPrice ?? row.price, row.currency)}{range ? <small>至 {formatMoney(row.maxPrice!, row.currency)}</small> : null}</td>
       <td><Status>{row.lifecycleStatus}</Status></td>
@@ -414,8 +431,8 @@ function ProductTable({ rows, canEdit, categoryNames, onOpen, onAction }: { rows
   })}</tbody></table>;
 }
 
-function CategoryTable({ rows, canEdit, onRename, onAction }: { rows: Category[]; canEdit: boolean; onRename: (row: Category) => void; onAction: ActionHandler }) {
-  return <table><thead><tr><th>分类</th><th>代码</th><th>状态</th><th>版本</th><th>更新时间</th><th>操作</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}>
+function CategoryTable({ rows, canEdit, onRename, onAction, noun = '分类' }: { rows: Category[]; canEdit: boolean; onRename: (row: Category) => void; onAction: ActionHandler; noun?: string }) {
+  return <table><thead><tr><th>{noun}</th><th>代码</th><th>状态</th><th>版本</th><th>更新时间</th><th>操作</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}>
     <td><strong>{row.name}</strong><small>{row.id.slice(0, 8)}</small></td>
     <td className="mono">{row.code}</td>
     <td><Status>{row.status}</Status></td>
@@ -423,8 +440,8 @@ function CategoryTable({ rows, canEdit, onRename, onAction }: { rows: Category[]
     <td title={formatDate(row.updatedOnUtc)}>{formatRelative(row.updatedOnUtc)}{row.updatedBy ? <small>{row.updatedBy}</small> : null}</td>
     <td><div className="row-actions">{canEdit && row.status !== 'Archived' ? <>
       <button type="button" onClick={() => onRename(row)}>重命名</button>
-      {row.status === 'Draft' ? <button className="row-action-primary" type="button" onClick={() => onAction(row, 'activate', '启用', { name: row.name, detail: '启用后可以向该分类添加和发布商品。' })}>启用</button> : null}
-      <button className="danger-link" type="button" onClick={() => onAction(row, 'archive', '归档', { name: row.name, danger: true, detail: '包含已发布商品的分类不能归档；归档后不可恢复。' })}>归档</button>
+      {row.status === 'Draft' ? <button className="row-action-primary" type="button" onClick={() => onAction(row, 'activate', '启用', { name: row.name, detail: `启用后可以把商品挂到该${noun}下。` })}>启用</button> : null}
+      <button className="danger-link" type="button" onClick={() => onAction(row, 'archive', '归档', { name: row.name, danger: true, detail: `包含已发布商品的${noun}不能归档；归档后不可恢复。` })}>归档</button>
     </> : '—'}</div></td>
   </tr>)}</tbody></table>;
 }
@@ -437,15 +454,16 @@ function SimpleCreateForm({ busy, error, onSubmit, onCancel, children }: { busy:
   </form>;
 }
 
-function ProductCreateForm({ categories, canReadCategories, canUploadMedia, busy, error, onSubmit, onCancel }: { categories: Category[]; canReadCategories: boolean; canUploadMedia: boolean; busy: boolean; error: unknown; onSubmit: (body: unknown, uploads: UploadItem[], onUpload: (item: UploadItem) => void) => void; onCancel: () => void }) {
+function ProductCreateForm({ categories, canReadCategories, brands, canUploadMedia, busy, error, onSubmit, onCancel }: { categories: Category[]; canReadCategories: boolean; brands: Brand[]; canUploadMedia: boolean; busy: boolean; error: unknown; onSubmit: (body: unknown, uploads: UploadItem[], onUpload: (item: UploadItem) => void) => void; onCancel: () => void }) {
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const active = categories.filter((item) => item.status === 'Active');
+  const activeBrands = brands.filter((item) => item.status === 'Active');
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const value = (name: string) => String(data.get(name) ?? '').trim();
     onSubmit(
-      { categoryId: value('categoryId'), sku: value('sku'), name: value('name'), description: value('description'), price: Number(value('price')), currency: value('currency') || 'CNY' },
+      { categoryId: value('categoryId'), brandId: value('brandId') || null, sku: value('sku'), name: value('name'), description: value('description'), price: Number(value('price')), currency: value('currency') || 'CNY' },
       uploads,
       (item) => setUploads((current) => current.map((value) => value.id === item.id ? item : value)),
     );
@@ -453,6 +471,7 @@ function ProductCreateForm({ categories, canReadCategories, canUploadMedia, busy
   return <form className="modal-form" onSubmit={submit}>
     <div className="form-section-title"><span>01</span><div><strong>基础信息</strong><small>SPU 负责名称、描述和归属分类</small></div></div>
     <Field label="商品分类" hint={!canReadCategories ? '需要 catalog.categories.query 才能选择分类' : !active.length ? '没有已启用的分类，请先在「分类」中启用' : '仅显示已启用的分类'}><select name="categoryId" required disabled={!canReadCategories}><option value="">选择分类</option>{active.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}</select></Field>
+    <Field label="品牌" hint="选填；仅显示已启用的品牌"><select name="brandId" disabled={!activeBrands.length}><option value="">无品牌</option>{activeBrands.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}</select></Field>
     <Field label="商品名称"><input name="name" required maxLength={200} autoFocus /></Field>
     <Field label="商品描述"><textarea name="description" required rows={4} maxLength={4000} /></Field>
     <div className="form-section-title"><span>02</span><div><strong>默认 SKU</strong><small>创建后可继续增加颜色、尺码等规格</small></div></div>

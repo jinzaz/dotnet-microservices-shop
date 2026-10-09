@@ -19,6 +19,8 @@ export type ProductSpecification = {
 };
 
 export type ProductDetail = DisplayProduct & {
+  /** Brand name for the breadcrumb and specifications; absent for unbranded products. */
+  brandLabel?: string;
   images: string[];
   longDescription: string;
   specifications: ProductSpecification[];

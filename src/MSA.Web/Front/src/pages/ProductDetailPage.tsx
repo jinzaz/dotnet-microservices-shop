@@ -18,6 +18,10 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
         <nav className="product-breadcrumb" aria-label="面包屑">
           <Link to="/">首页</Link><Icon name="chevron-right" />
           <Link to={product.categoryId ? `/products?category=${encodeURIComponent(product.categoryId)}` : '/products'}>{product.categoryLabel}</Link><Icon name="chevron-right" />
+          {product.brandId && product.brandLabel ? <>
+            {/* 品牌链接带上当前分类：「数码 › 星澜」点进去是星澜在这个分类下的商品。 */}
+            <Link to={`/products?${new URLSearchParams({ ...(product.categoryId ? { category: product.categoryId } : {}), brand: product.brandId })}`}>{product.brandLabel}</Link><Icon name="chevron-right" />
+          </> : null}
           <span aria-current="page">{product.name}</span>
         </nav>
         <div className="product-detail-layout">

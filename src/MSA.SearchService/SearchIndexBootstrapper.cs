@@ -24,9 +24,20 @@ internal sealed class SearchIndexBootstrapper(
             try
             {
                 await EnsureSynonymsAsync(stoppingToken);
-                if ((await rebuilder.AliasTargetsAsync(options.Value.Alias, stoppingToken)).Count > 0)
-                    return;
-                logger.LogInformation("Search alias {Alias} does not exist; building it from the catalog.", options.Value.Alias);
+                var targets = await rebuilder.AliasTargetsAsync(options.Value.Alias, stoppingToken);
+                if (targets.Count > 0)
+                {
+                    var current = await SchemaVersionAsync(targets[0], stoppingToken);
+                    if (current >= ProductSearchIndex.SchemaVersion)
+                        return;
+                    logger.LogInformation("Search index {Index} has schema version {Current}, service expects {Expected}; rebuilding.",
+                        targets[0], current, ProductSearchIndex.SchemaVersion);
+                }
+                else
+                {
+                    logger.LogInformation("Search alias {Alias} does not exist; building it from the catalog.", options.Value.Alias);
+                }
+
                 // 多个副本同时启动时只有拿到锁的那个在建，其余的稍后再看别名是否已经就位。
                 if (await rebuilder.RunAsync(stoppingToken))
                     return;
@@ -53,6 +64,13 @@ internal sealed class SearchIndexBootstrapper(
                 return;
             }
         }
+    }
+
+    /// <summary>生产问题 #20：索引映射里记着它的结构版本；没有记录的（初版建的索引）视为 1。</summary>
+    private async Task<int> SchemaVersionAsync(string index, CancellationToken cancellationToken)
+    {
+        var (_, body) = await elastic.SendAsync(HttpMethod.Get, $"{index}/_mapping", null, cancellationToken);
+        return body?[index]?["mappings"]?["_meta"]?["schemaVersion"]?.GetValue<int>() ?? 1;
     }
 
     /// <summary>PUT 同义词集合是幂等的；内容变了 ES 会自动重载所有引用它的查询分析器（生产问题 #10）。</summary>

@@ -22,6 +22,73 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("MSA.CatalogService.Domain.Brand", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasComment("品牌业务编码");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasComment("品牌名称");
+
+                    b.Property<string>("NormalizedCode")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasComment("用于唯一匹配的标准化品牌编码");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasComment("品牌生命周期状态");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasComment("品牌乐观并发版本号");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedCode")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "Name", "Id");
+
+                    b.ToTable("catalog_brands", null, t =>
+                        {
+                            t.HasComment("商品品牌");
+
+                            t.HasCheckConstraint("CK_brands_audit", "\"Version\" > 0 AND \"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+
+                            t.HasCheckConstraint("CK_brands_normalized_code", "\"NormalizedCode\" = upper(trim(\"Code\"))");
+
+                            t.HasCheckConstraint("CK_brands_status", "\"Status\" BETWEEN 0 AND 2");
+                        });
+                });
+
             modelBuilder.Entity("MSA.CatalogService.Domain.CatalogAuditEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -431,6 +498,10 @@ namespace MSA.CatalogService.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("ArchivedOnUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("BrandId")
+                        .HasColumnType("uuid")
+                        .HasComment("商品品牌标识；空值表示无品牌");
+
                     b.Property<Guid>("CategoryId")
                         .HasColumnType("uuid")
                         .HasComment("商品所属分类标识");
@@ -490,6 +561,8 @@ namespace MSA.CatalogService.Infrastructure.Migrations
                         .HasComment("商品乐观并发版本号");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BrandId", "LifecycleStatus", "Id");
 
                     b.HasIndex("CategoryId", "LifecycleStatus", "Id");
 
@@ -1103,6 +1176,11 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
             modelBuilder.Entity("MSA.CatalogService.Domain.Product", b =>
                 {
+                    b.HasOne("MSA.CatalogService.Domain.Brand", null)
+                        .WithMany()
+                        .HasForeignKey("BrandId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("MSA.CatalogService.Domain.Category", null)
                         .WithMany()
                         .HasForeignKey("CategoryId")

@@ -32,6 +32,7 @@ export type ProductMedia = {
 export type CatalogProduct = {
   id: string;
   categoryId: string;
+  brandId?: string | null;
   sku: string;
   name: string;
   description: string;
@@ -51,6 +52,8 @@ export type CatalogCategory = {
   code: string;
   name: string;
 };
+
+export type CatalogBrand = CatalogCategory;
 
 export type DisplayProduct = CatalogProduct & {
   categoryLabel: string;

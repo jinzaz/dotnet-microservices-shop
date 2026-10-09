@@ -199,6 +199,8 @@ textarea.form-field__control { resize: vertical; }
 .chip-row button:hover { border-color: var(--color-ink-soft); }
 .chip-row button.is-active { border-color: var(--color-ink); background: var(--color-ink); color: var(--color-white); }
 .chip-row button.is-empty:not(.is-active) { color: var(--color-subtle); }
+.chip-row--compact { margin-top: -10px; }
+.chip-row--compact button { min-height: 30px; padding: 0 12px; font-size: 12px; }
 .chip-row__count { margin-left: 6px; font-size: 11px; font-weight: 500; opacity: .7; font-variant-numeric: tabular-nums; }
 
 .catalog-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: -8px 0 22px; }

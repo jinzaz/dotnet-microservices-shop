@@ -18,5 +18,7 @@ internal sealed class CatalogSearchInvalidatedHandler(ProductIndexWriter writer)
             await writer.RefreshAsync(@event.ProductIds, cancellationToken);
         foreach (var categoryId in @event.CategoryIds.Distinct())
             await writer.RefreshCategoryAsync(categoryId, cancellationToken);
+        foreach (var brandId in (@event.BrandIds ?? []).Distinct())
+            await writer.RefreshBrandAsync(brandId, cancellationToken);
     }
 }

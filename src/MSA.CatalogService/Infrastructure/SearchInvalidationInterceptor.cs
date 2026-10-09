@@ -44,6 +44,7 @@ internal sealed class SearchInvalidationInterceptor : SaveChangesInterceptor
         context.ChangeTracker.DetectChanges();
         var products = new HashSet<Guid>();
         var categories = new HashSet<Guid>();
+        var brands = new HashSet<Guid>();
         foreach (var entry in context.ChangeTracker.Entries())
         {
             if (entry.State is not (EntityState.Added or EntityState.Modified or EntityState.Deleted))
@@ -64,12 +65,22 @@ internal sealed class SearchInvalidationInterceptor : SaveChangesInterceptor
                                             && entry.Property(nameof(Category.Name)).IsModified:
                     categories.Add(category.Id);
                     break;
+                case Brand brand when entry.State == EntityState.Modified
+                                      && entry.Property(nameof(Brand.Name)).IsModified:
+                    brands.Add(brand.Id);
+                    break;
             }
         }
 
         foreach (var chunk in products.Chunk(MaxIdsPerEvent))
             outbox.AddIntegrationEvent(new CatalogSearchInvalidatedIntegrationEvent { ProductIds = chunk });
-        if (categories.Count > 0)
-            outbox.AddIntegrationEvent(new CatalogSearchInvalidatedIntegrationEvent { CategoryIds = categories.ToArray() });
+        if (categories.Count > 0 || brands.Count > 0)
+        {
+            outbox.AddIntegrationEvent(new CatalogSearchInvalidatedIntegrationEvent
+            {
+                CategoryIds = categories.ToArray(),
+                BrandIds = brands.ToArray()
+            });
+        }
     }
 }

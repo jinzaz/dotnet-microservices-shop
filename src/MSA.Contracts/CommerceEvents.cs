@@ -194,6 +194,9 @@ public sealed class CatalogSearchInvalidatedIntegrationEvent : IntegrationEvent
 {
     public IReadOnlyList<Guid> ProductIds { get; init; } = [];
     public IReadOnlyList<Guid> CategoryIds { get; init; } = [];
+
+    /// <summary>改了名的品牌（文档里同样冗余了品牌名）。新增字段，旧消息里没有时为空。</summary>
+    public IReadOnlyList<Guid> BrandIds { get; init; } = [];
 }
 
 public sealed record PromotionRuleContract(

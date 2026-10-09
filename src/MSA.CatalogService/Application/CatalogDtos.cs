@@ -18,7 +18,8 @@ public sealed record ProductDto(
     IReadOnlyList<ProductVariantDto>? Variants = null,
     IReadOnlyList<ProductMediaDto>? Media = null,
     decimal? MinPrice = null,
-    decimal? MaxPrice = null);
+    decimal? MaxPrice = null,
+    Guid? BrandId = null);
 
 public sealed record ProductVariantDto(
     Guid Id,
@@ -58,6 +59,20 @@ public sealed record CategoryDto(
 
 /// <summary>Storefront view of an active category; omits operator audit fields.</summary>
 public sealed record PublicCategoryDto(Guid Id, string Code, string Name);
+
+public sealed record BrandDto(
+    Guid Id,
+    string Code,
+    string Name,
+    string Status,
+    DateTimeOffset CreatedOnUtc,
+    DateTimeOffset UpdatedOnUtc,
+    string CreatedBy,
+    string UpdatedBy,
+    long Version);
+
+/// <summary>Storefront view of an active brand.</summary>
+public sealed record PublicBrandDto(Guid Id, string Code, string Name);
 
 public sealed record PromotionRuleDto(
     Guid Id,

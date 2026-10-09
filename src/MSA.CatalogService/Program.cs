@@ -43,6 +43,7 @@ builder.Services.AddMsaApplicationPipeline();
 
 builder.Services.AddScoped<CatalogStore>();
 builder.Services.AddScoped<ICategoryRepository>(services => services.GetRequiredService<CatalogStore>());
+builder.Services.AddScoped<IBrandRepository>(services => services.GetRequiredService<CatalogStore>());
 builder.Services.AddScoped<IProductRepository>(services => services.GetRequiredService<CatalogStore>());
 builder.Services.AddScoped<IPromotionRepository>(services => services.GetRequiredService<CatalogStore>());
 builder.Services.AddScoped<ICouponRepository>(services => services.GetRequiredService<CatalogStore>());

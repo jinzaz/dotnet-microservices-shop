@@ -24,7 +24,9 @@ internal sealed record ProductSearchDocument(
     int VariantCount,
     string? Image,
     DateTimeOffset EffectiveOnUtc,
-    DateTimeOffset UpdatedOnUtc);
+    DateTimeOffset UpdatedOnUtc,
+    Guid? BrandId,
+    string? BrandName);
 
 internal static class ProductSearchIndex
 {
@@ -37,6 +39,13 @@ internal static class ProductSearchIndex
     public const string HighlightEnd = "\u0003";
 
     private const int MaxDescriptionLength = 4_000;
+
+    /// <summary>
+    /// 生产问题 #20（映射升级）：加字段、改分词都要重建索引——strict 映射下，新字段写进旧索引会被逐条拒掉。
+    /// 映射有变化时把这个数字加一，搜索服务启动时发现当前索引的版本更旧，就自动零停机重建一次。
+    /// 历史：1 初版；2 加品牌（brandId / brandName）。
+    /// </summary>
+    public const int SchemaVersion = 2;
 
     public static string SynonymSet(ElasticsearchOptions options) => $"{options.Alias}-synonyms";
 
@@ -103,12 +112,15 @@ internal static class ProductSearchIndex
             {
                 // 生产问题 #9（映射爆炸）：strict 拒绝未声明字段，写错字段名会直接报错，而不是悄悄长出一堆动态字段。
                 ["dynamic"] = "strict",
+                ["_meta"] = new JsonObject { ["schemaVersion"] = SchemaVersion },
                 ["properties"] = new JsonObject
                 {
                     // 生产问题 #7：排序的兜底键用自己的 keyword 字段，不用 _id（_id 排序要加载 fielddata，内存大户）。
                     ["id"] = Keyword(),
                     ["categoryId"] = Keyword(),
                     ["categoryName"] = Text(withKeyword: true),
+                    ["brandId"] = Keyword(),
+                    ["brandName"] = Text(withKeyword: true),
                     ["name"] = Text(withKeyword: true),
                     ["description"] = Text(withKeyword: false),
                     ["attributes"] = Text(withKeyword: false),
@@ -190,7 +202,9 @@ internal static class ProductSearchIndex
             variants.Count,
             string.IsNullOrEmpty(product.ImageUrl) ? null : product.ImageUrl,
             effectiveOn,
-            updatedOn);
+            updatedOn,
+            Guid.TryParse(product.BrandId, out var brandId) ? brandId : null,
+            string.IsNullOrEmpty(product.BrandName) ? null : Normalize(product.BrandName));
     }
 
     private static decimal Price(string value) => decimal.Parse(value, NumberStyles.Number, CultureInfo.InvariantCulture);

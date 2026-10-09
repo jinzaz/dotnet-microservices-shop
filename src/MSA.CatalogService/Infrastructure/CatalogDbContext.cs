@@ -10,6 +10,7 @@ public sealed class CatalogDbContext(
     IMediator mediator) : MessagingDbContext(options, mediator, "catalog")
 {
     public DbSet<Category> Categories => Set<Category>();
+    public DbSet<Brand> Brands => Set<Brand>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
     public DbSet<ProductMedia> ProductMedia => Set<ProductMedia>();

@@ -24,10 +24,12 @@ public sealed class Product : RevisionedCatalogAggregateRoot<Guid>
         decimal price,
         string currency,
         string actor,
-        DateTimeOffset createdOnUtc)
+        DateTimeOffset createdOnUtc,
+        Guid? brandId = null)
     {
         Id = CatalogDomainGuard.Required(id, nameof(id));
         CategoryId = CatalogDomainGuard.Required(categoryId, nameof(categoryId));
+        BrandId = OptionalBrand(brandId);
         Name = CatalogDomainGuard.Required(name, nameof(name), 200);
         Description = CatalogDomainGuard.Optional(description, nameof(description), 4_000);
         LifecycleStatus = ProductLifecycleStatus.Draft;
@@ -46,6 +48,9 @@ public sealed class Product : RevisionedCatalogAggregateRoot<Guid>
     }
 
     public Guid CategoryId { get; private set; }
+
+    /// <summary>可选：白牌、自营杂货等没有品牌。</summary>
+    public Guid? BrandId { get; private set; }
     public string Name { get; private set; } = string.Empty;
     public string Description { get; private set; } = string.Empty;
     public ProductLifecycleStatus LifecycleStatus { get; private set; }
@@ -117,6 +122,20 @@ public sealed class Product : RevisionedCatalogAggregateRoot<Guid>
         CategoryId = normalizedCategoryId;
         CompleteChange(actor, occurredOnUtc, "CategoryChanged");
     }
+
+    /// <summary>换品牌或去掉品牌（传 null）。品牌是否启用由应用层校验，这里只保证状态一致。</summary>
+    public void ChangeBrand(Guid? brandId, string actor, DateTimeOffset occurredOnUtc)
+    {
+        EnsureEditable();
+        var normalizedBrandId = OptionalBrand(brandId);
+        if (BrandId == normalizedBrandId)
+            return;
+
+        BrandId = normalizedBrandId;
+        CompleteChange(actor, occurredOnUtc, "BrandChanged");
+    }
+
+    private static Guid? OptionalBrand(Guid? brandId) => brandId == Guid.Empty ? null : brandId;
 
     public ProductVariant AddVariant(
         Guid variantId,

@@ -21,6 +21,8 @@ message ExportSearchProductsRequest {
   int32 page_size = 2;
   // 只导出这个分类下的商品（分类改名后刷新用）；空表示全部。
   string category_id = 3;
+  // 只导出这个品牌下的商品（品牌改名后刷新用）；空表示全部。不能和 category_id 同时给。
+  string brand_id = 4;
 }
 
 message SearchProductsResponse {
@@ -47,6 +49,9 @@ message SearchProduct {
   repeated SearchProductVariant variants = 10;
   // 第一张前台可见的图片；没有时为空。
   string image_url = 11;
+  // 没有品牌时两个都为空。
+  string brand_id = 12;
+  string brand_name = 13;
 }
 
 message SearchProductVariant {

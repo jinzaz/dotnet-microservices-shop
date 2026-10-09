@@ -1,6 +1,6 @@
 import { apiRequest } from '../../shared/api/http';
 import { serviceRoutes } from '../../shared/config/api';
-import type { CatalogCategory, CatalogProduct, Paged } from './types';
+import type { CatalogBrand, CatalogCategory, CatalogProduct, Paged } from './types';
 
 export type ProductListParams = {
   skip?: number;
@@ -23,6 +23,16 @@ export function getProduct(productId: string): Promise<CatalogProduct> {
 export function listCategories(): Promise<CatalogCategory[]> {
   return apiRequest<CatalogCategory[]>(`${serviceRoutes.catalog}/categories`);
 }
+
+export function listBrands(): Promise<CatalogBrand[]> {
+  return apiRequest<CatalogBrand[]>(`${serviceRoutes.catalog}/brands`);
+}
+
+export const brandsQuery = {
+  queryKey: ['catalog', 'brands'],
+  queryFn: listBrands,
+  staleTime: 5 * 60_000,
+} as const;
 
 export const categoriesQuery = {
   queryKey: ['catalog', 'categories'],

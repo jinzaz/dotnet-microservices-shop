@@ -65,6 +65,24 @@ public sealed class SearchServiceTests
     }
 
     [TestMethod]
+    public void Build_EachFacetIgnoresOnlyItsOwnSelection()
+    {
+        var categoryId = Guid.NewGuid();
+        var brandId = Guid.NewGuid();
+        var query = ProductSearchQuery.Build(
+            ProductSearchQuery.Normalize(new ProductSearchRequest(CategoryId: categoryId, BrandId: brandId)),
+            Options);
+
+        // 结果同时按分类和品牌收窄；分类分面只套品牌条件，品牌分面只套分类条件。
+        var postFilters = query["post_filter"]!["bool"]!["filter"]!.ToJsonString();
+        Assert.Contains(categoryId.ToString(), postFilters);
+        Assert.Contains(brandId.ToString(), postFilters);
+        Assert.AreEqual(brandId.ToString(), query["aggs"]!["categories"]!["filter"]!["term"]!["brandId"]!.ToString());
+        Assert.AreEqual(categoryId.ToString(), query["aggs"]!["brands"]!["filter"]!["term"]!["categoryId"]!.ToString());
+        Assert.AreEqual("brandId", query["aggs"]!["brands"]!["aggs"]!["ids"]!["terms"]!["field"]!.ToString());
+    }
+
+    [TestMethod]
     public void ToDocument_IndexesScheduledProductsButNotUnsearchableOnes()
     {
         var product = SearchProduct(searchable: true, effectiveOn: Now.AddDays(3));
@@ -77,6 +95,8 @@ public sealed class SearchServiceTests
         Assert.AreEqual("SKU-A", document.DefaultSku);
         CollectionAssert.AreEqual(new[] { "6900000000017" }, document.Barcodes);
         Assert.Contains("曜石黑", document.Attributes);
+        Assert.AreEqual("声阔", document.BrandName);
+        Assert.IsNotNull(document.BrandId);
         Assert.IsNull(ProductSearchIndex.ToDocument(SearchProduct(searchable: false, effectiveOn: Now)));
     }
 
@@ -122,6 +142,7 @@ public sealed class SearchServiceTests
     {
         var id = Guid.NewGuid();
         var categoryId = Guid.NewGuid();
+        var brandId = Guid.NewGuid();
         var body = JsonNode.Parse($$"""
             {
               "hits": {
@@ -129,12 +150,14 @@ public sealed class SearchServiceTests
                 "hits": [{
                   "_source": { "id": "{{id}}", "categoryId": "{{categoryId}}", "name": "降噪耳机", "description": "d",
                     "defaultSku": "SKU-A", "defaultPrice": 99.0, "minPrice": 99.0, "maxPrice": 129.0, "currency": "CNY",
-                    "variantCount": 2, "image": "https://img/1.svg", "updatedOnUtc": "2026-10-01T00:00:00+00:00" },
+                    "variantCount": 2, "image": "https://img/1.svg", "updatedOnUtc": "2026-10-01T00:00:00+00:00",
+                    "brandId": "{{brandId}}", "brandName": "声阔" },
                   "highlight": { "name": ["\u0002降噪\u0003耳机"] }
                 }]
               },
               "aggregations": {
-                "categories": { "buckets": [{ "key": "{{categoryId}}", "doc_count": 42 }] },
+                "categories": { "doc_count": 42, "ids": { "buckets": [{ "key": "{{categoryId}}", "doc_count": 42 }] } },
+                "brands": { "doc_count": 7, "ids": { "buckets": [{ "key": "{{brandId}}", "doc_count": 7 }] } },
                 "price": { "range": { "min": 99.0, "max": 129.00000001 } }
               }
             }
@@ -147,6 +170,9 @@ public sealed class SearchServiceTests
         Assert.AreEqual(2, result.Items[0].VariantCount);
         Assert.AreEqual(42, result.Facets!.Categories[0].Count);
         Assert.AreEqual(129m, result.Facets.MaxPrice);
+        Assert.AreEqual(brandId, result.Items[0].BrandId);
+        Assert.AreEqual("声阔", result.Items[0].BrandName);
+        Assert.AreEqual(7, result.Facets.Brands[0].Count);
     }
 
     [TestMethod]
@@ -165,10 +191,19 @@ public sealed class SearchServiceTests
             await db.SaveChangesAsync(TestContext.CancellationToken);
         }
 
+        var brand = new Brand(Guid.NewGuid(), "SONIC", "声阔", "operator", Now);
         await using (var db = new CatalogDbContext(options, Mock.Of<IMediator>()))
         {
+            db.Brands.Add(brand);
             var loaded = await db.Categories.SingleAsync(TestContext.CancellationToken);
             loaded.Rename("蓝牙耳机", "operator", Now.AddMinutes(1));
+            await db.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        await using (var db = new CatalogDbContext(options, Mock.Of<IMediator>()))
+        {
+            var loaded = await db.Brands.SingleAsync(TestContext.CancellationToken);
+            loaded.Rename("声阔 Sonic", "operator", Now.AddMinutes(2));
             await db.SaveChangesAsync(TestContext.CancellationToken);
         }
 
@@ -180,6 +215,7 @@ public sealed class SearchServiceTests
                 .ToArray();
             Assert.IsTrue(events.Any(value => value.ProductIds.Contains(product.Id)));
             Assert.IsTrue(events.Any(value => value.CategoryIds.Contains(category.Id)));
+            Assert.IsTrue(events.Any(value => value.BrandIds.Contains(brand.Id)));
         }
     }
 
@@ -188,9 +224,13 @@ public sealed class SearchServiceTests
     {
         var categories = Taxonomy.All.Select(spec => new SeedCategory(Guid.NewGuid(), spec)).ToArray();
         var images = Taxonomy.All.ToDictionary(spec => spec.Code, spec => new[] { "a", "b", "c", "d", "e" });
-        var generator = new ProductGenerator(categories, images, seed: 7, Now);
+        var brands = Taxonomy.BrandNames.ToDictionary(name => name, _ => Guid.NewGuid());
+        var brandNames = brands.ToDictionary(pair => pair.Value, pair => pair.Key);
+        var generator = new ProductGenerator(categories, brands, images, seed: 7, Now);
         var products = Enumerable.Range(1, 3_000).Select(sequence => generator.Next(sequence)).ToArray();
 
+        // 商品名不重复：重名会让后台按名字查到的商品和前台看到的不是同一个。
+        Assert.HasCount(products.Length, products.Select(product => product.Name).Distinct());
         var skus = products.SelectMany(product => product.Variants).Select(variant => variant.Sku).ToArray();
         Assert.HasCount(skus.Length, skus.Distinct());
         var barcodes = products.SelectMany(product => product.Variants).Select(variant => variant.Barcode).OfType<string>().ToArray();
@@ -204,6 +244,9 @@ public sealed class SearchServiceTests
             Assert.IsTrue(product.Variants.Single(variant => variant.IsDefault).IsActive);
             Assert.IsInRange(1, 4, product.Images.Count);
             Assert.IsTrue(product.UpdatedOnUtc >= product.CreatedOnUtc);
+            // 商品挂的品牌就是名字开头的那个品牌，名字和品牌不会对不上。
+            Assert.IsNotNull(product.BrandId);
+            Assert.StartsWith(brandNames[product.BrandId.Value] + " ", product.Name);
             // 与目录表的检查约束一致：在售 ⇔ 已发布且有生效时间。
             Assert.AreEqual(product.LifecycleStatus == 1, product.IsActive);
             if (product.IsActive)
@@ -243,7 +286,9 @@ public sealed class SearchServiceTests
             Version = 7,
             Searchable = searchable,
             EffectiveOnUtc = effectiveOn.ToString("O"),
-            UpdatedOnUtc = Now.ToString("O")
+            UpdatedOnUtc = Now.ToString("O"),
+            BrandId = Guid.NewGuid().ToString(),
+            BrandName = "声阔"
         };
         product.Variants.Add(new SearchProductVariant
         {

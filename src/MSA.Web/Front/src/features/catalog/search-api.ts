@@ -9,6 +9,7 @@ export type SearchSort = 'relevance' | 'price_asc' | 'price_desc' | 'newest';
 export type ProductSearchParams = {
   q?: string;
   categoryId?: string;
+  brandId?: string;
   minPrice?: number;
   maxPrice?: number;
   sort?: SearchSort;
@@ -18,6 +19,7 @@ export type ProductSearchParams = {
 
 /** Mirrors SearchService ProductSearchItemDto; shaped like CatalogProduct so cards render it unchanged. */
 export type ProductSearchItem = CatalogProduct & {
+  brandName?: string | null;
   nameHighlight?: string | null;
   variantCount?: number;
   image?: string | null;
@@ -32,6 +34,7 @@ export type ProductSearchResult = {
   totalIsLowerBound: boolean;
   facets: {
     categories: { id: string; count: number }[];
+    brands: { id: string; count: number }[];
     minPrice: number | null;
     maxPrice: number | null;
   } | null;
@@ -52,10 +55,11 @@ function fromCatalogProduct(product: CatalogProduct): ProductSearchItem {
  * Client errors (4xx) are real errors and are not masked.
  */
 export async function searchProducts(params: ProductSearchParams): Promise<ProductSearchResult> {
-  const { q, categoryId, minPrice, maxPrice, sort, skip = 0, take = 20 } = params;
+  const { q, categoryId, brandId, minPrice, maxPrice, sort, skip = 0, take = 20 } = params;
   const query = new URLSearchParams({ skip: String(skip), take: String(take) });
   if (q?.trim()) query.set('q', q.trim());
   if (categoryId) query.set('categoryId', categoryId);
+  if (brandId) query.set('brandId', brandId);
   if (minPrice !== undefined) query.set('minPrice', String(minPrice));
   if (maxPrice !== undefined) query.set('maxPrice', String(maxPrice));
   if (sort && sort !== 'relevance') query.set('sort', sort);

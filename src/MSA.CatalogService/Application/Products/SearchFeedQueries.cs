@@ -27,15 +27,17 @@ public sealed record SearchFeedProductDto(
     DateTimeOffset? EffectiveOnUtc,
     DateTimeOffset UpdatedOnUtc,
     IReadOnlyList<SearchFeedVariantDto> Variants,
-    string? ImageUrl);
+    string? ImageUrl,
+    Guid? BrandId = null,
+    string? BrandName = null);
 
 public sealed record SearchFeedPage(IReadOnlyList<SearchFeedProductDto> Products, Guid? NextAfterId);
 
 /// <summary>按 id 取最新快照（增量同步）。已删除的商品不在结果里，调用方据此删文档。</summary>
 public sealed record GetSearchFeedProductsQuery(IReadOnlyList<Guid> ProductIds) : IQuery<IReadOnlyList<SearchFeedProductDto>>;
 
-/// <summary>按主键分页导出可搜索的商品（全量重建、分类改名后刷新）。</summary>
-public sealed record ExportSearchFeedProductsQuery(Guid? AfterId, int PageSize, Guid? CategoryId) : IQuery<SearchFeedPage>;
+/// <summary>按主键分页导出可搜索的商品（全量重建、分类 / 品牌改名后刷新）。</summary>
+public sealed record ExportSearchFeedProductsQuery(Guid? AfterId, int PageSize, Guid? CategoryId, Guid? BrandId = null) : IQuery<SearchFeedPage>;
 
 internal sealed class GetSearchFeedProductsHandler(CatalogDbContext db)
     : IRequestHandler<GetSearchFeedProductsQuery, IReadOnlyList<SearchFeedProductDto>>
@@ -64,6 +66,12 @@ internal sealed class ExportSearchFeedProductsHandler(CatalogDbContext db)
             ? await db.Database.SqlQuery<Guid>($"""
                 SELECT "Id" AS "Value" FROM catalog_products
                 WHERE "Id" > {after} AND "LifecycleStatus" = {published} AND "IsActive" AND "CategoryId" = {categoryId}
+                ORDER BY "Id" LIMIT {pageSize}
+                """).ToArrayAsync(cancellationToken)
+            : request.BrandId is { } brandId
+            ? await db.Database.SqlQuery<Guid>($"""
+                SELECT "Id" AS "Value" FROM catalog_products
+                WHERE "Id" > {after} AND "LifecycleStatus" = {published} AND "IsActive" AND "BrandId" = {brandId}
                 ORDER BY "Id" LIMIT {pageSize}
                 """).ToArrayAsync(cancellationToken)
             : await db.Database.SqlQuery<Guid>($"""
@@ -100,14 +108,24 @@ internal static class SearchFeed
             .AsNoTracking()
             .Where(category => categoryIds.Contains(category.Id))
             .ToDictionaryAsync(category => category.Id, category => category.Name, cancellationToken);
+        var brandIds = products.Select(product => product.BrandId).OfType<Guid>().Distinct().ToArray();
+        var brandNames = brandIds.Length == 0
+            ? new Dictionary<Guid, string>()
+            : await db.Brands
+                .AsNoTracking()
+                .Where(brand => brandIds.Contains(brand.Id))
+                .ToDictionaryAsync(brand => brand.Id, brand => brand.Name, cancellationToken);
         return products
             .OrderBy(product => product.Id)
-            .Select(product => ToDto(product, categoryNames.GetValueOrDefault(product.CategoryId, string.Empty)))
+            .Select(product => ToDto(
+                product,
+                categoryNames.GetValueOrDefault(product.CategoryId, string.Empty),
+                product.BrandId is { } brandId ? brandNames.GetValueOrDefault(brandId) : null))
             .ToArray();
     }
 
     /// <summary>可见性规则与前台列表 / 详情一致（见 CatalogStore）：已发布、可售、至少一个可售规格；图片只取通用图或可售规格的图。</summary>
-    private static SearchFeedProductDto ToDto(Product product, string categoryName)
+    private static SearchFeedProductDto ToDto(Product product, string categoryName, string? brandName)
     {
         var variants = product.Variants
             .Where(variant => variant.IsActive)
@@ -144,6 +162,8 @@ internal static class SearchFeed
                 variant.Price,
                 variant.Currency,
                 variant.IsDefault)).ToArray(),
-            image);
+            image,
+            product.BrandId,
+            brandName);
     }
 }

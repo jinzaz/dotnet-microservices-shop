@@ -2,10 +2,11 @@ using System.Text.Json.Nodes;
 
 namespace MSA.SearchService;
 
-/// <summary>前台搜索参数。全部可选，绑定自查询字符串（q、categoryId、minPrice、maxPrice、sort、skip、take）。</summary>
+/// <summary>前台搜索参数。全部可选，绑定自查询字符串（q、categoryId、brandId、minPrice、maxPrice、sort、skip、take）。</summary>
 public sealed record ProductSearchRequest(
     string? Q = null,
     Guid? CategoryId = null,
+    Guid? BrandId = null,
     decimal? MinPrice = null,
     decimal? MaxPrice = null,
     string? Sort = null,
@@ -26,11 +27,18 @@ public sealed record ProductSearchItemDto(
     int VariantCount,
     string? Image,
     DateTimeOffset UpdatedOnUtc,
-    bool IsActive = true);
+    bool IsActive = true,
+    Guid? BrandId = null,
+    string? BrandName = null);
 
 public sealed record SearchFacetBucket(Guid Id, long Count);
 
-public sealed record ProductSearchFacets(IReadOnlyList<SearchFacetBucket> Categories, decimal? MinPrice, decimal? MaxPrice);
+/// <param name="Brands">命中最多的 30 个品牌；没有品牌的商品不计入。</param>
+public sealed record ProductSearchFacets(
+    IReadOnlyList<SearchFacetBucket> Categories,
+    decimal? MinPrice,
+    decimal? MaxPrice,
+    IReadOnlyList<SearchFacetBucket> Brands);
 
 /// <param name="TotalIsLowerBound">命中超过 1 万时只给下界（显示「10000+」），不为一个精确数字扫完全部命中。</param>
 /// <param name="Engine">elasticsearch 或 database（降级）。降级时没有分面、排序与价格筛选，前端据此隐藏对应控件。</param>
@@ -53,12 +61,13 @@ internal static class ProductSearchQuery
     private static readonly string[] SourceFields =
     [
         "id", "categoryId", "name", "description", "defaultSku", "defaultPrice", "minPrice", "maxPrice",
-        "currency", "variantCount", "image", "updatedOnUtc"
+        "currency", "variantCount", "image", "updatedOnUtc", "brandId", "brandName"
     ];
 
     internal sealed record Normalized(
         string Query,
         Guid? CategoryId,
+        Guid? BrandId,
         decimal? MinPrice,
         decimal? MaxPrice,
         string Sort,
@@ -86,7 +95,7 @@ internal static class ProductSearchQuery
             "price_asc" or "price_desc" or "newest" => request.Sort.Trim().ToLowerInvariant(),
             _ => "relevance"
         };
-        return new Normalized(query, request.CategoryId, min, max, sort, skip, take);
+        return new Normalized(query, request.CategoryId, request.BrandId, min, max, sort, skip, take);
     }
 
     public static JsonObject Build(Normalized request, ElasticsearchOptions options)
@@ -129,15 +138,16 @@ internal static class ProductSearchQuery
                 }
             },
             ["sort"] = Sort(request.Sort, hasQuery),
+            // 生产问题 #15（分面计数塌缩）：分类、品牌条件放在 post_filter 而不是 query 里，每个分面只套用「别的」分面条件——
+            // 选中「耳机」后分类分面仍显示各分类的命中数（但已按选中的品牌收窄），品牌分面同理；价格区间两个条件都套用。
+            // 放进 query 的话，选中一个分类后其他分类都会变成 0，用户没法横向切换。
             ["aggs"] = new JsonObject
             {
-                ["categories"] = new JsonObject
-                {
-                    ["terms"] = new JsonObject { ["field"] = "categoryId", ["size"] = 50 }
-                },
+                ["categories"] = Facet(Filter(BrandFilter(request.BrandId)), "categoryId", 50),
+                ["brands"] = Facet(Filter(CategoryFilter(request.CategoryId)), "brandId", 30),
                 ["price"] = new JsonObject
                 {
-                    ["filter"] = CategoryFilter(request.CategoryId) ?? new JsonObject { ["match_all"] = new JsonObject() },
+                    ["filter"] = Filter(CategoryFilter(request.CategoryId), BrandFilter(request.BrandId)),
                     ["aggs"] = new JsonObject
                     {
                         ["range"] = new JsonObject { ["stats"] = new JsonObject { ["field"] = "minPrice" } }
@@ -146,10 +156,8 @@ internal static class ProductSearchQuery
             }
         };
 
-        // 生产问题 #15（分面计数塌缩）：分类条件放在 post_filter 而不是 query 里——选中「耳机」后，
-        // 分类分面仍显示每个分类各有多少命中，用户能直接切到别的分类；放进 query 的话其他分类都会变成 0。
-        if (CategoryFilter(request.CategoryId) is { } categoryFilter)
-            root["post_filter"] = categoryFilter;
+        if (CategoryFilter(request.CategoryId) is not null || BrandFilter(request.BrandId) is not null)
+            root["post_filter"] = Filter(CategoryFilter(request.CategoryId), BrandFilter(request.BrandId));
         if (hasQuery)
         {
             root["highlight"] = new JsonObject
@@ -178,7 +186,7 @@ internal static class ProductSearchQuery
                     ["multi_match"] = new JsonObject
                     {
                         ["query"] = query,
-                        ["fields"] = new JsonArray("name^4", "categoryName^2", "attributes^1.5", "description^0.5"),
+                        ["fields"] = new JsonArray("name^4", "brandName^3", "categoryName^2", "attributes^1.5", "description^0.5"),
                         ["type"] = "best_fields",
                         ["tie_breaker"] = 0.3,
                         ["minimum_should_match"] = "2<75%"
@@ -221,6 +229,28 @@ internal static class ProductSearchQuery
     private static JsonObject? CategoryFilter(Guid? categoryId) => categoryId is { } id
         ? new JsonObject { ["term"] = new JsonObject { ["categoryId"] = id.ToString() } }
         : null;
+
+    private static JsonObject? BrandFilter(Guid? brandId) => brandId is { } id
+        ? new JsonObject { ["term"] = new JsonObject { ["brandId"] = id.ToString() } }
+        : null;
+
+    /// <summary>把若干个（可能为空的）条件合成一个 filter；全为空时是 match_all。</summary>
+    private static JsonObject Filter(params JsonObject?[] filters)
+    {
+        var present = filters.OfType<JsonObject>().ToArray();
+        return present.Length switch
+        {
+            0 => new JsonObject { ["match_all"] = new JsonObject() },
+            1 => present[0],
+            _ => new JsonObject { ["bool"] = new JsonObject { ["filter"] = new JsonArray(present.Select(item => (JsonNode)item).ToArray()) } }
+        };
+    }
+
+    private static JsonObject Facet(JsonObject filter, string field, int size) => new()
+    {
+        ["filter"] = filter,
+        ["aggs"] = new JsonObject { ["ids"] = new JsonObject { ["terms"] = new JsonObject { ["field"] = field, ["size"] = size } } }
+    };
 
     /// <summary>搜索框联想：商品名前缀短语匹配，按商品名去重，最多 8 条。</summary>
     public static JsonObject Suggest(string prefix) => new()

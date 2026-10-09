@@ -14,7 +14,8 @@ public sealed record CreateDraftProductCommand(
     string Description,
     decimal Price,
     string Currency,
-    string Actor) : ICommand<Guid>;
+    string Actor,
+    Guid? BrandId = null) : ICommand<Guid>;
 
 public sealed record UpdateProductDetailsCommand(
     Guid ProductId,
@@ -91,6 +92,7 @@ public sealed class ChangeProductPriceValidator : AbstractValidator<ChangeProduc
 
 internal sealed class CreateDraftProductHandler(
     ICategoryRepository categories,
+    IBrandRepository brands,
     IProductRepository products,
     ICatalogSnapshotPublisher snapshots,
     ICatalogAuditWriter audit,
@@ -101,6 +103,8 @@ internal sealed class CreateDraftProductHandler(
         var category = await categories.GetRequiredAsync(request.CategoryId, cancellationToken);
         if (category.Status != CategoryLifecycleStatus.Active)
             throw new InvalidOperationException("Products can only be assigned to an active category.");
+        if (request.BrandId is { } brandId)
+            await BrandRules.EnsureAssignableAsync(brands, brandId, cancellationToken);
 
         var normalizedSku = Product.NormalizeSku(request.Sku);
         if (await products.SkuExistsAsync(normalizedSku, null, cancellationToken))
@@ -116,7 +120,8 @@ internal sealed class CreateDraftProductHandler(
             request.Price,
             request.Currency,
             request.Actor,
-            now);
+            now,
+            request.BrandId);
         products.Add(product);
         snapshots.Publish(product);
         audit.Record("Product", product.Id, "DraftCreated", request.Actor, now, new { product.Sku });

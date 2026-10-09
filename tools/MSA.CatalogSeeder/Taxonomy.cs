@@ -40,6 +40,12 @@ internal static class Taxonomy
     private static readonly string[] ClothingSizes = ["S", "M", "L", "XL", "XXL"];
     private static readonly string[] Genders = ["男款", "女款", "男女同款"];
 
+    /// <summary>所有品类词表里出现过的品牌（同一品牌可能横跨几个品类，例如「拾光」既卖衣服也卖包），按首次出现排序。</summary>
+    public static IReadOnlyList<string> BrandNames => All
+        .SelectMany(spec => spec.Slots["brand"])
+        .Distinct(StringComparer.Ordinal)
+        .ToArray();
+
     public static readonly string[] Promises =
     [
         "支持 7 天无理由退换。",

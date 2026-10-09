@@ -5,7 +5,7 @@ import { CopyButton, Dropzone, Empty, ErrorNotice, Field, formatDate, formatMone
 
 export type ProductVariant = { id: string; productId: string; sku: string; displayName: string; attributesJson: string; barcode?: string; price: number; currency: string; isActive: boolean; isDefault: boolean; updatedOnUtc: string };
 export type ProductMedia = { id: string; productId: string; variantId?: string; mediaType: 'Image' | 'Video'; url: string; thumbnailUrl?: string; altText?: string; sortOrder: number };
-export type Product = { id: string; categoryId: string; sku: string; name: string; description: string; price: number; currency: string; lifecycleStatus: string; version: number; updatedOnUtc: string; variants?: ProductVariant[]; media?: ProductMedia[]; minPrice?: number; maxPrice?: number };
+export type Product = { id: string; categoryId: string; brandId?: string | null; sku: string; name: string; description: string; price: number; currency: string; lifecycleStatus: string; version: number; updatedOnUtc: string; variants?: ProductVariant[]; media?: ProductMedia[]; minPrice?: number; maxPrice?: number };
 
 type VariantPayload = { sku?: string; displayName: string; attributesJson: string; barcode: string | null; price: number; currency: string; isActive: boolean };
 
@@ -44,7 +44,9 @@ export async function attachMedia(productId: string, items: UploadItem[], altTex
   return failures;
 }
 
-export function ProductStudio({ product, categoryName, canEdit }: { product: Product; categoryName?: string; canEdit: boolean }) {
+type BrandOption = { id: string; name: string; code: string; status: string };
+
+export function ProductStudio({ product, categoryName, brands, canEdit }: { product: Product; categoryName?: string; brands: BrandOption[]; canEdit: boolean }) {
   const client = useQueryClient();
   const toast = useToast();
   const confirm = useConfirm();
@@ -87,6 +89,20 @@ export function ProductStudio({ product, categoryName, canEdit }: { product: Pro
       success: '商品内容已保存',
     });
   };
+
+  // 品牌单独保存（PUT /brand），和名称描述分开：只改其一时不会误改另一项。
+  const saveBrand = (brandId: string) => {
+    if ((product.brandId ?? '') === brandId) return;
+    mutation.mutate({
+      path: `/api/catalog/admin/products/${product.id}/brand`,
+      method: 'PUT',
+      body: { brandId: brandId || null, expectedVersion: product.version },
+      success: brandId ? '品牌已更新' : '已去掉品牌',
+    });
+  };
+  const brandName = product.brandId ? brands.find((item) => item.id === product.brandId)?.name ?? product.brandId.slice(0, 8) : '无品牌';
+  // 已挂着的品牌即使后来停用或归档也要能显示出来；新挂只能选启用的。
+  const brandOptions = brands.filter((item) => item.status === 'Active' || item.id === product.brandId);
 
   const saveVariant = (payload: VariantPayload) => {
     if (!variantDraft) return;
@@ -138,11 +154,12 @@ export function ProductStudio({ product, categoryName, canEdit }: { product: Pro
   return <div className="product-studio">
     <section className="product-studio__summary">
       <div><Status>{product.lifecycleStatus}</Status><span className="mono">{product.id}<CopyButton value={product.id} label="复制商品 ID" /></span></div>
-      <dl><div><dt>分类</dt><dd>{categoryName ?? '—'}</dd></div><div><dt>SKU</dt><dd>{variants.length}</dd></div><div><dt>媒体</dt><dd>{media.length}</dd></div><div><dt>价格</dt><dd>{priceRange}</dd></div><div><dt>更新</dt><dd>{formatDate(product.updatedOnUtc)}</dd></div></dl>
+      <dl><div><dt>分类</dt><dd>{categoryName ?? '—'}</dd></div><div><dt>品牌</dt><dd>{brandName}</dd></div><div><dt>SKU</dt><dd>{variants.length}</dd></div><div><dt>媒体</dt><dd>{media.length}</dd></div><div><dt>价格</dt><dd>{priceRange}</dd></div><div><dt>更新</dt><dd>{formatDate(product.updatedOnUtc)}</dd></div></dl>
     </section>
 
     {canEdit ? <form key={`details-${product.version}`} className="studio-section studio-details" onSubmit={saveDetails}>
       <div className="studio-heading"><div><span>商品内容</span><h3>SPU 基础信息</h3></div><button className="button button--quiet" type="submit" disabled={mutation.isPending}>保存内容</button></div>
+      <Field label="品牌" hint="修改后立即保存；仅可选择已启用的品牌"><select key={`brand-${product.version}`} defaultValue={product.brandId ?? ''} disabled={mutation.isPending} onChange={(event) => saveBrand(event.target.value)}><option value="">无品牌</option>{brandOptions.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}{item.status === 'Active' ? '' : '（已停用）'}</option>)}</select></Field>
       <Field label="商品名称"><input name="name" defaultValue={product.name} required maxLength={200} /></Field>
       <Field label="商品描述"><textarea name="description" defaultValue={product.description} required rows={3} maxLength={4000} /></Field>
     </form> : null}

@@ -34,6 +34,32 @@ internal sealed class CategoryConfiguration : IEntityTypeConfiguration<Category>
     }
 }
 
+internal sealed class BrandConfiguration : IEntityTypeConfiguration<Brand>
+{
+    public void Configure(EntityTypeBuilder<Brand> entity)
+    {
+        entity.ToTable("catalog_brands", table =>
+        {
+            table.HasComment("商品品牌");
+            table.HasCheckConstraint(
+                "CK_brands_status",
+                $"\"Status\" BETWEEN {(int)BrandLifecycleStatus.Draft} AND {(int)BrandLifecycleStatus.Archived}");
+            table.HasCheckConstraint("CK_brands_audit", "\"Version\" > 0 AND \"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+            table.HasCheckConstraint("CK_brands_normalized_code", "\"NormalizedCode\" = upper(trim(\"Code\"))");
+        });
+        entity.HasKey(value => value.Id);
+        entity.Property(value => value.Code).HasMaxLength(60).IsRequired().HasComment("品牌业务编码");
+        entity.Property(value => value.NormalizedCode).HasMaxLength(60).IsRequired().HasComment("用于唯一匹配的标准化品牌编码");
+        entity.Property(value => value.Name).HasMaxLength(120).IsRequired().HasComment("品牌名称");
+        entity.Property(value => value.Status).HasComment("品牌生命周期状态");
+        entity.Property(value => value.CreatedBy).HasMaxLength(200).IsRequired();
+        entity.Property(value => value.UpdatedBy).HasMaxLength(200).IsRequired();
+        entity.Property(value => value.Version).IsConcurrencyToken().HasComment("品牌乐观并发版本号");
+        entity.HasIndex(value => value.NormalizedCode).IsUnique();
+        entity.HasIndex(value => new { value.Status, value.Name, value.Id });
+    }
+}
+
 internal sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
 {
     public void Configure(EntityTypeBuilder<Product> entity)
@@ -51,6 +77,7 @@ internal sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
         });
         entity.HasKey(value => value.Id);
         entity.Property(value => value.CategoryId).HasComment("商品所属分类标识");
+        entity.Property(value => value.BrandId).HasComment("商品品牌标识；空值表示无品牌");
         entity.Property(value => value.Name).HasMaxLength(200).IsRequired().HasComment("SPU 商品名称");
         entity.Property(value => value.Description).HasColumnType("text").IsRequired().HasComment("SPU 商品描述");
         entity.Property(value => value.LifecycleStatus).HasComment("商品生命周期状态");
@@ -66,12 +93,18 @@ internal sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
         entity.Ignore(value => value.Price);
         entity.Ignore(value => value.Currency);
         entity.HasIndex(value => new { value.CategoryId, value.LifecycleStatus, value.Id });
+        entity.HasIndex(value => new { value.BrandId, value.LifecycleStatus, value.Id });
         entity.HasIndex(value => new { value.LifecycleStatus, value.EffectiveOnUtc, value.Id });
         entity.HasOne<Category>()
             .WithMany()
             .HasForeignKey(value => value.CategoryId)
             .OnDelete(DeleteBehavior.Restrict)
             .IsRequired();
+        entity.HasOne<Brand>()
+            .WithMany()
+            .HasForeignKey(value => value.BrandId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
         entity.HasMany(value => value.Variants)
             .WithOne()
             .HasForeignKey(value => value.ProductId)

@@ -37,6 +37,14 @@ internal static class CatalogEndpoints
                 new PublicCategoryDto(category.Id, category.Code, category.Name)));
         }).AllowAnonymous();
 
+        endpoints.MapGet("/catalog/brands", async (
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var brands = await sender.Send(new ListBrandsQuery(0, 500, "Active"), cancellationToken);
+            return Results.Ok(brands.Items.Select(brand => new PublicBrandDto(brand.Id, brand.Code, brand.Name)));
+        }).AllowAnonymous();
+
         endpoints.MapGet("/catalog/promotions", async (
             ISender sender,
             CancellationToken cancellationToken) =>

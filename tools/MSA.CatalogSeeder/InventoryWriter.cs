@@ -54,7 +54,7 @@ internal sealed class InventoryWriter(NpgsqlDataSource dataSource)
     public async Task WriteAsync(IReadOnlyList<SeedProduct> products, CancellationToken cancellationToken)
     {
         var rows = products
-            .SelectMany(product => product.Variants.Select(variant => (Id: Guid.CreateVersion7(product.CreatedOnUtc), Variant: variant, Product: product)))
+            .SelectMany(product => product.Variants.Select(variant => (Id: Guid.CreateVersion7(), Variant: variant, Product: product)))
             .ToArray();
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -87,7 +87,7 @@ internal sealed class InventoryWriter(NpgsqlDataSource dataSource)
             foreach (var (id, variant, product) in rows.Where(row => row.Variant.Stock > 0))
             {
                 await importer.StartRowAsync(cancellationToken);
-                await importer.WriteAsync(Guid.CreateVersion7(product.CreatedOnUtc), NpgsqlDbType.Uuid, cancellationToken);
+                await importer.WriteAsync(Guid.CreateVersion7(), NpgsqlDbType.Uuid, cancellationToken);
                 await importer.WriteAsync(id, NpgsqlDbType.Uuid, cancellationToken);
                 await importer.WriteAsync(variant.Sku.Trim().ToUpperInvariant(), NpgsqlDbType.Varchar, cancellationToken);
                 await importer.WriteAsync(0, NpgsqlDbType.Integer, cancellationToken); // StockAdded

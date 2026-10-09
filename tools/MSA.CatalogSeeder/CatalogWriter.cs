@@ -11,8 +11,8 @@ namespace MSA.CatalogSeeder;
 /// 每批商品、规格、图片和对应的搜索同步消息在一个事务里提交：中途失败不会留下半个商品，重跑前用 --reset 清掉已导入的部分。
 /// <para>
 /// 不经过目录服务的领域代码，所以也就没有审计日志、缓存失效和 Outbox 事件——缺的那一块由这里补：
-/// 往目录的 Outbox 表写 <see cref="CatalogSearchInvalidatedIntegrationEvent"/>，搜索服务照常消费、建索引。
-/// 购物车 / 订单的商品投影（ProductVariantChanged）不补：订单下单时经 gRPC 实时确认价格，不依赖投影。
+/// 往目录的 Outbox 表写 <see cref="CatalogSearchInvalidatedIntegrationEvent"/>，搜索服务照常消费、建索引；
+/// 购物车 / 订单的商品投影由 <see cref="ProjectionWriter"/> 直接写入（逐规格补发事件太慢，原因见那里）。
 /// </para>
 /// </summary>
 internal sealed class CatalogWriter(NpgsqlDataSource dataSource)
@@ -44,6 +44,16 @@ internal sealed class CatalogWriter(NpgsqlDataSource dataSource)
 
         await using (var command = new NpgsqlCommand(
                          """
+                         DELETE FROM catalog_brands b
+                         WHERE b."CreatedBy" = $1 AND NOT EXISTS (SELECT 1 FROM catalog_products p WHERE p."BrandId" = b."Id")
+                         """, connection, transaction))
+        {
+            command.Parameters.AddWithValue(SeedActor);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var command = new NpgsqlCommand(
+                         """
                          DELETE FROM catalog_categories c
                          WHERE c."CreatedBy" = $1 AND NOT EXISTS (SELECT 1 FROM catalog_products p WHERE p."CategoryId" = c."Id")
                          """, connection, transaction))
@@ -55,6 +65,39 @@ internal sealed class CatalogWriter(NpgsqlDataSource dataSource)
         await WriteSearchEventsAsync(connection, deleted, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return deleted.Count;
+    }
+
+    /// <summary>
+    /// 品牌按编码幂等写入（SEED-B001 起，按 Taxonomy.BrandNames 的顺序编号），已存在就沿用，状态直接是「启用」。
+    /// 编码只是稳定的标识，中文品牌名没有现成的英文代码；需要好看的代码可以在后台改名，编码本身不能改。
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, Guid>> EnsureBrandsAsync(IReadOnlyList<string> names, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        for (var index = 0; index < names.Count; index++)
+        {
+            var code = $"SEED-B{index + 1:D3}";
+            await using var command = dataSource.CreateCommand(
+                """
+                WITH inserted AS (
+                  INSERT INTO catalog_brands ("Id", "Code", "NormalizedCode", "Name", "Status", "CreatedBy", "CreatedOnUtc", "UpdatedBy", "UpdatedOnUtc", "Version")
+                  VALUES ($1, $2, $2, $3, 1, $4, $5, $4, $5, 1)
+                  ON CONFLICT ("NormalizedCode") DO NOTHING
+                  RETURNING "Id")
+                SELECT "Id" FROM inserted
+                UNION ALL
+                SELECT "Id" FROM catalog_brands WHERE "NormalizedCode" = $2
+                LIMIT 1
+                """);
+            command.Parameters.AddWithValue(Guid.CreateVersion7());
+            command.Parameters.AddWithValue(code);
+            command.Parameters.AddWithValue(names[index]);
+            command.Parameters.AddWithValue(SeedActor);
+            command.Parameters.AddWithValue(now);
+            result[names[index]] = (Guid)(await command.ExecuteScalarAsync(cancellationToken))!;
+        }
+
+        return result;
     }
 
     /// <summary>分类按编码幂等写入：已存在（包括后台手工建的同编码分类）就沿用，不重复建。</summary>
@@ -95,7 +138,7 @@ internal sealed class CatalogWriter(NpgsqlDataSource dataSource)
 
         await using (var importer = await connection.BeginBinaryImportAsync(
                          """
-                         COPY catalog_products ("Id", "CategoryId", "Name", "Description", "LifecycleStatus", "IsActive", "EffectiveOnUtc",
+                         COPY catalog_products ("Id", "CategoryId", "BrandId", "Name", "Description", "LifecycleStatus", "IsActive", "EffectiveOnUtc",
                            "PublishedOnUtc", "UnpublishedOnUtc", "ArchivedOnUtc", "Revision", "CreatedBy", "CreatedOnUtc", "UpdatedBy", "UpdatedOnUtc", "Version")
                          FROM STDIN (FORMAT BINARY)
                          """, cancellationToken))
@@ -105,6 +148,10 @@ internal sealed class CatalogWriter(NpgsqlDataSource dataSource)
                 await importer.StartRowAsync(cancellationToken);
                 await importer.WriteAsync(product.Id, NpgsqlDbType.Uuid, cancellationToken);
                 await importer.WriteAsync(product.CategoryId, NpgsqlDbType.Uuid, cancellationToken);
+                if (product.BrandId is { } brandId)
+                    await importer.WriteAsync(brandId, NpgsqlDbType.Uuid, cancellationToken);
+                else
+                    await importer.WriteNullAsync(cancellationToken);
                 await importer.WriteAsync(product.Name, NpgsqlDbType.Varchar, cancellationToken);
                 await importer.WriteAsync(product.Description, NpgsqlDbType.Text, cancellationToken);
                 await importer.WriteAsync(product.LifecycleStatus, NpgsqlDbType.Integer, cancellationToken);

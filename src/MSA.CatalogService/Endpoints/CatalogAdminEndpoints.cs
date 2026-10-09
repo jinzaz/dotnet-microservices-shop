@@ -68,6 +68,58 @@ internal static class CatalogAdminEndpoints
             return Results.NoContent();
         });
 
+        read.MapGet("/brands", async (
+            ISender sender,
+            int skip = 0,
+            int take = 50,
+            string? status = null,
+            string? search = null,
+            CancellationToken cancellationToken = default) =>
+            Results.Ok(await sender.Send(new ListBrandsQuery(skip, take, status, search), cancellationToken)));
+
+        write.MapPost("/brands", async (
+            CreateAdminCategoryRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var id = await sender.Send(new CreateBrandCommand(request.Code, request.Name, GetActor(context)), cancellationToken);
+            return Results.Created($"/api/catalog/admin/brands/{id}", new { id });
+        });
+
+        write.MapPut("/brands/{id:guid}/name", async (
+            Guid id,
+            RenameCategoryRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new RenameBrandCommand(id, request.Name, request.ExpectedVersion, GetActor(context)), cancellationToken);
+            return Results.NoContent();
+        });
+
+        write.MapPost("/brands/{id:guid}/activate", async (
+            Guid id,
+            VersionedCatalogRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new ActivateBrandCommand(id, request.ExpectedVersion, GetActor(context)), cancellationToken);
+            return Results.NoContent();
+        });
+
+        write.MapPost("/brands/{id:guid}/archive", async (
+            Guid id,
+            VersionedCatalogRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new ArchiveBrandCommand(id, request.ExpectedVersion, GetActor(context)), cancellationToken);
+            return Results.NoContent();
+        });
+
         read.MapGet("/products", async (
             ISender sender,
             int skip = 0,
@@ -103,9 +155,22 @@ internal static class CatalogAdminEndpoints
                     request.Description,
                     request.Price,
                     request.Currency,
-                    GetActor(context)),
+                    GetActor(context),
+                    request.BrandId),
                 cancellationToken);
             return Results.Created($"/api/catalog/admin/products/{id}", new { id });
+        });
+
+        // 品牌单独一个接口：详情保存（名称、描述）不带品牌，旧客户端保存详情时不会把品牌清空。
+        write.MapPut("/products/{id:guid}/brand", async (
+            Guid id,
+            ChangeProductBrandRequest request,
+            HttpContext context,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            await sender.Send(new ChangeProductBrandCommand(id, request.BrandId, request.ExpectedVersion, GetActor(context)), cancellationToken);
+            return Results.NoContent();
         });
 
         write.MapPut("/products/{id:guid}/details", async (
@@ -627,8 +692,10 @@ public sealed record CreateProductRequest(
     string Name,
     string Description,
     decimal Price,
-    string Currency = "CNY");
+    string Currency = "CNY",
+    Guid? BrandId = null);
 
+public sealed record ChangeProductBrandRequest(Guid? BrandId, long? ExpectedVersion);
 public sealed record CreateAdminCategoryRequest(string Code, string Name);
 public sealed record RenameCategoryRequest(string Name, long? ExpectedVersion);
 public sealed record VersionedCatalogRequest(long? ExpectedVersion);

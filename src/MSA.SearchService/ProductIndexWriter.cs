@@ -54,6 +54,23 @@ internal sealed class ProductIndexWriter(
         } while (after.Length > 0);
     }
 
+    /// <summary>品牌改名：把这个品牌下可搜的商品按页导出、重写一遍（文档里冗余了品牌名）。</summary>
+    public async Task RefreshBrandAsync(Guid brandId, CancellationToken cancellationToken)
+    {
+        var after = string.Empty;
+        do
+        {
+            var page = await catalog.ExportProductsAsync(new ExportSearchProductsRequest
+            {
+                AfterId = after,
+                PageSize = Options.ExportPageSize,
+                BrandId = brandId.ToString()
+            }, cancellationToken: cancellationToken);
+            await WriteAsync(page.Products.Select(product => (Guid.Parse(product.Id), (SearchProduct?)product)).ToArray(), cancellationToken);
+            after = page.NextAfterId;
+        } while (after.Length > 0);
+    }
+
     private async Task WriteAsync(IReadOnlyCollection<(Guid Id, SearchProduct? Product)> items, CancellationToken cancellationToken)
     {
         if (items.Count == 0)
@@ -111,6 +128,7 @@ internal sealed class ProductIndexWriter(
 
         var retryable = 0;
         var missingIndex = 0;
+        var staleSchema = 0;
         foreach (var item in response["items"]?.AsArray() ?? [])
         {
             if (item is not JsonObject wrapper || wrapper.FirstOrDefault() is not { Key: var action, Value: JsonObject result })
@@ -127,6 +145,12 @@ internal sealed class ProductIndexWriter(
 
             if (status == 404 && action == "delete")
                 continue;
+            // 生产问题 #20：映射升级期间旧索引还不认识新字段。新索引经 building 别名照样收到了这次写入，切换后旧索引就删了。
+            if (errorType is "strict_dynamic_mapping_exception")
+            {
+                staleSchema++;
+                continue;
+            }
             if (status is 429 or >= 500)
             {
                 retryable++;
@@ -137,6 +161,8 @@ internal sealed class ProductIndexWriter(
                 result["_id"]?.ToString(), status, errorType, result["error"]?["reason"]?.ToString());
         }
 
+        if (staleSchema > 0)
+            logger.LogWarning("{Count} documents were rejected by an index with an older schema; they land in the rebuilt index.", staleSchema);
         if (retryable > 0)
             throw new ElasticsearchException(HttpStatusCode.TooManyRequests, $"{retryable} bulk items need a retry.");
         if (missingIndex > 0 && !missingIndexIsFine)

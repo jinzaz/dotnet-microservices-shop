@@ -24,7 +24,8 @@ internal sealed class CatalogSearchFeedGrpcService(ISender sender) : CatalogSear
             new ExportSearchFeedProductsQuery(
                 OptionalId(request.AfterId, "after_id"),
                 request.PageSize <= 0 ? 500 : request.PageSize,
-                OptionalId(request.CategoryId, "category_id")),
+                OptionalId(request.CategoryId, "category_id"),
+                OptionalId(request.BrandId, "brand_id")),
             context.CancellationToken);
         return ToResponse(page.Products, page.NextAfterId);
     }
@@ -50,7 +51,9 @@ internal sealed class CatalogSearchFeedGrpcService(ISender sender) : CatalogSear
                 Searchable = product.Searchable,
                 EffectiveOnUtc = product.EffectiveOnUtc?.ToString("O", CultureInfo.InvariantCulture) ?? string.Empty,
                 UpdatedOnUtc = product.UpdatedOnUtc.ToString("O", CultureInfo.InvariantCulture),
-                ImageUrl = product.ImageUrl ?? string.Empty
+                ImageUrl = product.ImageUrl ?? string.Empty,
+                BrandId = product.BrandId?.ToString() ?? string.Empty,
+                BrandName = product.BrandName ?? string.Empty
             };
             message.Variants.AddRange(product.Variants.Select(variant => new SearchProductVariant
             {

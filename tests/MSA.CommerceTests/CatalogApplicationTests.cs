@@ -72,7 +72,7 @@ public sealed class CatalogApplicationTests
         var products = new Mock<IProductRepository>();
         products.Setup(value => value.SkuExistsAsync("TAKEN", null, It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var handler = new CreateDraftProductHandler(
-            categories.Object, products.Object, Mock.Of<ICatalogSnapshotPublisher>(), Mock.Of<ICatalogAuditWriter>(), new TestClock(Now));
+            categories.Object, Mock.Of<IBrandRepository>(), products.Object, Mock.Of<ICatalogSnapshotPublisher>(), Mock.Of<ICatalogAuditWriter>(), new TestClock(Now));
 
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => handler.Handle(
             DraftCommand(draftCategory.Id, "NEW-SKU"), CancellationToken.None));
@@ -95,7 +95,7 @@ public sealed class CatalogApplicationTests
         var snapshots = new Mock<ICatalogSnapshotPublisher>();
         var audit = new Mock<ICatalogAuditWriter>();
         var handler = new CreateDraftProductHandler(
-            categories.Object, products.Object, snapshots.Object, audit.Object, new TestClock(Now));
+            categories.Object, Mock.Of<IBrandRepository>(), products.Object, snapshots.Object, audit.Object, new TestClock(Now));
 
         var id = await handler.Handle(DraftCommand(category.Id, "sku-1"), CancellationToken.None);
 

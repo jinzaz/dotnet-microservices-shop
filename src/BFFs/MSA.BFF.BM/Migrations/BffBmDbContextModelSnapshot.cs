@@ -678,6 +678,38 @@ namespace MSA.BFF.BM.Migrations
                             Code = "system.search.delete",
                             DisplayName = "搜索索引-删除",
                             Module = "system.search"
+                        },
+                        new
+                        {
+                            Id = new Guid("c1f32955-537d-3803-840a-4d40aabb38b1"),
+                            Action = "Query",
+                            Code = "catalog.brands.query",
+                            DisplayName = "商品品牌-查询",
+                            Module = "catalog.brands"
+                        },
+                        new
+                        {
+                            Id = new Guid("5b35ee72-8124-c431-9de2-921170864a35"),
+                            Action = "Create",
+                            Code = "catalog.brands.create",
+                            DisplayName = "商品品牌-创建",
+                            Module = "catalog.brands"
+                        },
+                        new
+                        {
+                            Id = new Guid("fbfa4c31-e094-081f-e9ca-fd7968004a76"),
+                            Action = "Edit",
+                            Code = "catalog.brands.edit",
+                            DisplayName = "商品品牌-编辑",
+                            Module = "catalog.brands"
+                        },
+                        new
+                        {
+                            Id = new Guid("4caca00d-119b-b8fe-483d-1f1a846bb88b"),
+                            Action = "Delete",
+                            Code = "catalog.brands.delete",
+                            DisplayName = "商品品牌-删除",
+                            Module = "catalog.brands"
                         });
                 });
 
@@ -1069,6 +1101,26 @@ namespace MSA.BFF.BM.Migrations
                         {
                             PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
                             PermissionId = new Guid("ea970552-8c1c-db55-fa4d-610b30f4b690")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("c1f32955-537d-3803-840a-4d40aabb38b1")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("5b35ee72-8124-c431-9de2-921170864a35")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("fbfa4c31-e094-081f-e9ca-fd7968004a76")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("4caca00d-119b-b8fe-483d-1f1a846bb88b")
                         });
                 });
 
@@ -2215,6 +2267,54 @@ namespace MSA.BFF.BM.Migrations
                             Order = 134,
                             PathTemplate = "/api/search/admin/messaging/dead-letters/replay",
                             PermissionId = new Guid("95e94744-d5eb-357a-3b7c-2609e0dfe3ed")
+                        },
+                        new
+                        {
+                            Id = new Guid("0fee5710-301a-a33a-607c-272bcde08f73"),
+                            HttpMethod = "GET",
+                            Order = 135,
+                            PathTemplate = "/api/catalog/admin/brands",
+                            PermissionId = new Guid("c1f32955-537d-3803-840a-4d40aabb38b1")
+                        },
+                        new
+                        {
+                            Id = new Guid("e039f367-7b4b-b1ca-9062-fa00d0e36c89"),
+                            HttpMethod = "POST",
+                            Order = 136,
+                            PathTemplate = "/api/catalog/admin/brands",
+                            PermissionId = new Guid("5b35ee72-8124-c431-9de2-921170864a35")
+                        },
+                        new
+                        {
+                            Id = new Guid("67d9c972-be81-7021-1f3a-8aae9c488cff"),
+                            HttpMethod = "PUT",
+                            Order = 137,
+                            PathTemplate = "/api/catalog/admin/brands/{id}/name",
+                            PermissionId = new Guid("fbfa4c31-e094-081f-e9ca-fd7968004a76")
+                        },
+                        new
+                        {
+                            Id = new Guid("1afd5c92-90ec-d881-c2ab-b33edd541646"),
+                            HttpMethod = "POST",
+                            Order = 138,
+                            PathTemplate = "/api/catalog/admin/brands/{id}/activate",
+                            PermissionId = new Guid("fbfa4c31-e094-081f-e9ca-fd7968004a76")
+                        },
+                        new
+                        {
+                            Id = new Guid("20726a04-bd2b-e459-97be-3ea38b10e0c7"),
+                            HttpMethod = "POST",
+                            Order = 139,
+                            PathTemplate = "/api/catalog/admin/brands/{id}/archive",
+                            PermissionId = new Guid("fbfa4c31-e094-081f-e9ca-fd7968004a76")
+                        },
+                        new
+                        {
+                            Id = new Guid("5f7889f5-0e42-6e28-c4fe-61963f58e33b"),
+                            HttpMethod = "PUT",
+                            Order = 140,
+                            PathTemplate = "/api/catalog/admin/products/{id}/brand",
+                            PermissionId = new Guid("0e1aee9a-52a8-3a64-6a42-d6df748d65ad")
                         });
                 });
 
