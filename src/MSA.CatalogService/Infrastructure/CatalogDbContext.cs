@@ -27,6 +27,8 @@ public sealed class CatalogDbContext(
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        // 商品名、SKU 的「包含」搜索（后台检索、搜索服务不可用时的前台降级）靠 pg_trgm 的三元组索引。
+        modelBuilder.HasPostgresExtension("pg_trgm");
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(CatalogDbContext).Assembly);
     }
 }

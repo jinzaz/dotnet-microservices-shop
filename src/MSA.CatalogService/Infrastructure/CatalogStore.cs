@@ -181,10 +181,17 @@ internal sealed class CatalogStore(CatalogDbContext db, TimeProvider clock) :
             query = query.Where(product => product.CategoryId == categoryId.Value);
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var pattern = $"%{search.Trim()}%";
-            query = query.Where(product =>
-                EF.Functions.ILike(product.Name, pattern)
-                || product.Variants.Any(variant => EF.Functions.ILike(variant.Sku, pattern)));
+            // 名称和 SKU 各自命中一遍再取并集（IN (... UNION ...)），两边都能走 pg_trgm 的 GIN 索引。
+            // 写成「名称 ILIKE 或 存在某个规格 SKU ILIKE」的话，OR 加关联子查询会让规划器放弃索引、扫描全部商品。
+            var pattern = PostgresLike.Contains(search);
+            var byName = db.Products
+                .Where(product => EF.Functions.ILike(product.Name, pattern, PostgresLike.Escape))
+                .Select(product => product.Id);
+            var bySku = db.ProductVariants
+                .Where(variant => EF.Functions.ILike(variant.Sku, pattern, PostgresLike.Escape))
+                .Select(variant => variant.ProductId);
+            var matches = byName.Union(bySku);
+            query = query.Where(product => matches.Contains(product.Id));
         }
 
         var total = await query.CountAsync(cancellationToken);
@@ -243,8 +250,10 @@ internal sealed class CatalogStore(CatalogDbContext db, TimeProvider clock) :
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var pattern = $"%{search.Trim()}%";
-            query = query.Where(brand => EF.Functions.ILike(brand.Name, pattern) || EF.Functions.ILike(brand.Code, pattern));
+            // 品牌只有几十上百个，不建三元组索引；转义是为了查得对（搜「_」不该匹配任意字符）。
+            var pattern = PostgresLike.Contains(search);
+            query = query.Where(brand => EF.Functions.ILike(brand.Name, pattern, PostgresLike.Escape)
+                || EF.Functions.ILike(brand.Code, pattern, PostgresLike.Escape));
         }
 
         var total = await query.CountAsync(cancellationToken);

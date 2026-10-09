@@ -6,6 +6,10 @@ using MSA.Grpc.Contracts.Catalog;
 
 namespace MSA.SearchService;
 
+/// <param name="Rebuilding">任意副本正在重建（看 ES 里的锁和心跳，不只是本进程）。</param>
+/// <param name="RebuildOwner">持有重建锁的副本（容器主机名）。</param>
+/// <param name="RebuildInterrupted">上次重建中途被杀掉、留下了过期的锁或半成品索引；搜索服务会自动接管，也可以手动强制重建。</param>
+/// <param name="LastRebuildCompletedOnUtc">本副本最近一次完成重建的时间（进程内记录，重启后清空）。</param>
 public sealed record SearchIndexStatusDto(
     string Alias,
     IReadOnlyList<string> Indices,
@@ -14,7 +18,10 @@ public sealed record SearchIndexStatusDto(
     DateTimeOffset? RebuildStartedOnUtc,
     DateTimeOffset? LastRebuildCompletedOnUtc,
     long? LastRebuildDocumentCount,
-    string? LastError);
+    string? LastError,
+    string? RebuildOwner = null,
+    DateTimeOffset? RebuildHeartbeatOnUtc = null,
+    bool RebuildInterrupted = false);
 
 /// <summary>
 /// 全量重建（首次启用、改映射 / 分词 / 同义词结构、索引损坏）。
@@ -31,7 +38,13 @@ public sealed record SearchIndexStatusDto(
 /// </para>
 /// <para>
 /// 跨副本互斥：在 ES 里建一个固定名字的锁索引——建索引是原子的，第二个人会拿到 resource_already_exists。
-/// 搜索服务没有自己的数据库，协调状态全部放在 ES 里。进程崩溃留下的锁超过 <see cref="StaleLockAfter"/> 视为失效。
+/// 搜索服务没有自己的数据库，协调状态全部放在 ES 里。
+/// </para>
+/// <para>
+/// 生产问题 #21（重建进程被杀、锁成了孤儿）：容器重启、发版、OOM 都会直接杀掉进程，清理代码没机会执行，
+/// 锁和挂着 building 别名的半成品索引都会留下来。所以锁带心跳：重建期间每 <see cref="HeartbeatInterval"/> 刷新一次，
+/// 超过 <see cref="StaleLockAfter"/> 没刷新就视为持有者已死，其他副本（或重启后的自己）可以接管；
+/// 接管时先删掉半成品索引，否则新旧两个索引同时挂着 building 别名，增量写入会因为别名指向多个索引而失败。
 /// </para>
 /// </summary>
 internal sealed class IndexRebuilder(
@@ -42,7 +55,13 @@ internal sealed class IndexRebuilder(
     TimeProvider clock,
     ILogger<IndexRebuilder> logger)
 {
-    private static readonly TimeSpan StaleLockAfter = TimeSpan.FromHours(2);
+    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan StaleLockAfter = TimeSpan.FromMinutes(2);
+
+    private sealed record LockInfo(string? Owner, DateTimeOffset? StartedOnUtc, DateTimeOffset? HeartbeatOnUtc)
+    {
+        public DateTimeOffset? LastSeenOnUtc => HeartbeatOnUtc ?? StartedOnUtc;
+    }
 
     private int _running;
     private DateTimeOffset? _startedOnUtc;
@@ -52,6 +71,7 @@ internal sealed class IndexRebuilder(
 
     private ElasticsearchOptions Options => options.Value;
     private string LockIndex => $"{Options.Alias}_rebuild_lock";
+    private readonly string _owner = $"{Environment.MachineName}#{Environment.ProcessId}";
 
     /// <summary>
     /// 拿到锁后在后台重建并立即返回 true；别的副本或本进程已在重建时返回 false。
@@ -96,6 +116,8 @@ internal sealed class IndexRebuilder(
     private async Task RunLockedAsync(CancellationToken cancellationToken, bool rethrow = false)
     {
         _startedOnUtc = clock.GetUtcNow();
+        using var heartbeatStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var heartbeat = HeartbeatAsync(heartbeatStop.Token);
         try
         {
             _completedCount = await RebuildAsync(cancellationToken);
@@ -111,10 +133,46 @@ internal sealed class IndexRebuilder(
         }
         finally
         {
+            await heartbeatStop.CancelAsync();
+            await heartbeat;
             await ReleaseLockAsync();
             _startedOnUtc = null;
             Volatile.Write(ref _running, 0);
         }
+    }
+
+    /// <summary>重建期间定时刷新锁里的心跳时间（写在锁索引映射的 _meta 里）。刷新失败只记日志，重建照常进行。</summary>
+    private async Task HeartbeatAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(HeartbeatInterval, clock, cancellationToken);
+                try
+                {
+                    await elastic.SendAsync(HttpMethod.Put, $"{LockIndex}/_mapping", new JsonObject { ["_meta"] = LockMeta(_startedOnUtc) }, cancellationToken);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogWarning(exception, "Could not refresh the search rebuild lock heartbeat.");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private JsonObject LockMeta(DateTimeOffset? startedOnUtc)
+    {
+        var now = clock.GetUtcNow().ToString("O", CultureInfo.InvariantCulture);
+        return new JsonObject
+        {
+            ["owner"] = _owner,
+            ["startedOnUtc"] = startedOnUtc?.ToString("O", CultureInfo.InvariantCulture) ?? now,
+            ["heartbeatOnUtc"] = now
+        };
     }
 
     private async Task<bool> TryAcquireLockAsync(bool force, CancellationToken cancellationToken)
@@ -124,33 +182,55 @@ internal sealed class IndexRebuilder(
             var (status, _) = await elastic.SendAsync(HttpMethod.Put, LockIndex, new JsonObject
             {
                 ["settings"] = new JsonObject { ["number_of_shards"] = 1, ["number_of_replicas"] = 0 },
-                ["mappings"] = new JsonObject
-                {
-                    ["_meta"] = new JsonObject
-                    {
-                        ["owner"] = Environment.MachineName,
-                        ["startedOnUtc"] = clock.GetUtcNow().ToString("O", CultureInfo.InvariantCulture)
-                    }
-                }
+                ["mappings"] = new JsonObject { ["_meta"] = LockMeta(null) }
             }, cancellationToken, HttpStatusCode.BadRequest);
             if (status == HttpStatusCode.OK)
+            {
+                // 拿到锁之后、建新索引之前：上次被杀掉的重建留下的半成品还挂着 building 别名，先清掉。
+                await DeleteOrphanedBuildingIndicesAsync(cancellationToken);
                 return true;
+            }
 
-            var startedOn = await LockStartedOnAsync(cancellationToken);
-            if (!force && startedOn is { } started && clock.GetUtcNow() - started < StaleLockAfter)
+            var holder = await LockInfoAsync(cancellationToken);
+            if (!force && holder is not null && !IsStale(holder))
                 return false;
-            logger.LogWarning("Removing a {Kind} search rebuild lock taken at {StartedOn}.", force ? "forced" : "stale", startedOn);
+            logger.LogWarning("Taking over a {Kind} search rebuild lock held by {Owner}, last seen {LastSeen}.",
+                force ? "forced" : "stale", holder?.Owner, holder?.LastSeenOnUtc);
             await elastic.SendAsync(HttpMethod.Delete, LockIndex, null, cancellationToken, HttpStatusCode.NotFound);
         }
 
         return false;
     }
 
-    private async Task<DateTimeOffset?> LockStartedOnAsync(CancellationToken cancellationToken)
+    /// <summary>没有心跳记录（旧版本建的锁）时按开始时间算。</summary>
+    private bool IsStale(LockInfo holder) =>
+        holder.LastSeenOnUtc is not { } lastSeen || clock.GetUtcNow() - lastSeen >= StaleLockAfter;
+
+    private async Task<LockInfo?> LockInfoAsync(CancellationToken cancellationToken)
     {
-        var (_, body) = await elastic.SendAsync(HttpMethod.Get, $"{LockIndex}/_mapping", null, cancellationToken, HttpStatusCode.NotFound);
-        var value = body?[LockIndex]?["mappings"]?["_meta"]?["startedOnUtc"]?.ToString();
-        return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var startedOn) ? startedOn : null;
+        var (status, body) = await elastic.SendAsync(HttpMethod.Get, $"{LockIndex}/_mapping", null, cancellationToken, HttpStatusCode.NotFound);
+        if (status == HttpStatusCode.NotFound)
+            return null;
+        var meta = body?[LockIndex]?["mappings"]?["_meta"];
+        return new LockInfo(meta?["owner"]?.ToString(), Instant(meta?["startedOnUtc"]), Instant(meta?["heartbeatOnUtc"]));
+    }
+
+    private static DateTimeOffset? Instant(JsonNode? value) =>
+        DateTimeOffset.TryParse(value?.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var instant) ? instant : null;
+
+    /// <summary>挂着 building 别名、但不是主别名指向的索引，都是没建完的半成品。</summary>
+    private async Task DeleteOrphanedBuildingIndicesAsync(CancellationToken cancellationToken)
+    {
+        var live = await AliasTargetsAsync(Options.Alias, cancellationToken);
+        foreach (var index in await AliasTargetsAsync(ProductIndexWriter.BuildingAlias(Options), cancellationToken))
+        {
+            if (live.Contains(index))
+                continue;
+            logger.LogWarning("Deleting the partial search index {Index} left by an interrupted rebuild.", index);
+            await elastic.SendAsync(HttpMethod.Delete, index, null, cancellationToken, HttpStatusCode.NotFound);
+        }
+
+        building.Forget();
     }
 
     private async Task ReleaseLockAsync()
@@ -161,7 +241,7 @@ internal sealed class IndexRebuilder(
         }
         catch (Exception exception)
         {
-            logger.LogWarning(exception, "Could not release the search rebuild lock; it expires after {StaleAfter}.", StaleLockAfter);
+            logger.LogWarning(exception, "Could not release the search rebuild lock; it is taken over once its heartbeat is {StaleAfter} old.", StaleLockAfter);
         }
     }
 
@@ -274,11 +354,15 @@ internal sealed class IndexRebuilder(
     public async Task<SearchIndexStatusDto> GetStatusAsync(CancellationToken cancellationToken)
     {
         IReadOnlyList<string> indices = [];
+        IReadOnlyList<string> buildingIndices = [];
+        LockInfo? holder = null;
         long? count = null;
         var error = _lastError;
         try
         {
             indices = await AliasTargetsAsync(Options.Alias, cancellationToken);
+            buildingIndices = await AliasTargetsAsync(ProductIndexWriter.BuildingAlias(Options), cancellationToken);
+            holder = await LockInfoAsync(cancellationToken);
             if (indices.Count > 0)
             {
                 var (_, body) = await elastic.SendAsync(HttpMethod.Get, $"{Options.Alias}/_count", null, cancellationToken);
@@ -290,14 +374,21 @@ internal sealed class IndexRebuilder(
             error = exception.Message;
         }
 
+        var runningHere = Volatile.Read(ref _running) == 1;
+        var liveLock = holder is not null && !IsStale(holder);
+        // 锁过期了，或者没有锁却还挂着 building 别名：上次重建被中途杀掉了。
+        var interrupted = !runningHere && !liveLock && (holder is not null || buildingIndices.Any(index => !indices.Contains(index)));
         return new SearchIndexStatusDto(
             Options.Alias,
             indices,
             count,
-            Volatile.Read(ref _running) == 1,
-            _startedOnUtc,
+            runningHere || liveLock,
+            _startedOnUtc ?? (liveLock ? holder!.StartedOnUtc : null),
             _completedOnUtc,
             _completedCount,
-            error);
+            error,
+            holder?.Owner,
+            holder?.HeartbeatOnUtc,
+            interrupted);
     }
 }

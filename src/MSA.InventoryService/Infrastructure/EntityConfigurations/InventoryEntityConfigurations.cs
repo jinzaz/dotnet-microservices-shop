@@ -16,6 +16,11 @@ internal sealed class StockItemConfiguration : IEntityTypeConfiguration<StockIte
         });
         entity.HasKey(value => value.Id);
         entity.HasIndex(value => value.Sku).IsUnique();
+        // LIKE '%片段%' 走这个 GIN 三元组索引；CONCURRENTLY 建索引不锁写入（下单预占照常进行）。
+        entity.HasIndex(value => value.Sku, "IX_inventory_stock_items_Sku_trgm")
+            .HasMethod("gin")
+            .HasOperators("gin_trgm_ops")
+            .IsCreatedConcurrently();
         entity.Property(value => value.Sku).HasMaxLength(80).HasComment("标准化商品 SKU");
         entity.Property(value => value.OnHand).HasComment("当前实物库存总量");
         entity.Property(value => value.Reserved).HasComment("已预占但尚未扣减的库存量");

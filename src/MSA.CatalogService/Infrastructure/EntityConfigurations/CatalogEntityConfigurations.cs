@@ -94,6 +94,11 @@ internal sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
         entity.Ignore(value => value.Currency);
         entity.HasIndex(value => new { value.CategoryId, value.LifecycleStatus, value.Id });
         entity.HasIndex(value => new { value.BrandId, value.LifecycleStatus, value.Id });
+        // ILIKE '%关键词%' 走这个 GIN 三元组索引。CONCURRENTLY 建索引不锁写入：50 万行的表上要建几十秒。
+        entity.HasIndex(value => value.Name, "IX_catalog_products_Name_trgm")
+            .HasMethod("gin")
+            .HasOperators("gin_trgm_ops")
+            .IsCreatedConcurrently();
         entity.HasIndex(value => new { value.LifecycleStatus, value.EffectiveOnUtc, value.Id });
         entity.HasOne<Category>()
             .WithMany()
@@ -149,6 +154,10 @@ internal sealed class ProductVariantConfiguration : IEntityTypeConfiguration<Pro
             .IsUnique()
             .HasFilter("\"IsDefault\"");
         entity.HasIndex(value => new { value.ProductId, value.IsActive, value.Id });
+        entity.HasIndex(value => value.Sku, "IX_catalog_product_variants_Sku_trgm")
+            .HasMethod("gin")
+            .HasOperators("gin_trgm_ops")
+            .IsCreatedConcurrently();
     }
 }
 

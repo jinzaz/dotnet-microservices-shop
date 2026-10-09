@@ -34,8 +34,23 @@ Elasticsearch + IK 中文分词的商品搜索。目录服务（Catalog）是商
 | GET | `/search/products?q=&categoryId=&brandId=&minPrice=&maxPrice=&sort=&skip=&take=` | 匿名 | `sort`：`relevance`（默认）/ `newest` / `price_asc` / `price_desc` |
 | GET | `/search/suggestions?q=` | 匿名 | 搜索框联想，失败时返回 `[]` |
 | GET | `/search/admin/status` | `search.admin.read` | 别名指向、文档数、重建状态、最近错误 |
-| POST | `/search/admin/rebuild?force=false` | `search.admin.write` | 后台全量重建；`force=true` 清掉崩溃遗留的锁 |
+| POST | `/search/admin/rebuild?force=false` | `search.admin.write` | 后台全量重建；心跳过期的锁会自动接管，`force=true` 连仍在心跳的锁也清掉（只在确认对方已经不在时用） |
 | GET / POST | `/search/admin/messaging/*` | `search.admin.read` / `write` | 与其他服务一致的消息运维接口；搜索服务只有死信（Outbox、Saga 两个接口恒为空） |
+
+## 数据库检索（pg_trgm）
+
+ES 负责前台搜索；后台商品、库存按名称或 SKU 片段检索，以及 ES 不可用时的前台降级，仍然直接查数据库。这些 `ILIKE '%关键词%'` 查询靠 pg_trgm 的 GIN 三元组索引：
+
+| 库 | 索引 |
+|---|---|
+| CatalogDb | `catalog_products.Name`、`catalog_product_variants.Sku` |
+| InventoryDb | `inventory_stock_items.Sku` |
+
+- 迁移 `AddTrigramSearchIndexes`（两个服务各一个）先 `CREATE EXTENSION IF NOT EXISTS pg_trgm`，再用 `CREATE INDEX CONCURRENTLY` 建索引：不锁写入，但要在事务外执行，失败会留下 INVALID 索引，需要手动 `DROP INDEX` 后重跑。
+- 扩展按库启用，用到的两个库各执行一次。`pg_trgm` 在 PostgreSQL 13+ 是受信任扩展，库的所有者即可创建。
+- 中文能拆三元组的前提是库的 `LC_CTYPE` 把中文算作字母：`en_US.utf8`、`zh_CN.utf8` 可以，`C` 不行。
+- 关键词至少 3 个字符才能用上索引；1–2 个字符的短词仍是全表扫描，这类搜索交给 ES。
+- 用户输入里的 `%`、`_` 会先转义（`PostgresLike.Contains`），否则搜「_」会匹配任意字符。
 
 ## 品牌
 
@@ -89,6 +104,7 @@ Elasticsearch + IK 中文分词的商品搜索。目录服务（Catalog）是商
 | 16 | 同步链路没有监控 | 消费卡住、重建失败没人知道，搜索结果悄悄过期 | `/search/admin/status`；告警看 RabbitMQ `msa.search` 队列积压与 `msa.search.dlq` 死信数 |
 | 17 | ES 故障拖垮服务 | 每个请求都等超时，线程池占满，连带服务不可用；恢复期被积压请求打死 | 失败后熔断 30 秒，期间直接 503；前台收到 503 回退到目录的数据库搜索；索引任务指数退避 |
 | 18 | bulk 部分失败 | HTTP 200 里也可能有单条失败，不检查就悄悄丢数据 | 逐条检查：409 / 删除 404 成功；429 / 5xx 整条消息重试；其余 4xx 记错误日志后跳过，不让一条坏数据堵死队列 |
+| 21 | 重建进程被杀、锁成孤儿 | 容器重启、发版、OOM 直接杀掉进程，清理代码不执行：重建锁和挂着 building 别名的半成品索引留在 ES 里，之后谁都不敢重建，增量写入还在往半成品里双写 | 锁带心跳（每 30 秒刷新），超过 2 分钟没心跳视为持有者已死，其他副本或重启后的自己自动接管；接管时先删掉半成品索引；状态接口读 ES 里的锁，后台能看到「某副本重建中 / 已中断」 |
 | 20 | 映射升级 | 加字段（如品牌）、改分词后，strict 映射的旧索引会逐条拒绝带新字段的文档；不重建的话新字段永远查不到 | 映射里记 `_meta.schemaVersion`（`ProductSearchIndex.SchemaVersion`），服务启动发现当前索引版本更旧就自动零停机重建；重建期间旧索引拒掉的写入只记一条汇总警告，新索引经 building 别名照样收到 |
 | 19 | 写入时自动建索引 | 别名不存在时 ES 会按文档建一个同名的动态映射索引，没有 IK 分词，而且之后别名再也建不出来 | 写入带 `require_alias=true`；ES 侧 `action.auto_create_index: ".*"` 只放行系统索引 |
 

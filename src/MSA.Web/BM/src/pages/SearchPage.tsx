@@ -12,6 +12,10 @@ type SearchStatus = {
   lastRebuildCompletedOnUtc: string | null;
   lastRebuildDocumentCount: number | null;
   lastError: string | null;
+  /** Read from the lock in Elasticsearch, so it covers rebuilds running on other replicas too. */
+  rebuildOwner: string | null;
+  rebuildHeartbeatOnUtc: string | null;
+  rebuildInterrupted: boolean;
 };
 
 type SearchHit = {
@@ -139,6 +143,9 @@ export default function SearchPage() {
       </div>} />
 
     {status.isError ? <ErrorNotice error={status.error} onRetry={() => void status.refetch()} /> : null}
+    {data?.rebuildInterrupted ? <p className="notice notice--warning" role="status"><Icon name="alert" /><span>
+      上次重建在完成前被终止（容器重启、发版或进程崩溃），留下了过期的重建锁或半成品索引。搜索服务会在锁的心跳超过 2 分钟后自动接管并重新开始；
+      想立即开始，点「全量重建」即可，会先清理半成品。</span></p> : null}
     {data?.lastError ? <p className="notice notice--error" role="alert"><Icon name="alert" /><span>最近一次错误：{data.lastError}</span>
       {canEdit && !data.rebuilding ? <button className="notice__action" type="button" onClick={() => void confirmRebuild(true)}>强制重建</button> : null}</p> : null}
 
@@ -162,13 +169,15 @@ export default function SearchPage() {
       </div>
       <div>
         <span>重建</span>
-        <strong style={{ fontSize: 18 }}>{data?.rebuilding ? '进行中' : data?.lastRebuildCompletedOnUtc ? '空闲' : '—'}</strong>
+        <strong style={{ fontSize: 18 }}>{data?.rebuilding ? '进行中' : data?.rebuildInterrupted ? '已中断' : data?.lastRebuildCompletedOnUtc ? '空闲' : '—'}</strong>
         <small title={formatDate(data?.rebuilding ? data.rebuildStartedOnUtc : data?.lastRebuildCompletedOnUtc)}>
           {data?.rebuilding
-            ? `开始于 ${formatRelative(data.rebuildStartedOnUtc)}`
-            : data?.lastRebuildCompletedOnUtc
-              ? `${formatRelative(data.lastRebuildCompletedOnUtc)}完成 · ${data.lastRebuildDocumentCount?.toLocaleString('zh-CN') ?? 0} 个`
-              : '本副本启动后未重建过'}
+            ? `${data.rebuildOwner ?? '某个副本'} · 开始于 ${formatRelative(data.rebuildStartedOnUtc)}${data.rebuildHeartbeatOnUtc ? ` · 心跳 ${formatRelative(data.rebuildHeartbeatOnUtc)}` : ''}`
+            : data?.rebuildInterrupted
+              ? '上次重建被中途终止，会自动接管'
+              : data?.lastRebuildCompletedOnUtc
+                ? `${formatRelative(data.lastRebuildCompletedOnUtc)}完成 · ${data.lastRebuildDocumentCount?.toLocaleString('zh-CN') ?? 0} 个`
+                : '本副本启动后未重建过（重启会清空这项记录）'}
         </small>
       </div>
     </div>
@@ -215,7 +224,7 @@ export default function SearchPage() {
         <div><dt>改了商品，前台搜不到新内容</dt><dd>同步一般在几秒内完成。超过 1 分钟仍未生效，到「消息运维」查看搜索服务的死信与失败消息。</dd></div>
         <div><dt>文档数与目录差很多</dt><dd>多半是 ES 停机期间消息进了死信。恢复后执行一次全量重建即可补齐，死信可以直接丢弃。</dd></div>
         <div><dt>改了分词、同义词或映射</dt><dd>执行全量重建；同义词只是增删词条时，改配置后重启搜索服务即可生效，不需要重建。</dd></div>
-        <div><dt>重建一直显示进行中</dt><dd>重建进程崩溃会留下锁，2 小时后自动失效；确认没有重建在跑时可以「强制重建」。</dd></div>
+        <div><dt>重建显示「已中断」</dt><dd>重建中途容器被重启或进程崩溃。重建锁带心跳，超过 2 分钟没心跳就视为失效，搜索服务会自动接管；想立即开始就点「全量重建」，会先清掉半成品索引。</dd></div>
       </dl>
     </section>
   </div>;

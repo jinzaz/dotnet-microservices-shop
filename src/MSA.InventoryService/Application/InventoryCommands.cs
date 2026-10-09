@@ -3,6 +3,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using MSA.Infrastrucute.Mediator;
+using MSA.Persistence.Postgres;
 using MSA.InventoryService.Domain;
 using MSA.InventoryService.Infrastructure;
 using System.Text.Json;
@@ -101,8 +102,9 @@ internal sealed class ListInventoryStockHandler(InventoryDbContext db)
         var query = db.StockItems.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
-            var search = request.Search.Trim().ToUpperInvariant();
-            query = query.Where(item => item.Sku.Contains(search));
+            // SKU 存的是大写标准形式，用 LIKE（区分大小写）就够了；写成 Contains 会被翻译成 strpos，用不上三元组索引。
+            var pattern = PostgresLike.Contains(request.Search.ToUpperInvariant());
+            query = query.Where(item => EF.Functions.Like(item.Sku, pattern, PostgresLike.Escape));
         }
         if (request.LowStockThreshold is { } threshold)
             query = query.Where(item => item.OnHand - item.Reserved <= threshold);

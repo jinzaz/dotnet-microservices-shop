@@ -20,6 +20,7 @@ namespace MSA.CatalogService.Infrastructure.Migrations
                 .HasAnnotation("ProductVersion", "10.0.10")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pg_trgm");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("MSA.CatalogService.Domain.Brand", b =>
@@ -568,6 +569,12 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasIndex("LifecycleStatus", "EffectiveOnUtc", "Id");
 
+                    b.HasIndex(new[] { "Name" }, "IX_catalog_products_Name_trgm")
+                        .HasAnnotation("Npgsql:CreatedConcurrently", true);
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex(new[] { "Name" }, "IX_catalog_products_Name_trgm"), "gin");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex(new[] { "Name" }, "IX_catalog_products_Name_trgm"), new[] { "gin_trgm_ops" });
+
                     b.ToTable("catalog_products", null, t =>
                         {
                             t.HasCheckConstraint("CK_products_active_lifecycle", "(\"IsActive\" AND \"LifecycleStatus\" = 1 AND \"EffectiveOnUtc\" IS NOT NULL) OR (NOT \"IsActive\" AND \"LifecycleStatus\" <> 1)");
@@ -719,6 +726,12 @@ namespace MSA.CatalogService.Infrastructure.Migrations
                         .HasFilter("\"IsDefault\"");
 
                     b.HasIndex("ProductId", "IsActive", "Id");
+
+                    b.HasIndex(new[] { "Sku" }, "IX_catalog_product_variants_Sku_trgm")
+                        .HasAnnotation("Npgsql:CreatedConcurrently", true);
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex(new[] { "Sku" }, "IX_catalog_product_variants_Sku_trgm"), "gin");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex(new[] { "Sku" }, "IX_catalog_product_variants_Sku_trgm"), new[] { "gin_trgm_ops" });
 
                     b.ToTable("catalog_product_variants", null, t =>
                         {

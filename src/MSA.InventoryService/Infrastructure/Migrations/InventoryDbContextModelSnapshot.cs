@@ -20,12 +20,12 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                 .HasAnnotation("ProductVersion", "10.0.10")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pg_trgm");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("MSA.EventBusOutbox.OutboxMessage", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("EventType")
@@ -84,7 +84,6 @@ namespace MSA.InventoryService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.InventoryService.Domain.InventoryAllocation", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset?>("ClosedOnUtc")
@@ -208,7 +207,6 @@ namespace MSA.InventoryService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.InventoryService.Domain.InventoryRequestDecision", b =>
                 {
                     b.Property<Guid>("OrderId")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasComment("订单标识，也是库存申请的业务幂等键");
 
@@ -256,7 +254,6 @@ namespace MSA.InventoryService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.InventoryService.Domain.InventoryReservation", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset?>("CommittedOnUtc")
@@ -367,7 +364,6 @@ namespace MSA.InventoryService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.InventoryService.Domain.StockItem", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<int>("OnHand")
@@ -394,6 +390,12 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                     b.HasIndex("Sku")
                         .IsUnique();
 
+                    b.HasIndex(new[] { "Sku" }, "IX_inventory_stock_items_Sku_trgm")
+                        .HasAnnotation("Npgsql:CreatedConcurrently", true);
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex(new[] { "Sku" }, "IX_inventory_stock_items_Sku_trgm"), "gin");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex(new[] { "Sku" }, "IX_inventory_stock_items_Sku_trgm"), new[] { "gin_trgm_ops" });
+
                     b.ToTable("inventory_stock_items", null, t =>
                         {
                             t.HasCheckConstraint("CK_stock_items_quantities", "\"OnHand\" >= 0 AND \"Reserved\" >= 0 AND \"Reserved\" <= \"OnHand\"");
@@ -405,7 +407,6 @@ namespace MSA.InventoryService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.InventoryService.Domain.StockMovement", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("IdempotencyKey")
@@ -527,7 +528,6 @@ namespace MSA.InventoryService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.Saga.SagaState", b =>
                 {
                     b.Property<Guid>("CorrelationId")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasComment("跨服务流程的关联标识");
 
