@@ -14,3 +14,5 @@ Start allocation stock with one atomic PostgreSQL counter. Add generic allocatio
 Consume order, release, and commit events through the service-local Inbox. Persist stock/reservation changes plus response events in one PostgreSQL transaction and Outbox. Duplicate delivery must be a no-op.
 
 Redis holds read caches through `MSA.Redis`: `{inventory:availability:{sku}}`, `{inventory:allocation:{id}}` and `{inventory:offers:{sku}}` (keys defined in `InventoryCacheKeys`). They are evicted after commit by the EF interceptor, never by handler code, and allocation commits also publish `offers-changed:{sku}` for the flash-sale stream (`WatchSkuOffers`). Database concurrency rules prevent overselling; Redis is never used to authorize a reservation.
+
+After-sales stock (`AfterSalesStockRequested`) reuses `StockItem` reserve/commit/release plus a `ReturnRestocked` increase, referenced by the after-sales request id. It keeps no document table: the ledger's unique (type, reference, stock item) movement is the idempotency record, so replays and out-of-order operations are decided from existing movements only.

@@ -14,8 +14,8 @@ type Operation = { kind: 'add' | 'adjust' | 'allocation'; sku?: string } | null;
 
 const PAGE_SIZE = 25;
 const movementLabels: Record<string, string> = {
-  StockAdded: '入库', StockAdjusted: '人工调整', InventoryReserved: '订单预占', InventoryCommitted: '支付扣减',
-  InventoryReleased: '预占释放', AllocationCreated: '活动圈定', AllocationReleased: '活动释放',
+  StockAdded: '入库', StockAdjusted: '人工调整', InventoryReserved: '预占', InventoryCommitted: '出库扣减',
+  InventoryReleased: '预占释放', AllocationCreated: '活动圈定', AllocationReleased: '活动释放', ReturnRestocked: '退货入库',
 };
 
 export default function InventoryPage() {

@@ -21,6 +21,7 @@ using MSA.EventBusOutbox.Extensions;
 using MSA.Infrastrucute;
 using MSA.Infrastrucute.Extensions;
 using MSA.OrderService.Application;
+using MSA.OrderService.Application.AfterSales;
 using MSA.OrderService.Application.CancelOrder;
 using MSA.OrderService.Application.CreateOrder;
 using MSA.OrderService.Application.ManageFulfillment;
@@ -72,6 +73,18 @@ builder.Services.AddOptions<OrderCheckoutOptions>()
     .Validate(options => options.PaymentWindow >= TimeSpan.FromMinutes(1), "PaymentWindow must be at least one minute.")
     .Validate(options => options.PaymentWindow <= TimeSpan.FromHours(24), "PaymentWindow cannot exceed 24 hours.")
     .ValidateOnStart();
+
+// 售后凭证在私有桶：订单服务自己签发直传 / 读取地址，凭对象键校验申请人归属。
+builder.Services.AddOptions<ObjectStorageOptions>()
+    .Bind(builder.Configuration.GetSection(ObjectStorageOptions.SectionName))
+    .Validate(ObjectStorageOptions.IsValid, "ObjectStorage must define a valid endpoint, private bucket and credentials.")
+    .ValidateOnStart();
+builder.Services.AddSingleton<AfterSalesEvidenceStorage>();
+builder.Services.AddOptions<AfterSalesOptions>()
+    .Bind(builder.Configuration.GetSection(AfterSalesOptions.SectionName))
+    .Validate(AfterSalesOptions.IsValid, "AfterSales timeouts must be at least one minute and the scan interval at least five seconds.")
+    .ValidateOnStart();
+builder.Services.AddHostedService<AfterSalesTimeoutService>();
 
 builder.Services.AddMediatR(configuration =>
     configuration.RegisterServicesFromAssemblyContaining<CreateOrderCommand>());

@@ -27,7 +27,8 @@ internal static class PbacSeedData
         // 导出私钥单独授权：能管理证书不等于能把私钥带走。只用到 query。
         ("system.certificate-keys", "证书私钥"),
         ("system.search", "搜索索引"),
-        ("catalog.brands", "商品品牌")
+        ("catalog.brands", "商品品牌"),
+        ("order.after-sales", "售后")
     ];
 
     internal static readonly BmRole[] SystemAdministratorRole =
@@ -178,7 +179,8 @@ internal static class PbacSeedData
             .. MessagingRoutes(),
             .. CertificateRoutes(),
             .. SearchRoutes(),
-            .. BrandRoutes()
+            .. BrandRoutes(),
+            .. AfterSalesRoutes()
         ];
 
         return definitions
@@ -254,6 +256,21 @@ internal static class PbacSeedData
         ("catalog.brands.edit", HttpMethods.Post, "/api/catalog/admin/brands/{id}/activate"),
         ("catalog.brands.edit", HttpMethods.Post, "/api/catalog/admin/brands/{id}/archive"),
         ("catalog.products.edit", HttpMethods.Put, "/api/catalog/admin/products/{id}/brand")
+    ];
+
+    /// <summary>售后审核、收货、退款与补发都是处理同一张售后单，统一归 order.after-sales.edit。</summary>
+    private static (string Permission, string Method, string Path)[] AfterSalesRoutes() =>
+    [
+        ("order.after-sales.query", HttpMethods.Get, "/api/order/admin/after-sales"),
+        ("order.after-sales.query", HttpMethods.Get, "/api/order/admin/after-sales/{id}"),
+        ("order.after-sales.edit", HttpMethods.Post, "/api/order/admin/after-sales/{id}/approve"),
+        ("order.after-sales.edit", HttpMethods.Post, "/api/order/admin/after-sales/{id}/reject"),
+        ("order.after-sales.edit", HttpMethods.Post, "/api/order/admin/after-sales/{id}/receive-return"),
+        ("order.after-sales.edit", HttpMethods.Post, "/api/order/admin/after-sales/{id}/refund"),
+        ("order.after-sales.edit", HttpMethods.Post, "/api/order/admin/after-sales/{id}/ship-replacement"),
+        ("order.after-sales.edit", HttpMethods.Post, "/api/order/admin/after-sales/{id}/complete"),
+        ("order.after-sales.edit", HttpMethods.Post, "/api/order/admin/after-sales/{id}/dispose-return"),
+        ("order.after-sales.edit", HttpMethods.Post, "/api/order/admin/after-sales/{id}/reserve-stock")
     ];
 
     private static Guid StableGuid(string value)

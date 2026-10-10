@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MSA.OrderService.Application.Pricing;
+using MSA.OrderService.Domain;
 
 namespace MSA.OrderService.Middleware;
 
@@ -20,6 +21,7 @@ internal sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler> logger) :
             KeyNotFoundException => (StatusCodes.Status404NotFound, "Resource not found", "The requested order resource was not found."),
             ArgumentException => (StatusCodes.Status400BadRequest, "Invalid request", "The request violates an order rule."),
             CouponRejectedException => (StatusCodes.Status409Conflict, "Coupon not applicable", exception.Message),
+            AfterSalesRuleException => (StatusCodes.Status409Conflict, "After-sales rule", exception.Message),
             InvalidOperationException => (StatusCodes.Status409Conflict, "Order conflict", "The request conflicts with the current order or campaign state."),
             DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Order changed", "The order changed concurrently; retry with the same idempotency key."),
             DbUpdateException => (StatusCodes.Status409Conflict, "Order constraint conflict", "The request conflicts with an order uniqueness constraint."),

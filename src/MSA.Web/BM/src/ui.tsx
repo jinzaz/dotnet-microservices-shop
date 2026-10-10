@@ -51,6 +51,9 @@ const statusLabels: Record<string, string> = {
   pending: '处理中', succeeded: '支付成功', failed: '失败', refunding: '退款中', refunded: '已退款', cancelling: '取消中',
   sending: '发送中', sent: '已送达', allow: '允许', deny: '拒绝',
   running: '进行中', compensating: '补偿中', compensated: '已补偿',
+  requested: '待审核', approved: '待补寄', rejected: '已拒绝', awaitingreturn: '待寄回', returnintransit: '退货在途',
+  returnreceived: '已收到退货', refundfailed: '退款失败', replacementshipped: '已发出新品', completed: '已完成',
+  refundonly: '仅退款', returnandrefund: '退货退款', exchange: '换货', reship: '补寄',
 };
 
 export function statusLabel(value: string) {
@@ -60,9 +63,9 @@ export function statusLabel(value: string) {
 export function Status({ children }: { children: ReactNode }) {
   const raw = String(children);
   const value = raw.toLowerCase();
-  const tone = /active|paid|published|sent|delivered|succeed|success|confirmed|enabled|allow|open|正常|启用/.test(value) ? 'good'
-    : /fail|archive|disabled|deny|cancel|ended|expired|closed|soldout|异常|停用/.test(value) ? 'bad'
-      : /pending|awaiting|draft|pause|shipp|transit|refund|scheduled|submitted|sending|处理中|草稿/.test(value) ? 'warn' : 'neutral';
+  const tone = /active|paid|published|sent|delivered|succeed|success|confirmed|completed|enabled|allow|open|正常|启用/.test(value) ? 'good'
+    : /fail|archive|disabled|deny|cancel|reject|ended|expired|closed|soldout|异常|停用/.test(value) ? 'bad'
+      : /pending|awaiting|requested|returnreceived|draft|pause|shipp|transit|refund|scheduled|submitted|sending|处理中|草稿/.test(value) ? 'warn' : 'neutral';
   return <span className={`status status--${tone}`} title={raw}><i />{typeof children === 'string' ? statusLabel(children) : children}</span>;
 }
 

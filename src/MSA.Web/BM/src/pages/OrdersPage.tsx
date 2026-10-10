@@ -217,6 +217,7 @@ function OrderDetailPanel({ order, overview, canEdit, canViewPayment, onAdvance 
     <div className="detail-actions">
       {action && canEdit ? <button className="button button--dark" type="button" onClick={onAdvance}><Icon name="truck" />{actionLabels[action]}</button> : null}
       {canViewPayment ? <Link className="button button--quiet" to={`/payments?orderId=${order.id}`}><Icon name="payment" />查看支付交易</Link> : null}
+      <Link className="button button--quiet" to={`/after-sales?status=all&orderId=${order.id}`}><Icon name="refresh" />查看售后</Link>
       <span className="mono">{order.id}<CopyButton value={order.id} label="复制订单 ID" /></span>
     </div>
     {order.trackingNumber ? <section><h3>物流信息</h3><p className="cell-with-copy">{order.carrierName} · <span className="mono">{order.trackingNumber}</span><CopyButton value={order.trackingNumber} label="复制运单号" /></p></section> : null}

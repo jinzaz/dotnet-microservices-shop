@@ -276,6 +276,21 @@ public sealed class Order : AggregateRoot<Guid>
         return true;
     }
 
+    /// <summary>Every item of an unshipped order was refunded through after-sales: stop fulfillment, keep the paid status.</summary>
+    public bool CloseFulfillmentAfterFullRefund(DateTimeOffset changedOnUtc)
+    {
+        if (FulfillmentStatus != OrderFulfillmentStatus.AwaitingShipment)
+            return false;
+        TransitionFulfillmentTo(
+            OrderFulfillmentStatus.Cancelled,
+            changedOnUtc,
+            "All items were refunded before shipment.",
+            "system",
+            null,
+            null);
+        return true;
+    }
+
     private void TransitionTo(
         OrderStatus next,
         DateTimeOffset changedOnUtc,

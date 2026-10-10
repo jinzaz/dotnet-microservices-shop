@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation } from 'react-router-dom';
 import { listAfterSales } from '../features/after-sales/after-sales-api';
-import { afterSalesStatusLabels, afterSalesTypeLabels, AFTER_SALES_WINDOW_DAYS } from '../features/after-sales/after-sales-rules';
-import { getErrorMessage, isServiceUnavailable } from '../shared/api/api-error';
+import { afterSalesStatusLabels, afterSalesTypeLabels, AFTER_SALES_WINDOW_DAYS, isRefundType } from '../features/after-sales/after-sales-rules';
+import { getErrorMessage } from '../shared/api/api-error';
 import { isDemoMode } from '../shared/config/api';
 import { CommerceShell } from '../shared/layout/CommerceShell';
 import { Button } from '../shared/ui/Button';
@@ -13,7 +13,7 @@ const guideSteps = [
   { icon: 'clipboard', title: '提交申请', detail: `订单详情中选择商品，签收后 ${AFTER_SALES_WINDOW_DAYS} 天内可申请` },
   { icon: 'shield', title: '商家审核', detail: '通常 1 个工作日内处理' },
   { icon: 'truck', title: '寄回商品', detail: '退货或换货需填写寄回运单号' },
-  { icon: 'coins', title: '退款 / 换新', detail: '商家签收后原路退款或发出新品' },
+  { icon: 'coins', title: '退款 / 换新', detail: '商家签收后原路退款，换货与补寄会发出新品' },
 ] as const;
 
 export default function AfterSalesListPage() {
@@ -27,7 +27,7 @@ export default function AfterSalesListPage() {
     retry: false,
     staleTime: 30_000,
   });
-  const offline = demoMode || isServiceUnavailable(query.error);
+  const offline = demoMode;
   const records = query.data ?? [];
 
   return (
@@ -56,8 +56,8 @@ export default function AfterSalesListPage() {
         {offline ? (
           <div className="orders-empty">
             <Icon name="clock" />
-            <h2>在线售后服务即将开放</h2>
-            <p>开放后，你提交的售后申请会在这里显示处理进度。现在可以先在订单详情中查看可售后的商品。</p>
+            <h2>演示模式没有售后记录</h2>
+            <p>登录后提交的售后申请会在这里显示处理进度，可以先在订单详情中查看可售后的商品。</p>
             <Link className="button button--secondary button--small" to={`/orders?status=Delivered${demoMode ? '&demo=1' : ''}`}>查看已签收订单</Link>
           </div>
         ) : null}
@@ -95,8 +95,8 @@ export default function AfterSalesListPage() {
                       <strong>{record.productNames.join('、')}</strong>
                     </div>
                     <div className="order-amount">
-                      <span>{record.type === 'Exchange' ? '换货' : '退款金额'}</span>
-                      <strong>{formatMoney(record.refundAmount, record.currency)}</strong>
+                      <span>{isRefundType(record.type) ? '退款金额' : '售后方式'}</span>
+                      <strong>{isRefundType(record.type) ? formatMoney(record.refundAmount, record.currency) : afterSalesTypeLabels[record.type]?.label}</strong>
                     </div>
                   </div>
                 </Link>

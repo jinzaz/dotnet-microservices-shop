@@ -393,3 +393,6 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   .compact-list article { grid-template-columns: minmax(0, 1fr) auto; }
   .compact-list article > strong { grid-column: 2; }
 }
+
+.evidence-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-top: 10px; }
+.evidence-grid img { display: block; width: 100%; aspect-ratio: 1; border-radius: 8px; object-fit: cover; background: #f6f6f2; }

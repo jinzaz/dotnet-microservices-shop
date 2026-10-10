@@ -5,6 +5,7 @@ using MSA.Contracts;
 using MSA.EventBus.Abstractions;
 using MSA.EventBusOutbox;
 using MSA.OrderService.Application;
+using MSA.OrderService.Application.AfterSales;
 using MSA.OrderService.Application.CancelOrder;
 using MSA.OrderService.Application.Pricing;
 using MSA.OrderService.Domain;
@@ -688,7 +689,9 @@ internal sealed class PaymentRefundedHandler(
         PaymentRefundedIntegrationEvent integrationEvent,
         CancellationToken cancellationToken)
     {
-        _ = await OrderRowLock.LockAsync(Db, integrationEvent.OrderId, cancellationToken);
+        var order = await OrderRowLock.LockAsync(Db, integrationEvent.OrderId, cancellationToken);
+        if (await AfterSalesRefundAcknowledgement.TryApplyAsync(Db, order, integrationEvent.RefundRequestId, null, clock.GetUtcNow(), cancellationToken))
+            return;
         var saga = await sagas.FindAsync(integrationEvent.OrderId, cancellationToken);
         var data = saga is null ? null : OrderFulfillmentSagaData.Parse(saga.Data);
         if (data?.RefundRequestId != integrationEvent.RefundRequestId
@@ -715,7 +718,9 @@ internal sealed class PaymentRefundFailedHandler(
         PaymentRefundFailedIntegrationEvent integrationEvent,
         CancellationToken cancellationToken)
     {
-        _ = await OrderRowLock.LockAsync(Db, integrationEvent.OrderId, cancellationToken);
+        var order = await OrderRowLock.LockAsync(Db, integrationEvent.OrderId, cancellationToken);
+        if (await AfterSalesRefundAcknowledgement.TryApplyAsync(Db, order, integrationEvent.RefundRequestId, integrationEvent.Reason, clock.GetUtcNow(), cancellationToken))
+            return;
         var saga = await sagas.FindAsync(integrationEvent.OrderId, cancellationToken);
         var data = saga is null ? null : OrderFulfillmentSagaData.Parse(saga.Data);
         if (data?.RefundRequestId != integrationEvent.RefundRequestId

@@ -33,7 +33,7 @@ export function getAfterSalesEligibility(
       if (Number.isNaN(deliveredAt) || now > deadline) {
         return { eligible: false, types: [], reason: `已超过签收后 ${AFTER_SALES_WINDOW_DAYS} 天的售后期限，如有质量问题请联系客服。`, deadlineUtc: Number.isNaN(deadline) ? null : new Date(deadline).toISOString() };
       }
-      return { eligible: true, types: ['ReturnAndRefund', 'Exchange', 'RefundOnly'], reason: '签收后 7 天内可申请退货退款、换货或仅退款。', deadlineUtc: new Date(deadline).toISOString() };
+      return { eligible: true, types: ['ReturnAndRefund', 'Exchange', 'RefundOnly', 'Reship'], reason: `签收后 ${AFTER_SALES_WINDOW_DAYS} 天内可申请退货退款、换货、补寄或仅退款。`, deadlineUtc: new Date(deadline).toISOString() };
     }
     default:
       return { eligible: false, types: [], reason: '当前订单状态暂不支持售后。', deadlineUtc: null };
@@ -44,29 +44,34 @@ export const afterSalesTypeLabels: Record<AfterSalesType, { label: string; descr
   RefundOnly: { label: '仅退款', description: '未收到货或与商家协商一致，无需退回商品' },
   ReturnAndRefund: { label: '退货退款', description: '寄回商品，商家签收后原路退款' },
   Exchange: { label: '换货', description: '寄回商品，商家重新发出同款商品' },
+  Reship: { label: '补寄', description: '少件或配件缺失，商家补发，无需退回商品' },
 };
+
+/** Exchange and reship send goods instead of money. */
+export const isRefundType = (type: AfterSalesType) => type === 'RefundOnly' || type === 'ReturnAndRefund';
 
 export const afterSalesReasons: ReadonlyArray<{ code: AfterSalesReasonCode; label: string; types: AfterSalesType[] }> = [
   { code: 'NotReceived', label: '未收到货 / 拒收包裹', types: ['RefundOnly'] },
   { code: 'NoLongerNeeded', label: '不想要了（7 天无理由）', types: ['RefundOnly', 'ReturnAndRefund'] },
   { code: 'QualityIssue', label: '商品质量问题', types: ['ReturnAndRefund', 'Exchange', 'RefundOnly'] },
-  { code: 'DamagedInTransit', label: '运输途中损坏', types: ['ReturnAndRefund', 'Exchange', 'RefundOnly'] },
+  { code: 'DamagedInTransit', label: '运输途中损坏', types: ['ReturnAndRefund', 'Exchange', 'RefundOnly', 'Reship'] },
   { code: 'WrongItem', label: '商家发错货', types: ['ReturnAndRefund', 'Exchange'] },
   { code: 'NotAsDescribed', label: '与商品描述不符', types: ['ReturnAndRefund', 'Exchange'] },
-  { code: 'MissingParts', label: '少件 / 配件缺失', types: ['ReturnAndRefund', 'Exchange', 'RefundOnly'] },
-  { code: 'Other', label: '其他原因', types: ['RefundOnly', 'ReturnAndRefund', 'Exchange'] },
+  { code: 'MissingParts', label: '少件 / 配件缺失', types: ['ReturnAndRefund', 'Exchange', 'RefundOnly', 'Reship'] },
+  { code: 'Other', label: '其他原因', types: ['RefundOnly', 'ReturnAndRefund', 'Exchange', 'Reship'] },
 ];
 
 export const afterSalesStatusLabels: Record<AfterSalesStatus, { label: string; tone: string }> = {
   Requested: { label: '待审核', tone: 'warning' },
-  Approved: { label: '已同意', tone: 'info' },
+  Approved: { label: '待商家补寄', tone: 'info' },
   Rejected: { label: '已拒绝', tone: 'muted' },
   AwaitingReturn: { label: '待寄回商品', tone: 'warning' },
   ReturnInTransit: { label: '退货运输中', tone: 'info' },
   ReturnReceived: { label: '商家已收货', tone: 'info' },
   Refunding: { label: '退款中', tone: 'info' },
+  RefundFailed: { label: '退款处理中', tone: 'warning' },
   Refunded: { label: '已退款', tone: 'success' },
-  ExchangeShipped: { label: '换货已发出', tone: 'info' },
+  ReplacementShipped: { label: '商品已发出', tone: 'info' },
   Completed: { label: '已完成', tone: 'success' },
   Cancelled: { label: '已撤销', tone: 'muted' },
 };

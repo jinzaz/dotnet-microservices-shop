@@ -11,6 +11,7 @@ const CatalogPage = lazy(() => import('./pages/CatalogPage'));
 const InventoryPage = lazy(() => import('./pages/InventoryPage'));
 const CustomersPage = lazy(() => import('./pages/CustomersPage'));
 const OrdersPage = lazy(() => import('./pages/OrdersPage'));
+const AfterSalesPage = lazy(() => import('./pages/AfterSalesPage'));
 const PaymentsPage = lazy(() => import('./pages/PaymentsPage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const AccessPage = lazy(() => import('./pages/AccessPage'));
@@ -21,6 +22,7 @@ const SearchPage = lazy(() => import('./pages/SearchPage'));
 const nav: NavEntry[] = [
   { path: '/', label: '运营概览', icon: 'overview' },
   { path: '/orders', label: '订单履约', icon: 'order', modules: ['order.fulfillment'] },
+  { path: '/after-sales', label: '售后', icon: 'refresh', modules: ['order.after-sales'] },
   { path: '/catalog', label: '商品目录', icon: 'catalog', modules: ['catalog.categories', 'catalog.products', 'catalog.promotions', 'catalog.coupons'] },
   { path: '/inventory', label: '库存', icon: 'inventory', modules: ['inventory.stock', 'inventory.allocations'] },
   { path: '/customers', label: '用户', icon: 'user', modules: ['identity.users', 'user.loyalty-points'] },
@@ -85,6 +87,7 @@ function AppShell() {
       <main className="content"><Suspense fallback={<Loading label="正在装载工作台" />}><Routes>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/orders" element={<OrdersPage />} />
+        <Route path="/after-sales" element={<AfterSalesPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
         <Route path="/customers" element={<CustomersPage />} />

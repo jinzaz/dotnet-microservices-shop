@@ -458,10 +458,22 @@ a.product-rating-line:hover span { color: var(--color-ink); }
 .choice-cards span { color: var(--color-muted); font-size: 12px; }
 .choice-cards label:has(input:focus-visible) { outline: 3px solid rgb(84 51 235 / 28%); outline-offset: 2px; }
 
-.evidence-placeholder { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 14px; border: 1px dashed var(--color-border-strong); border-radius: var(--radius-sm); color: var(--color-muted); font-size: 13px; }
-.evidence-placeholder > svg { width: 22px; flex: 0 0 auto; }
-.evidence-placeholder div { display: grid; gap: 2px; }
-.evidence-placeholder strong { color: var(--color-ink-soft); }
+.evidence-uploader { display: grid; gap: 8px; margin-top: 16px; }
+.evidence-uploader__label { color: var(--color-ink-soft); font-size: 14px; font-weight: 600; }
+.evidence-uploader__label small, .evidence-uploader__hint { color: var(--color-muted); font-size: 12px; font-weight: 400; }
+.evidence-grid.evidence-grid--editable { grid-template-columns: repeat(auto-fill, 96px); margin: 0; padding: 0; list-style: none; }
+.evidence-tile { position: relative; }
+.evidence-tile img { display: block; width: 100%; }
+.evidence-tile.is-error img { opacity: .4; }
+.evidence-tile__state { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: var(--radius-sm); background: rgb(255 255 255 / 70%); color: var(--color-ink-soft); font-size: 12px; }
+.evidence-tile.is-error .evidence-tile__state { color: var(--color-danger); }
+.evidence-tile__state .page-spinner { width: 14px; height: 14px; margin: 0; }
+.evidence-tile__remove { position: absolute; top: 4px; right: 4px; display: grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 50%; background: rgb(0 0 0 / 55%); color: #fff; cursor: pointer; }
+.evidence-tile__remove svg { width: 14px; }
+.evidence-add { display: grid; place-content: center; justify-items: center; gap: 4px; aspect-ratio: 1; border: 1px dashed var(--color-border-strong); border-radius: var(--radius-sm); color: var(--color-muted); font-size: 12px; cursor: pointer; }
+.evidence-add:hover { border-color: var(--color-ink-soft); color: var(--color-ink-soft); }
+.evidence-add:has(input:focus-visible) { outline: 3px solid rgb(84 51 235 / 28%); outline-offset: 2px; }
+.evidence-add svg { width: 20px; }
 
 .after-sales-guide { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 26px 0 0; padding: 0; list-style: none; }
 .after-sales-guide li { position: relative; display: grid; gap: 4px; padding: 16px; border-radius: var(--radius-sm); background: var(--color-surface); font-size: 13px; }

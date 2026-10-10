@@ -1,21 +1,19 @@
-/**
- * After-sales contracts reserved for the upcoming service. The frontend is built against these shapes;
- * the backend should expose them under /order (see after-sales-api.ts) or update both sides together.
- */
-export type AfterSalesType = 'RefundOnly' | 'ReturnAndRefund' | 'Exchange';
+/** After-sales contracts served by the ordering service under /order (see after-sales-api.ts). */
+export type AfterSalesType = 'RefundOnly' | 'ReturnAndRefund' | 'Exchange' | 'Reship';
 
 export type AfterSalesStatus =
   | 'Requested'
   | 'Approved'
   | 'Rejected'
+  | 'Cancelled'
   | 'AwaitingReturn'
   | 'ReturnInTransit'
   | 'ReturnReceived'
   | 'Refunding'
+  | 'RefundFailed'
   | 'Refunded'
-  | 'ExchangeShipped'
-  | 'Completed'
-  | 'Cancelled';
+  | 'ReplacementShipped'
+  | 'Completed';
 
 export type AfterSalesReasonCode =
   | 'NoLongerNeeded'
@@ -37,7 +35,7 @@ export type CreateAfterSalesRequest = {
   reasonCode: AfterSalesReasonCode;
   description: string;
   lines: AfterSalesLineInput[];
-  /** Object keys returned by a future evidence upload endpoint. */
+  /** Private-bucket object keys returned by uploadEvidence. */
   evidenceObjectKeys: string[];
 };
 
@@ -56,7 +54,8 @@ export type AfterSalesHistory = {
   occurredOnUtc: string;
 };
 
-export type ReturnShipment = {
+export type AfterSalesShipment = {
+  carrierCode: string | null;
   carrierName: string;
   trackingNumber: string;
   shippedOnUtc: string;
@@ -74,10 +73,14 @@ export type AfterSalesRequest = {
   lines: AfterSalesLine[];
   refundAmount: number;
   currency: string;
+  /** Short-lived signed URLs; refetch the request to renew them. */
   evidenceUrls: string[];
   returnAddress: string | null;
-  returnShipment: ReturnShipment | null;
+  returnShipment: AfterSalesShipment | null;
+  replacementShipment: AfterSalesShipment | null;
   rejectionReason: string | null;
+  /** When the current step is handled automatically if nobody acts (auto-approve, auto-close, auto-complete…). */
+  deadlineOnUtc: string | null;
   history: AfterSalesHistory[];
   createdOnUtc: string;
   updatedOnUtc: string;

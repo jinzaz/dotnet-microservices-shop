@@ -24,4 +24,13 @@ internal sealed class OrderRepository(OrderDbContext dbContext) : IOrderReposito
                 .LoadAsync(cancellationToken);
         return order;
     }
+
+    public Task<bool> HasOpenAfterSalesAsync(Guid orderId, CancellationToken cancellationToken) =>
+        dbContext.AfterSalesRequests.AnyAsync(
+            request => request.OrderId == orderId
+                && request.Status != AfterSalesStatus.Rejected
+                && request.Status != AfterSalesStatus.Cancelled
+                && request.Status != AfterSalesStatus.Refunded
+                && request.Status != AfterSalesStatus.Completed,
+            cancellationToken);
 }

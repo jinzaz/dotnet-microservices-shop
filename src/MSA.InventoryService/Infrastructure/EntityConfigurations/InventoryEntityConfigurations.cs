@@ -190,10 +190,10 @@ internal sealed class StockMovementConfiguration : IEntityTypeConfiguration<Stoc
         {
             table.HasCheckConstraint(
                 "CK_stock_movements_type",
-                "\"Type\" BETWEEN 0 AND 6");
+                "\"Type\" BETWEEN 0 AND 7");
             table.HasCheckConstraint(
                 "CK_stock_movements_reference_type",
-                "\"ReferenceType\" BETWEEN 0 AND 2");
+                "\"ReferenceType\" BETWEEN 0 AND 3");
             table.HasCheckConstraint(
                 "CK_stock_movements_delta",
                 "\"OnHandDelta\" <> 0 OR \"ReservedDelta\" <> 0");
@@ -228,7 +228,7 @@ internal sealed class StockMovementConfiguration : IEntityTypeConfiguration<Stoc
         entity.Property(value => value.OnHandAfter).HasComment("变动后的实物库存余额");
         entity.Property(value => value.ReservedAfter).HasComment("变动后的预占库存余额");
         entity.Property(value => value.ReferenceType).HasComment("关联业务单据类型");
-        entity.Property(value => value.ReferenceId).HasComment("关联的预占或秒杀活动标识");
+        entity.Property(value => value.ReferenceId).HasComment("关联的预占、秒杀活动或售后单标识");
         entity.Property(value => value.Reason).HasMaxLength(500).HasComment("库存变动原因");
         entity.Property(value => value.OperatorId).HasMaxLength(200).HasComment("发起库存变动的主体标识");
         entity.Property(value => value.IdempotencyKey).HasMaxLength(100).HasComment("人工调整等请求的业务幂等键");

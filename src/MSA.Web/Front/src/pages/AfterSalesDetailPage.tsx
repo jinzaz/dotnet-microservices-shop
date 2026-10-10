@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { cancelAfterSales, getAfterSales, submitReturnShipment } from '../features/after-sales/after-sales-api';
-import { afterSalesReasons, afterSalesStatusLabels, afterSalesTypeLabels } from '../features/after-sales/after-sales-rules';
-import { getErrorMessage, isServiceUnavailable } from '../shared/api/api-error';
+import { cancelAfterSales, confirmAfterSalesReceipt, getAfterSales, submitReturnShipment } from '../features/after-sales/after-sales-api';
+import { afterSalesReasons, afterSalesStatusLabels, afterSalesTypeLabels, isRefundType } from '../features/after-sales/after-sales-rules';
+import type { AfterSalesStatus } from '../features/after-sales/types';
+import { getErrorMessage } from '../shared/api/api-error';
 import { isDemoMode } from '../shared/config/api';
 import { CommerceShell } from '../shared/layout/CommerceShell';
 import { Button } from '../shared/ui/Button';
@@ -11,6 +12,15 @@ import { ConfirmDialog } from '../shared/ui/ConfirmDialog';
 import { Icon } from '../shared/ui/Icon';
 import { useToast } from '../shared/ui/Toast';
 import { formatDateTime, formatMoney } from '../shared/utils/format';
+
+/** Mirrors the ordering service's automatic handling so shoppers know what happens if nobody acts. */
+const deadlineHints: Partial<Record<AfterSalesStatus, (deadline: string) => string>> = {
+  Requested: (deadline) => `商家将在 ${deadline} 前处理，逾期系统自动同意。`,
+  AwaitingReturn: (deadline) => `请在 ${deadline} 前寄回并填写运单号，逾期售后将自动关闭。`,
+  ReturnInTransit: (deadline) => `商家需在 ${deadline} 前确认收货，逾期系统自动确认并退款。`,
+  ReturnReceived: (deadline) => `商家需在 ${deadline} 前退款，逾期系统自动原路退款。`,
+  ReplacementShipped: (deadline) => `${deadline} 后将自动确认收货。`,
+};
 
 export default function AfterSalesDetailPage() {
   const { afterSalesId = '' } = useParams();
@@ -48,6 +58,18 @@ export default function AfterSalesDetailPage() {
     }
   };
 
+  const confirmReceipt = async () => {
+    setBusy(true);
+    try {
+      refresh(await confirmAfterSalesReceipt(afterSalesId));
+      toast('已确认收货，售后完成');
+    } catch (error) {
+      toast(getErrorMessage(error), { tone: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submitShipment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!carrierName.trim() || !trackingNumber.trim()) return;
@@ -68,13 +90,12 @@ export default function AfterSalesDetailPage() {
 
   const record = query.data;
   if (!record) {
-    const offline = demoMode || isServiceUnavailable(query.error);
     return (
       <CommerceShell>
         <div className="page-state">
-          <Icon name={offline ? 'clock' : 'alert-circle'} />
-          <h1>{offline ? '在线售后服务即将开放' : '售后单暂时无法打开'}</h1>
-          <p>{offline ? '服务开放后可在这里查看审核、寄回和退款进度。' : getErrorMessage(query.error)}</p>
+          <Icon name={demoMode ? 'clock' : 'alert-circle'} />
+          <h1>{demoMode ? '演示模式没有售后单' : '售后单暂时无法打开'}</h1>
+          <p>{demoMode ? '登录后提交的售后申请可在这里查看审核、寄回和退款进度。' : getErrorMessage(query.error)}</p>
           <Link className="button button--primary button--regular" to={`/after-sales${suffix}`}>返回售后列表</Link>
         </div>
       </CommerceShell>
@@ -94,15 +115,38 @@ export default function AfterSalesDetailPage() {
             <span className={`order-status order-status--${status.tone}`}>{status.label}</span>
             <h1>{afterSalesTypeLabels[record.type]?.label ?? record.type}</h1>
             <p>售后单 {record.requestNumber} · 关联订单 <Link to={`/orders/${record.orderId}${suffix}`}>{record.orderNumber}</Link> · 申请于 {formatDateTime(record.createdOnUtc)}</p>
-            {record.rejectionReason ? <p className="order-detail-header__hint">拒绝原因：{record.rejectionReason}</p> : null}
+            {record.deadlineOnUtc && deadlineHints[record.status] ? <p className="order-detail-header__hint">{deadlineHints[record.status]!(formatDateTime(record.deadlineOnUtc))}</p> : null}
           </div>
           <div className="order-detail-actions">
-            {record.status === 'Requested' ? <Button type="button" variant="secondary" onClick={() => setCancelOpen(true)}>撤销申请</Button> : null}
+            {record.status === 'Requested' || record.status === 'AwaitingReturn' ? <Button type="button" variant="secondary" onClick={() => setCancelOpen(true)}>撤销申请</Button> : null}
           </div>
         </header>
 
         <div className="order-detail-layout">
           <div className="order-detail-main">
+            {record.rejectionReason ? (
+              <section className="order-card order-card--notice" role="status">
+                <h2>商家回复</h2>
+                <p>{record.rejectionReason}</p>
+                <p className="order-detail-header__hint">如对处理结果有疑问，可联系在线客服；在售后期内也可以重新提交申请。</p>
+              </section>
+            ) : null}
+
+            {record.status === 'RefundFailed' ? (
+              <section className="order-card order-card--notice" role="status">
+                <h2>退款处理中</h2>
+                <p>原路退款暂时没有成功，商家正在处理，无需重复申请。</p>
+              </section>
+            ) : null}
+
+            {record.replacementShipment ? (
+              <section className="order-card order-card--notice">
+                <h2>{record.type === 'Exchange' ? '换货商品已发出' : '补寄商品已发出'}</h2>
+                <p>{record.replacementShipment.carrierName} · 运单号 {record.replacementShipment.trackingNumber} · {formatDateTime(record.replacementShipment.shippedOnUtc)}</p>
+                {record.status === 'ReplacementShipped' ? <Button type="button" loading={busy} onClick={() => void confirmReceipt()}>确认收到商品</Button> : null}
+              </section>
+            ) : null}
+
             {record.status === 'AwaitingReturn' ? (
               <section className="order-card order-card--notice">
                 <h2>请寄回商品</h2>
@@ -156,7 +200,7 @@ export default function AfterSalesDetailPage() {
                 <div><dt>售后原因</dt><dd>{reason}</dd></div>
                 {record.description ? <div><dt>补充说明</dt><dd>{record.description}</dd></div> : null}
                 {record.returnShipment ? <div><dt>寄回运单</dt><dd>{record.returnShipment.carrierName} {record.returnShipment.trackingNumber}</dd></div> : null}
-                <div><dt>{record.type === 'Exchange' ? '换货' : '退款金额'}</dt><dd>{formatMoney(record.refundAmount, record.currency)}</dd></div>
+                {isRefundType(record.type) ? <div><dt>退款金额</dt><dd>{formatMoney(record.refundAmount, record.currency)}</dd></div> : null}
               </dl>
               {record.evidenceUrls.length ? (
                 <div className="evidence-grid">

@@ -127,7 +127,7 @@ ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 
 | `INFRA_POSTGRES_HOST` / `PORT` / `USER` / `PASSWORD` | `ConnectionStrings:Postgresql`（认证中心是 `DefaultConnection`） |
 | `INFRA_REDIS_HOST` / `PORT` / `PASSWORD` | `ConnectionStrings:Redis`（口令不能含逗号） |
 | `INFRA_RABBITMQ_HOST` / `PORT` / `USER` / `PASSWORD` / `VHOST` | `RabbitMQ:*` |
-| `INFRA_OSS_ENDPOINT` / `ACCESS_KEY` / `SECRET_KEY` | `ObjectStorage:*`（后台 BFF） |
+| `INFRA_OSS_ENDPOINT` / `ACCESS_KEY` / `SECRET_KEY` | `ObjectStorage:*`（后台 BFF、订单服务的售后凭证） |
 | `MSA_SERVICE_AUTHORITY` | `ServiceAuthentication:Authority`（取服务令牌，值是容器内地址） |
 | `MSA_OTLP_ENDPOINT` | `OpenTelemetry:OtlpEndpoint`（全部 11 个服务，含网关与两个 BFF） |
 | `MSA_GRPC_<服务>_ADDRESS` | `GrpcClients:<服务>:Address`（按被调用的服务命名，例如 `MSA_GRPC_CATALOG_ADDRESS`；Docker 里是 `http://msa-catalog:8081`） |
@@ -163,7 +163,7 @@ ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 
   BFF 会话 Cookie 带 Secure、登录回调地址也按它生成。缺了它登录会失败。
 - **容器不需要访问 `MSA_ISSUER`**：校验令牌拉 JWKS、取服务令牌都走容器内地址 `MSA_IDENTITY_INTERNAL_ADDRESS`，
   不依赖入口代理、也不要求容器能解析公网域名；`MSA_ISSUER` 只用来比对令牌里的 `iss` 和拼浏览器跳转地址。
-  `INFRA_OSS_ENDPOINT`（`https://oss.${MSA_DOMAIN}`）是例外：后台 BFF 签出的地址给浏览器用，它自己也用这个地址读写对象，
+  `INFRA_OSS_ENDPOINT`（`https://oss.${MSA_DOMAIN}`）是例外：后台 BFF 与订单服务签出的地址给浏览器用，它们自己也用这个地址读写对象，
   所以容器仍要能访问到这个公网地址（内网 DNS 或 `extra_hosts`）。
 - **SSE 不缓冲**：秒杀余量推流 `/bff/flash-sales/` 是长连接，要关掉响应缓冲（nginx：`proxy_buffering off`）
   并放长读超时（nginx：`proxy_read_timeout`）。

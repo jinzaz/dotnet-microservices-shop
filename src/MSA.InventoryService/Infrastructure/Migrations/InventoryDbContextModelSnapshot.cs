@@ -438,7 +438,7 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.Property<Guid?>("ReferenceId")
                         .HasColumnType("uuid")
-                        .HasComment("关联的预占或秒杀活动标识");
+                        .HasComment("关联的预占、秒杀活动或售后单标识");
 
                     b.Property<int>("ReferenceType")
                         .HasColumnType("integer")
@@ -499,9 +499,9 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_stock_movements_reference", "(\"ReferenceType\" = 0 AND \"ReferenceId\" IS NULL) OR (\"ReferenceType\" <> 0 AND \"ReferenceId\" IS NOT NULL)");
 
-                            t.HasCheckConstraint("CK_stock_movements_reference_type", "\"ReferenceType\" BETWEEN 0 AND 2");
+                            t.HasCheckConstraint("CK_stock_movements_reference_type", "\"ReferenceType\" BETWEEN 0 AND 3");
 
-                            t.HasCheckConstraint("CK_stock_movements_type", "\"Type\" BETWEEN 0 AND 6");
+                            t.HasCheckConstraint("CK_stock_movements_type", "\"Type\" BETWEEN 0 AND 7");
                         });
                 });
 

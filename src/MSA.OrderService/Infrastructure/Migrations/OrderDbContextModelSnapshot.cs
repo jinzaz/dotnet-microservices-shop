@@ -80,6 +80,284 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.ToTable("order_outbox_messages", (string)null);
                 });
 
+            modelBuilder.Entity("MSA.OrderService.Domain.AfterSalesHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("操作人：买家、后台操作员或 system");
+
+                    b.Property<int?>("FromStatus")
+                        .HasColumnType("integer")
+                        .HasComment("变更前售后状态");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasComment("给买家展示的处理说明");
+
+                    b.Property<DateTimeOffset>("OccurredOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ToStatus")
+                        .HasColumnType("integer")
+                        .HasComment("变更后售后状态");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RequestId", "OccurredOnUtc");
+
+                    b.ToTable("order_after_sales_history", (string)null);
+                });
+
+            modelBuilder.Entity("MSA.OrderService.Domain.AfterSalesLine", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("商品名称快照");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasComment("申请售后的件数");
+
+                    b.Property<decimal>("RefundAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("该行折算的退款金额");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("RestockedQuantity")
+                        .HasColumnType("integer")
+                        .HasComment("验货后重新入库的件数，未处理为空");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("VariantName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("规格名称快照");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RequestId", "Sku")
+                        .IsUnique();
+
+                    b.ToTable("order_after_sales_lines", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_after_sales_lines_amounts", "\"Quantity\" > 0 AND \"RefundAmount\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.OrderService.Domain.AfterSalesRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasComment("退款币种");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasComment("买家补充说明");
+
+                    b.Property<string>("DisposedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("入库处理操作人");
+
+                    b.Property<DateTimeOffset?>("DisposedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DispositionNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasComment("未入库原因等入库处理说明");
+
+                    b.PrimitiveCollection<string[]>("EvidenceObjectKeys")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasComment("私有桶中凭证图片的对象键");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasComment("用户维度的售后申请幂等键");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasComment("关联订单标识");
+
+                    b.Property<string>("OrderNumber")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)")
+                        .HasComment("关联订单编号快照");
+
+                    b.Property<Guid>("PaymentId")
+                        .HasColumnType("uuid")
+                        .HasComment("原路退款使用的支付单标识");
+
+                    b.Property<int>("Reason")
+                        .HasColumnType("integer")
+                        .HasComment("售后原因编码");
+
+                    b.Property<decimal>("RefundAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("按实付折算的退款金额，换货与补寄为 0");
+
+                    b.Property<string>("RefundFailureReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasComment("支付渠道返回的退款失败原因");
+
+                    b.Property<Guid?>("RefundRequestId")
+                        .HasColumnType("uuid")
+                        .HasComment("当前退款尝试的幂等标识，失败重试会换新");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasComment("拒绝时给买家的回复");
+
+                    b.Property<string>("ReplacementCarrierCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("ReplacementCarrierName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasComment("换货或补寄的物流公司");
+
+                    b.Property<DateTimeOffset?>("ReplacementShippedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ReplacementStock")
+                        .HasColumnType("integer")
+                        .HasComment("换货/补寄新品的库存锁定状态");
+
+                    b.Property<string>("ReplacementStockFailure")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasComment("新品库存锁定失败原因");
+
+                    b.Property<string>("ReplacementTrackingNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasComment("换货或补寄的运单号");
+
+                    b.Property<string>("RequestNumber")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)")
+                        .HasComment("面向用户和运营的售后单号");
+
+                    b.Property<string>("ReturnAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasComment("商家审核时提供的退货地址");
+
+                    b.Property<string>("ReturnCarrierName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasComment("买家寄回的物流公司");
+
+                    b.Property<int>("ReturnDisposition")
+                        .HasColumnType("integer")
+                        .HasComment("退回商品的入库处理结果");
+
+                    b.Property<DateTimeOffset?>("ReturnShippedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReturnTrackingNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasComment("买家寄回的运单号");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasComment("售后状态");
+
+                    b.Property<DateTimeOffset>("StatusChangedOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("进入当前状态的时间，超时自动处理从此起算");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer")
+                        .HasComment("售后类型：仅退款、退货退款、换货、补寄");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("申请售后的用户标识");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasComment("售后单乐观并发版本号");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("RefundRequestId")
+                        .IsUnique()
+                        .HasFilter("\"RefundRequestId\" IS NOT NULL");
+
+                    b.HasIndex("RequestNumber")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "StatusChangedOnUtc");
+
+                    b.HasIndex("UserId", "CreatedOnUtc");
+
+                    b.HasIndex("UserId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.ToTable("order_after_sales_requests", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_after_sales_currency", "\"Currency\" ~ '^[A-Z]{3}$'");
+
+                            t.HasCheckConstraint("CK_after_sales_refund_amount", "\"RefundAmount\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("MSA.OrderService.Domain.CouponProjection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -959,6 +1237,24 @@ namespace MSA.OrderService.Infrastructure.Migrations
                     b.ToTable("order_saga_states", (string)null);
                 });
 
+            modelBuilder.Entity("MSA.OrderService.Domain.AfterSalesHistory", b =>
+                {
+                    b.HasOne("MSA.OrderService.Domain.AfterSalesRequest", null)
+                        .WithMany("History")
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.OrderService.Domain.AfterSalesLine", b =>
+                {
+                    b.HasOne("MSA.OrderService.Domain.AfterSalesRequest", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("MSA.OrderService.Domain.CouponQuotaBucket", b =>
                 {
                     b.HasOne("MSA.OrderService.Domain.CouponProjection", null)
@@ -1098,6 +1394,13 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("MSA.OrderService.Domain.AfterSalesRequest", b =>
+                {
+                    b.Navigation("History");
+
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("MSA.OrderService.Domain.CouponProjection", b =>

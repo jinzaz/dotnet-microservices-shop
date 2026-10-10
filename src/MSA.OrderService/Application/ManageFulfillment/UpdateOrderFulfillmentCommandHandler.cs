@@ -20,6 +20,12 @@ internal sealed class UpdateOrderFulfillmentCommandHandler(
         var order = await orders.GetWithFulfillmentHistoryAsync(request.OrderId, cancellationToken)
             ?? throw new KeyNotFoundException("Order was not found.");
 
+        // 未发货订单上的仅退款申请必须先处理完，否则可能把已退款的商品发出去。
+        if (request.TargetStatus == OrderFulfillmentStatus.Shipped
+            && order.FulfillmentStatus == OrderFulfillmentStatus.AwaitingShipment
+            && await orders.HasOpenAfterSalesAsync(order.Id, cancellationToken))
+            throw new AfterSalesRuleException("该订单有未完结的售后申请，请先在售后中处理后再发货。");
+
         var fingerprint = FulfillmentRequestFingerprint.Create(request);
         var now = clock.GetUtcNow();
         var changed = request.TargetStatus switch

@@ -18,6 +18,10 @@ services:
       Kestrel__Endpoints__Grpc__Protocols: Http2
       MSA_SERVICE_AUTHORITY: "${MSA_SERVICE_AUTHORITY}"
       MSA_CLIENT_SECRET_MSA_SVC_ORDER: "${MSA_CLIENT_SECRET_MSA_SVC_ORDER}"
+      # 售后凭证（私有桶）：订单服务签发浏览器直传 / 读取地址，并回查对象是否已上传，所以同样要能访问这个公网地址。
+      INFRA_OSS_ENDPOINT: "${INFRA_OSS_ENDPOINT}"
+      INFRA_OSS_ACCESS_KEY: "${INFRA_OSS_ACCESS_KEY}"
+      INFRA_OSS_SECRET_KEY: "${INFRA_OSS_SECRET_KEY}"
     networks:
       - backend
 

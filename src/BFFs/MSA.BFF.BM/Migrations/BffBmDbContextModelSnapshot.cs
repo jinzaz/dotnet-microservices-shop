@@ -710,6 +710,38 @@ namespace MSA.BFF.BM.Migrations
                             Code = "catalog.brands.delete",
                             DisplayName = "商品品牌-删除",
                             Module = "catalog.brands"
+                        },
+                        new
+                        {
+                            Id = new Guid("85ceef9f-1e2f-4970-3f90-586a2f90cf33"),
+                            Action = "Query",
+                            Code = "order.after-sales.query",
+                            DisplayName = "售后-查询",
+                            Module = "order.after-sales"
+                        },
+                        new
+                        {
+                            Id = new Guid("d5bb516f-24a4-4403-cecf-6fab3e8ab6a9"),
+                            Action = "Create",
+                            Code = "order.after-sales.create",
+                            DisplayName = "售后-创建",
+                            Module = "order.after-sales"
+                        },
+                        new
+                        {
+                            Id = new Guid("1ee4b4d4-64ec-9890-bf41-cf9661b77a0e"),
+                            Action = "Edit",
+                            Code = "order.after-sales.edit",
+                            DisplayName = "售后-编辑",
+                            Module = "order.after-sales"
+                        },
+                        new
+                        {
+                            Id = new Guid("af7fdc4c-c21c-785e-2b0a-b15828e38a42"),
+                            Action = "Delete",
+                            Code = "order.after-sales.delete",
+                            DisplayName = "售后-删除",
+                            Module = "order.after-sales"
                         });
                 });
 
@@ -1121,6 +1153,26 @@ namespace MSA.BFF.BM.Migrations
                         {
                             PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
                             PermissionId = new Guid("4caca00d-119b-b8fe-483d-1f1a846bb88b")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("85ceef9f-1e2f-4970-3f90-586a2f90cf33")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("d5bb516f-24a4-4403-cecf-6fab3e8ab6a9")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("1ee4b4d4-64ec-9890-bf41-cf9661b77a0e")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("af7fdc4c-c21c-785e-2b0a-b15828e38a42")
                         });
                 });
 
@@ -2315,6 +2367,86 @@ namespace MSA.BFF.BM.Migrations
                             Order = 140,
                             PathTemplate = "/api/catalog/admin/products/{id}/brand",
                             PermissionId = new Guid("0e1aee9a-52a8-3a64-6a42-d6df748d65ad")
+                        },
+                        new
+                        {
+                            Id = new Guid("567bf04f-912f-2b63-4032-035b2dc59593"),
+                            HttpMethod = "GET",
+                            Order = 141,
+                            PathTemplate = "/api/order/admin/after-sales",
+                            PermissionId = new Guid("85ceef9f-1e2f-4970-3f90-586a2f90cf33")
+                        },
+                        new
+                        {
+                            Id = new Guid("26a0585e-e098-8d8a-7a95-342155986ce8"),
+                            HttpMethod = "GET",
+                            Order = 142,
+                            PathTemplate = "/api/order/admin/after-sales/{id}",
+                            PermissionId = new Guid("85ceef9f-1e2f-4970-3f90-586a2f90cf33")
+                        },
+                        new
+                        {
+                            Id = new Guid("8d7d01b2-a268-25e6-306d-aa6dfe917e03"),
+                            HttpMethod = "POST",
+                            Order = 143,
+                            PathTemplate = "/api/order/admin/after-sales/{id}/approve",
+                            PermissionId = new Guid("1ee4b4d4-64ec-9890-bf41-cf9661b77a0e")
+                        },
+                        new
+                        {
+                            Id = new Guid("2b46800f-0e76-d10d-bd81-4905aeba0f92"),
+                            HttpMethod = "POST",
+                            Order = 144,
+                            PathTemplate = "/api/order/admin/after-sales/{id}/reject",
+                            PermissionId = new Guid("1ee4b4d4-64ec-9890-bf41-cf9661b77a0e")
+                        },
+                        new
+                        {
+                            Id = new Guid("fd2bb64b-2856-e43d-b42d-d2c477b99962"),
+                            HttpMethod = "POST",
+                            Order = 145,
+                            PathTemplate = "/api/order/admin/after-sales/{id}/receive-return",
+                            PermissionId = new Guid("1ee4b4d4-64ec-9890-bf41-cf9661b77a0e")
+                        },
+                        new
+                        {
+                            Id = new Guid("099f3f5a-db1d-0ba0-4173-aa29fbd84c58"),
+                            HttpMethod = "POST",
+                            Order = 146,
+                            PathTemplate = "/api/order/admin/after-sales/{id}/refund",
+                            PermissionId = new Guid("1ee4b4d4-64ec-9890-bf41-cf9661b77a0e")
+                        },
+                        new
+                        {
+                            Id = new Guid("fc2a64ee-6233-2809-fafc-8eef14c9f12e"),
+                            HttpMethod = "POST",
+                            Order = 147,
+                            PathTemplate = "/api/order/admin/after-sales/{id}/ship-replacement",
+                            PermissionId = new Guid("1ee4b4d4-64ec-9890-bf41-cf9661b77a0e")
+                        },
+                        new
+                        {
+                            Id = new Guid("2e430990-ca91-f096-23a8-0fc5eb6206fb"),
+                            HttpMethod = "POST",
+                            Order = 148,
+                            PathTemplate = "/api/order/admin/after-sales/{id}/complete",
+                            PermissionId = new Guid("1ee4b4d4-64ec-9890-bf41-cf9661b77a0e")
+                        },
+                        new
+                        {
+                            Id = new Guid("8f3ace8f-14e6-58c4-8866-4ab39a90a312"),
+                            HttpMethod = "POST",
+                            Order = 149,
+                            PathTemplate = "/api/order/admin/after-sales/{id}/dispose-return",
+                            PermissionId = new Guid("1ee4b4d4-64ec-9890-bf41-cf9661b77a0e")
+                        },
+                        new
+                        {
+                            Id = new Guid("07c6a76b-9969-95da-aa42-ea74b6db08ee"),
+                            HttpMethod = "POST",
+                            Order = 150,
+                            PathTemplate = "/api/order/admin/after-sales/{id}/reserve-stock",
+                            PermissionId = new Guid("1ee4b4d4-64ec-9890-bf41-cf9661b77a0e")
                         });
                 });
 

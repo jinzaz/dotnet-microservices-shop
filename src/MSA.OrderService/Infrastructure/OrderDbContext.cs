@@ -16,6 +16,7 @@ public sealed class OrderDbContext(DbContextOptions<OrderDbContext> options, IMe
     public DbSet<CouponProjection> CouponProjections => Set<CouponProjection>();
     public DbSet<CouponQuotaBucket> CouponQuotaBuckets => Set<CouponQuotaBucket>();
     public DbSet<OrderCouponRedemption> CouponRedemptions => Set<OrderCouponRedemption>();
+    public DbSet<AfterSalesRequest> AfterSalesRequests => Set<AfterSalesRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
