@@ -16,7 +16,7 @@ namespace MSA.Common;
 /// <item>INFRA_POSTGRES_HOST / PORT / USER / PASSWORD → ConnectionStrings:Postgresql、DefaultConnection、Certificates</item>
 /// <item>INFRA_REDIS_HOST / PORT / PASSWORD → ConnectionStrings:Redis</item>
 /// <item>INFRA_RABBITMQ_HOST / PORT / USER / PASSWORD / VHOST → RabbitMQ:*</item>
-/// <item>INFRA_OSS_ENDPOINT / ACCESS_KEY / SECRET_KEY → ObjectStorage:*</item>
+/// <item>INFRA_OSS_ENDPOINT / ACCESS_KEY / SECRET_KEY / REGION / FORCE_PATH_STYLE / REFERER → ObjectStorage:*</item>
 /// <item>INFRA_ELASTICSEARCH_URL / API_KEY / USER / PASSWORD / CA_CERT → Elasticsearch:*</item>
 /// <item>MSA_SERVICE_AUTHORITY → ServiceAuthentication:Authority</item>
 /// <item>MSA_OTLP_ENDPOINT → OpenTelemetry:OtlpEndpoint</item>
@@ -59,6 +59,9 @@ public static class MsaEnvironment
             Map(values, env, "INFRA_OSS_ENDPOINT", "ObjectStorage:Endpoint");
             Map(values, env, "INFRA_OSS_ACCESS_KEY", "ObjectStorage:AccessKey");
             Map(values, env, "INFRA_OSS_SECRET_KEY", "ObjectStorage:SecretKey");
+            Map(values, env, "INFRA_OSS_REGION", "ObjectStorage:Region");
+            Map(values, env, "INFRA_OSS_FORCE_PATH_STYLE", "ObjectStorage:ForcePathStyle");
+            Map(values, env, "INFRA_OSS_REFERER", "ObjectStorage:Referer");
         }
 
         if (current.GetSection("Elasticsearch").Exists())

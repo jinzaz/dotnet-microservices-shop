@@ -18,6 +18,12 @@ internal sealed class ObjectStorageOptions
     public string SecretKey { get; init; } = string.Empty;
     public string PublicBucket { get; init; } = string.Empty;
     public string PrivateBucket { get; init; } = string.Empty;
+    /// <summary>Signing region. Any value works for RustFS/MinIO; Tencent COS needs the bucket region, e.g. ap-guangzhou.</summary>
+    public string Region { get; init; } = "us-east-1";
+    /// <summary>RustFS/MinIO use {endpoint}/{bucket}/{key}; COS buckets created after 2024 only accept {bucket}.{host}/{key}, so set false.</summary>
+    public bool ForcePathStyle { get; init; } = true;
+    /// <summary>Referer hotlink rules also reject signed server requests without a Referer; set a whitelisted URL here.</summary>
+    public string Referer { get; init; } = string.Empty;
 
     internal static bool IsValid(ObjectStorageOptions options) =>
         Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var endpoint) &&
@@ -84,9 +90,18 @@ internal sealed partial class S3ObjectStorage : IDisposable
             new AmazonS3Config
             {
                 ServiceURL = endpoint.AbsoluteUri.TrimEnd('/'),
-                AuthenticationRegion = "us-east-1",
-                ForcePathStyle = true
+                AuthenticationRegion = this.options.Region,
+                ForcePathStyle = this.options.ForcePathStyle
             });
+        if (!string.IsNullOrEmpty(this.options.Referer))
+        {
+            var referer = this.options.Referer;
+            client.BeforeRequestEvent += (_, args) =>
+            {
+                if (args is WebServiceRequestEventArgs request)
+                    request.Headers["Referer"] = referer;
+            };
+        }
     }
 
     /// <summary>Upload rules exposed to the BM UI so it can reject bad files before requesting a signed URL.</summary>
@@ -268,8 +283,13 @@ internal sealed partial class S3ObjectStorage : IDisposable
     private static string PrefixFor(ObjectStorageArea area) =>
         area == ObjectStorageArea.CatalogMedia ? "catalog-media" : "refund-evidence";
 
-    private string BuildObjectUrl(string bucket, string objectKey) =>
-        $"{endpoint.AbsoluteUri.TrimEnd('/')}/{Uri.EscapeDataString(bucket)}/{string.Join('/', objectKey.Split('/').Select(Uri.EscapeDataString))}";
+    private string BuildObjectUrl(string bucket, string objectKey)
+    {
+        var key = string.Join('/', objectKey.Split('/').Select(Uri.EscapeDataString));
+        return options.ForcePathStyle
+            ? $"{endpoint.AbsoluteUri.TrimEnd('/')}/{Uri.EscapeDataString(bucket)}/{key}"
+            : $"{endpoint.Scheme}://{bucket}.{endpoint.Authority}/{key}";
+    }
 
     // Only keys minted by TryCreateUploadUrl are accepted; this blocks traversal and deletion of foreign objects.
     [GeneratedRegex(@"^(?<prefix>catalog-media|refund-evidence)/\d{4}/\d{2}/[0-9a-f]{32}\.(?<extension>[a-z0-9]{3,4})$", RegexOptions.CultureInvariant)]

@@ -56,6 +56,9 @@ var connectionString = options.ConnectionString ?? configuration.GetConnectionSt
 options.ObjectStorageEndpoint ??= configuration["ObjectStorage:Endpoint"];
 options.ObjectStorageAccessKey ??= configuration["ObjectStorage:AccessKey"];
 options.ObjectStorageSecretKey ??= configuration["ObjectStorage:SecretKey"];
+options.ObjectStorageRegion = configuration["ObjectStorage:Region"] ?? options.ObjectStorageRegion;
+options.ObjectStorageForcePathStyle = configuration.GetValue("ObjectStorage:ForcePathStyle", true);
+options.ObjectStorageReferer = configuration["ObjectStorage:Referer"];
 
 await using var dataSource = Open(connectionString);
 var writer = new CatalogWriter(dataSource);

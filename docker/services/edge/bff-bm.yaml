@@ -24,6 +24,9 @@ services:
       INFRA_OSS_ENDPOINT: "${INFRA_OSS_ENDPOINT}"
       INFRA_OSS_ACCESS_KEY: "${INFRA_OSS_ACCESS_KEY}"
       INFRA_OSS_SECRET_KEY: "${INFRA_OSS_SECRET_KEY}"
+      INFRA_OSS_REGION: "${INFRA_OSS_REGION:-us-east-1}"
+      INFRA_OSS_FORCE_PATH_STYLE: "${INFRA_OSS_FORCE_PATH_STYLE:-true}"
+      INFRA_OSS_REFERER: "${INFRA_OSS_REFERER:-}"
       # 证书库：私钥与 DataProtection 密钥环用自己的 KEK 解密。证书库里有当前证书时下面两个 pfx 不再使用（迁移期的退路）。
       MSA_CERT_KEK_BFF_BM: "${MSA_CERT_KEK_BFF_BM}"
       MSA_OPENIDDICT_CERT_PATH: /certs/openiddict.pfx

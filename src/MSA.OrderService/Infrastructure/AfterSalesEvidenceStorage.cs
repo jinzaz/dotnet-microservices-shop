@@ -19,6 +19,12 @@ public sealed class ObjectStorageOptions
     public string AccessKey { get; init; } = string.Empty;
     public string SecretKey { get; init; } = string.Empty;
     public string PrivateBucket { get; init; } = string.Empty;
+    /// <summary>签名地域。RustFS/MinIO 随便填；腾讯云 COS 填桶所在地域，如 ap-guangzhou。</summary>
+    public string Region { get; init; } = "us-east-1";
+    /// <summary>COS 2024 年后新建的桶只认虚拟主机风格 {bucket}.{host}，要设为 false。</summary>
+    public bool ForcePathStyle { get; init; } = true;
+    /// <summary>桶开了 Referer 防盗链时服务端的 HEAD/DELETE 也会被拒，这里填白名单里的一个地址。</summary>
+    public string Referer { get; init; } = string.Empty;
 
     internal static bool IsValid(ObjectStorageOptions options) =>
         Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var endpoint)
@@ -66,9 +72,18 @@ public sealed partial class AfterSalesEvidenceStorage : IDisposable
             new AmazonS3Config
             {
                 ServiceURL = endpoint.AbsoluteUri.TrimEnd('/'),
-                AuthenticationRegion = "us-east-1",
-                ForcePathStyle = true
+                AuthenticationRegion = this.options.Region,
+                ForcePathStyle = this.options.ForcePathStyle
             });
+        if (!string.IsNullOrEmpty(this.options.Referer))
+        {
+            var referer = this.options.Referer;
+            client.BeforeRequestEvent += (_, args) =>
+            {
+                if (args is WebServiceRequestEventArgs request)
+                    request.Headers["Referer"] = referer;
+            };
+        }
     }
 
     public EvidenceUploadTicket CreateUploadUrl(string userId, string fileName, string contentType, long contentLength)

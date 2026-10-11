@@ -2,11 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { createDemoOrder, createDemoPayment } from '../features/payment/demo-payment';
-import { getPaymentByOrder } from '../features/payment/payment-api';
+import { getPaymentByOrder, syncPayment } from '../features/payment/payment-api';
 import { PaymentOrderSummary } from '../features/payment/PaymentOrderSummary';
 import { PaymentProgress } from '../features/payment/PaymentProgress';
 import { PaymentProviderMark, PaymentProviderSelector, paymentChannelLabel } from '../features/payment/PaymentProviderSelector';
-import { PaymentQrCode } from '../features/payment/PaymentQrCode';
+import { PaymentQrCode, isPagePayForm } from '../features/payment/PaymentQrCode';
 import type { PaymentChannel, PaymentStatus } from '../features/payment/types';
 import { getOrder } from '../features/orders/orders-api';
 import { ApiError, getErrorMessage } from '../shared/api/api-error';
@@ -92,6 +92,14 @@ export default function PaymentPage() {
     },
   });
 
+  // 从支付宝收银台回跳（return_url 带 out_trade_no）时主动查询一次；回跳参数本身不作为支付成功依据。
+  const returnedFromAlipay = new URLSearchParams(location.search).has('out_trade_no');
+  const { refetch: refetchPayment } = paymentQuery;
+  useEffect(() => {
+    if (!orderId || demoMode || !returnedFromAlipay) return;
+    void syncPayment(orderId).catch(() => undefined).then(() => refetchPayment());
+  }, [orderId, demoMode, returnedFromAlipay, refetchPayment]);
+
   const order = demoMode ? demoOrder : orderQuery.data;
   const serverChannel = normalizeChannel(paymentQuery.data?.channel ?? order?.paymentMethod);
   const activeChannel = demoMode ? demoChannel : serverChannel;
@@ -102,6 +110,7 @@ export default function PaymentPage() {
       }
     : undefined;
   const payment = demoPayment ?? paymentQuery.data;
+  const pagePay = isPagePayForm(payment?.paymentUrl);
   const countdown = usePaymentCountdown(payment?.expiresOnUtc ?? order?.paymentDueOnUtc);
   const succeeded = payment?.status === 'Succeeded' || (!payment && order?.status === 'Confirmed');
   const expiredByClock = countdown.seconds === 0 && payment?.status === 'Pending';
@@ -144,6 +153,7 @@ export default function PaymentPage() {
       await new Promise((resolve) => window.setTimeout(resolve, 650));
       setDemoStatus('Succeeded');
     } else {
+      await syncPayment(orderId).catch(() => undefined);
       const result = await paymentQuery.refetch();
       if (result.data?.status !== 'Succeeded') {
         setFeedback('暂未收到支付成功通知，请确认付款后稍候刷新。');
@@ -235,9 +245,9 @@ export default function PaymentPage() {
                     <PaymentQrCode value={payment?.paymentUrl ?? null} label={`${paymentChannelLabel(activeChannel)}支付二维码`} />
                   </div>
                   <div className="payment-scan-copy">
-                    <div className="payment-scan-title"><Icon name="qr-code" /><h3>使用{paymentChannelLabel(activeChannel)}扫码支付</h3></div>
-                    <p>请使用{paymentChannelLabel(activeChannel)}扫描二维码</p>
-                    <p>支付完成后页面将自动更新</p>
+                    <div className="payment-scan-title"><Icon name="qr-code" /><h3>{pagePay ? '前往支付宝收银台支付' : `使用${paymentChannelLabel(activeChannel)}扫码支付`}</h3></div>
+                    <p>{pagePay ? '点击左侧按钮，在新窗口完成付款' : `请使用${paymentChannelLabel(activeChannel)}扫描二维码`}</p>
+                    <p>{pagePay ? '付款后回到本页点击“我已完成支付”' : '支付完成后页面将自动更新'}</p>
                     <dl>
                       <div><dt>应付金额</dt><dd>{formatMoney(order.amount, order.currency)}</dd></div>
                       <div><dt>支付剩余</dt><dd className={countdown.seconds <= 180 ? 'is-warning' : undefined}>{countdown.label}</dd></div>

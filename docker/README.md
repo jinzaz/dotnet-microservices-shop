@@ -127,7 +127,7 @@ ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 
 | `INFRA_POSTGRES_HOST` / `PORT` / `USER` / `PASSWORD` | `ConnectionStrings:Postgresql`（认证中心是 `DefaultConnection`） |
 | `INFRA_REDIS_HOST` / `PORT` / `PASSWORD` | `ConnectionStrings:Redis`（口令不能含逗号） |
 | `INFRA_RABBITMQ_HOST` / `PORT` / `USER` / `PASSWORD` / `VHOST` | `RabbitMQ:*` |
-| `INFRA_OSS_ENDPOINT` / `ACCESS_KEY` / `SECRET_KEY` | `ObjectStorage:*`（后台 BFF、订单服务的售后凭证） |
+| `INFRA_OSS_ENDPOINT` / `ACCESS_KEY` / `SECRET_KEY` / `REGION` / `FORCE_PATH_STYLE` / `REFERER` | `ObjectStorage:*`（后台 BFF、订单服务的售后凭证；腾讯云 COS 见 `.env.example`） |
 | `MSA_SERVICE_AUTHORITY` | `ServiceAuthentication:Authority`（取服务令牌，值是容器内地址） |
 | `MSA_OTLP_ENDPOINT` | `OpenTelemetry:OtlpEndpoint`（全部 11 个服务，含网关与两个 BFF） |
 | `MSA_GRPC_<服务>_ADDRESS` | `GrpcClients:<服务>:Address`（按被调用的服务命名，例如 `MSA_GRPC_CATALOG_ADDRESS`；Docker 里是 `http://msa-catalog:8081`） |

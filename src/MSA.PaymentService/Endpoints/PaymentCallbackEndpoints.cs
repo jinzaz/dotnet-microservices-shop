@@ -21,8 +21,9 @@ internal static class PaymentCallbackEndpoints
             var values = form.ToDictionary(value => value.Key, value => value.Value.ToString());
             var verified = await verifiers.Single(value => value.Channel == PaymentChannel.Alipay)
                 .VerifyAsync(new PaymentNotification(values, string.Empty), cancellationToken);
+            // 验签通过的非付款事件（待付款、关单、退款）只确认收到，不改订单；否则支付宝会一直重推。
             if (!verified.Succeeded)
-                return Results.BadRequest();
+                return Results.Text("success");
 
             await sender.Send(new ConfirmPaymentCommand(
                 verified.MerchantTradeNo,

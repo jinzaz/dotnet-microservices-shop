@@ -46,9 +46,18 @@ builder.Services.Configure<PaylinksOptions>(builder.Configuration.GetSection("Pa
 builder.Services.Configure<PaymentEndpointOptions>(builder.Configuration.GetSection("PaymentEndpoints"));
 builder.Services.AddAlipayClient();
 builder.Services.AddWeChatPayClient();
-builder.Services.AddScoped<IPaymentGateway, AlipayGateway>();
+// 支付宝渠道二选一：Paylinks:Alipay（当面付预下单）配置齐全时优先，否则走 AliVibePay（AI 网页应用收款）。
+if (builder.Configuration.GetSection("Paylinks:Alipay").Get<PaylinksOptions.AlipaySettings>()?.IsConfigured == true)
+{
+    builder.Services.AddScoped<IPaymentGateway, AlipayGateway>();
+    builder.Services.AddScoped<IPaymentNotificationVerifier, AlipayNotificationVerifier>();
+}
+else
+{
+    builder.Services.AddScoped<IPaymentGateway, AliVibePayGateway>();
+    builder.Services.AddScoped<IPaymentNotificationVerifier, AliVibePayNotificationVerifier>();
+}
 builder.Services.AddScoped<IPaymentGateway, WeChatPayGateway>();
-builder.Services.AddScoped<IPaymentNotificationVerifier, AlipayNotificationVerifier>();
 builder.Services.AddScoped<IPaymentNotificationVerifier, WeChatPayNotificationVerifier>();
 builder.Services.AddScoped<PaymentGatewayResolver>();
 builder.Services.AddScoped<PaymentProviderOperationStore>();

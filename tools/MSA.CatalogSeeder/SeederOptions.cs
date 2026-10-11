@@ -47,6 +47,9 @@ internal sealed class SeederOptions
     public string? ObjectStorageEndpoint { get; set; }
     public string? ObjectStorageAccessKey { get; set; }
     public string? ObjectStorageSecretKey { get; set; }
+    public string ObjectStorageRegion { get; set; } = "us-east-1";
+    public bool ObjectStorageForcePathStyle { get; set; } = true;
+    public string? ObjectStorageReferer { get; set; }
 
     public static SeederOptions Parse(string[] args)
     {

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
 
@@ -52,11 +53,25 @@ internal sealed class ImagePool(SeederOptions options, HttpClient http)
                 "对象存储未配置（msa.env 的 INFRA_OSS_ENDPOINT / ACCESS_KEY / SECRET_KEY）；或者用 --image-dir 把图片写到本地目录。");
         }
 
-        return new AmazonS3Client(options.ObjectStorageAccessKey, options.ObjectStorageSecretKey, new AmazonS3Config
+        var client = new AmazonS3Client(options.ObjectStorageAccessKey, options.ObjectStorageSecretKey, new AmazonS3Config
         {
             ServiceURL = options.ObjectStorageEndpoint,
-            ForcePathStyle = true
+            AuthenticationRegion = options.ObjectStorageRegion,
+            ForcePathStyle = options.ObjectStorageForcePathStyle,
+            // 新版 SDK 默认给 PutObject 加 CRC 尾部校验（aws-chunked），COS 等兼容存储未必认，只在接口要求时才算。
+            RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED
         });
+        if (!string.IsNullOrEmpty(options.ObjectStorageReferer))
+        {
+            var referer = options.ObjectStorageReferer;
+            client.BeforeRequestEvent += (_, args) =>
+            {
+                if (args is WebServiceRequestEventArgs request)
+                    request.Headers["Referer"] = referer;
+            };
+        }
+
+        return client;
     }
 
     private async Task<string> UploadAsync(AmazonS3Client s3, string key, byte[] bytes, string contentType, CancellationToken cancellationToken)
@@ -71,9 +86,12 @@ internal sealed class ImagePool(SeederOptions options, HttpClient http)
             // 同一 URL 的内容不会变，允许浏览器长期缓存。
             Headers = { CacheControl = "public, max-age=31536000, immutable" }
         }, cancellationToken);
-        // 与后台 BFF 生成的公开地址同一规则：{endpoint}/{bucket}/{key}
-        var endpoint = options.ObjectStorageEndpoint!.TrimEnd('/');
-        return $"{endpoint}/{Uri.EscapeDataString(options.Bucket)}/{string.Join('/', key.Split('/').Select(Uri.EscapeDataString))}";
+        // 与后台 BFF 生成的公开地址同一规则：路径风格 {endpoint}/{bucket}/{key}，虚拟主机风格 {bucket}.{host}/{key}
+        var endpoint = new Uri(options.ObjectStorageEndpoint!, UriKind.Absolute);
+        var escapedKey = string.Join('/', key.Split('/').Select(Uri.EscapeDataString));
+        return options.ObjectStorageForcePathStyle
+            ? $"{endpoint.AbsoluteUri.TrimEnd('/')}/{Uri.EscapeDataString(options.Bucket)}/{escapedKey}"
+            : $"{endpoint.Scheme}://{options.Bucket}.{endpoint.Authority}/{escapedKey}";
     }
 
     private async Task<string> WriteLocalAsync(string key, byte[] bytes, CancellationToken cancellationToken)

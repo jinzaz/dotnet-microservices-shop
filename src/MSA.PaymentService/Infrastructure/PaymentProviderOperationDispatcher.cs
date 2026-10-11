@@ -163,7 +163,8 @@ internal sealed class PaymentProviderOperationDispatcher(
                 snapshot.Currency,
                 $"Order {snapshot.OrderId:N}",
                 notifyUrl,
-                snapshot.ExpiresOnUtc),
+                snapshot.ExpiresOnUtc,
+                $"{endpointOptions.ReturnBaseUrl.TrimEnd('/')}/{snapshot.OrderId}"),
             providerCancellationToken);
         EnsureResultMatches(snapshot, result);
         return await store.CompleteCreateAsync(

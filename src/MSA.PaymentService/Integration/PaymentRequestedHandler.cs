@@ -208,4 +208,7 @@ public sealed class PaymentEndpointOptions
 {
     public string NotifyBaseUrl { get; set; } =
         "https://localhost:10005/payment/callbacks";
+
+    /// <summary>支付宝网页支付付款后的同步回跳页（前端 /payment/{orderId}），页面只展示服务端查询到的状态。</summary>
+    public string ReturnBaseUrl { get; set; } = "http://localhost:5173/payment";
 }
