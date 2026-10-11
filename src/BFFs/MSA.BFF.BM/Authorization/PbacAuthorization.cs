@@ -75,7 +75,7 @@ internal sealed class PbacPermissionAuthorizationHandler(
     }
 }
 
-internal sealed class PbacAuthorizer(BffBmDbContext db)
+internal sealed class PbacAuthorizer(BffBmDbContext db, IOptions<PbacOptions> options)
 {
     internal async Task<bool> IsAllowedAsync(
         ClaimsPrincipal principal,
@@ -122,9 +122,16 @@ internal sealed class PbacAuthorizer(BffBmDbContext db)
         ClaimsPrincipal principal,
         CancellationToken cancellationToken)
     {
+        // 引导管理员在服务端本来就能管理权限（管理策略对他放行），这里也要把这几项权限告诉前端，
+        // 否则首次部署时 BM 里还没有任何成员，他看不到"权限"页面，没法给自己建账号、分配角色。
+        string[] bootstrap = GetSubject(principal) is { } identityUserId &&
+                             options.Value.BootstrapAdminUserIds.Contains(identityUserId, StringComparer.Ordinal)
+            ? Enum.GetValues<PbacAction>().Select(PbacDefaults.ManagementPermission).ToArray()
+            : [];
+
         var subject = await ResolveSubjectAsync(principal, cancellationToken);
         if (subject is null)
-            return [];
+            return bootstrap.Order(StringComparer.Ordinal).ToArray();
 
         var grants = await db.PbacPolicyPermissions
             .AsNoTracking()
@@ -139,6 +146,7 @@ internal sealed class PbacAuthorizer(BffBmDbContext db)
             .Where(group => group.Any(grant => grant.Effect == PbacEffect.Allow) &&
                             group.All(grant => grant.Effect != PbacEffect.Deny))
             .Select(group => group.Key)
+            .Union(bootstrap, StringComparer.Ordinal)
             .OrderBy(code => code, StringComparer.Ordinal)
             .ToArray();
     }

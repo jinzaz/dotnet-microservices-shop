@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
-# 构建 docker/images.txt 里的镜像并推送到 Harbor（默认 harbor.local/msa-shop/<镜像名>:<tag>），与 build-images.ps1 等价。
-# 构建与推送独立于 docker compose：compose 只负责从仓库拉取运行。推送前先 docker login harbor.local。
+# 构建 docker/images.txt 里的镜像并推送到镜像仓库（<仓库>/<镜像名>:<tag>），与 build-images.ps1 等价。
+# 构建与推送独立于 docker compose：compose 只负责从 MSA_IMAGE_REGISTRY 拉取运行。推送前先 docker login 对应仓库。
 #
 # 用法：./build-images.sh [all | 镜像名 ...] [--registry R] [--tag T] [--platform P] [--no-latest] [--no-push]
+#   --registry 可以写下面预设的名字（harbor / tencent），也可以写完整地址；不传时交互选择，非交互环境默认 harbor。
 #   不传镜像名时列出清单交互选择（全部或编号）；all 构建全部。
 #   默认标签 = 当前 git 提交的短哈希（工作区有改动时加 -dirty），同时推 latest。
 #   所有镜像共用 docker/Dockerfile（--target <镜像名>）：restore 与编译只在第一个镜像做一次，后面的镜像直接命中缓存。
 set -euo pipefail
 export DOCKER_BUILDKIT=1
 
-registry=harbor.local/msa-shop; tag=""; platform=linux/amd64; latest=true; push=true; only=()
+# 预设仓库：名字 地址 说明。腾讯云的地址是 ccr.ccs.tencentyun.com/<命名空间>，命名空间按控制台里建的改。
+registries=(
+  "harbor  harbor.local/msa-shop            内网 Harbor（HTTP，需配置 insecure registry）"
+  "tencent ccr.ccs.tencentyun.com/msa-shop  腾讯云容器镜像服务（docker login ccr.ccs.tencentyun.com --username=<账号ID>）"
+)
+
+registry=""; tag=""; platform=linux/amd64; latest=true; push=true; only=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --registry) registry="$2"; shift ;;
@@ -29,6 +36,36 @@ if [ -z "$tag" ]; then
   tag="$(git -C "$repository" rev-parse --short HEAD)"
   [ -n "$(git -C "$repository" status --porcelain)" ] && tag="$tag-dirty"
 fi
+
+# --registry 写的是预设名字时换成地址；没写时交互选择（非交互环境用第一个预设）。
+preset_address() {
+  for entry in "${registries[@]}"; do
+    read -r key address _ <<< "$entry"
+    [ "$key" = "$1" ] && { echo "$address"; return 0; }
+  done
+  return 1
+}
+if [ -n "$registry" ]; then
+  registry="$(preset_address "$registry" || echo "$registry")"
+elif [ -t 0 ]; then
+  echo "推送到哪个镜像仓库："
+  for i in "${!registries[@]}"; do
+    read -r _ address description <<< "${registries[$i]}"
+    printf '  %d. %-36s %s\n' $((i + 1)) "$address" "$description"
+  done
+  read -r -p "输入编号，或直接输入完整地址（回车 = 1）：" answer
+  answer="${answer:-1}"
+  if [[ "$answer" =~ ^[0-9]+$ ]]; then
+    [ "$answer" -ge 1 ] && [ "$answer" -le ${#registries[@]} ] || { echo "编号超出范围：$answer" >&2; exit 1; }
+    read -r _ registry _ <<< "${registries[$((answer - 1))]}"
+  else
+    registry="$answer"
+  fi
+else
+  read -r _ registry _ <<< "${registries[0]}"
+fi
+registry="${registry%/}"
+echo "镜像仓库：$registry"
 
 catalog=()
 while read -r name project; do
@@ -74,7 +111,9 @@ for entry in "${selected[@]}"; do
   for t in "${tags[@]}"; do args+=(--tag "$t"); done
   docker "${args[@]}" "$repository"
   if [ "$push" = true ]; then
-    for t in "${tags[@]}"; do docker push "$t"; done
+    for t in "${tags[@]}"; do
+      docker push "$t" || { echo "推送 $t 失败：是否已 docker login ${registry%%/*}，仓库里的项目 / 命名空间 ${registry#*/} 是否存在？" >&2; exit 1; }
+    done
   fi
   built+=("${tags[@]}")
 done
@@ -82,4 +121,4 @@ done
 echo
 echo "完成 ${#selected[@]} 个镜像$([ "$push" = true ] || echo '（未推送）')："
 printf '  %s\n' "${built[@]}"
-echo "运行指定版本：在 docker/.env 里设 MSA_IMAGE_TAG=$tag，然后 docker compose pull && docker compose up -d"
+echo "运行指定版本：在 docker/.env 里设 MSA_IMAGE_REGISTRY=$registry、MSA_IMAGE_TAG=$tag，然后 docker compose pull && docker compose up -d"

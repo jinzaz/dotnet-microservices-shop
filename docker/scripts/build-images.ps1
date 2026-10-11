@@ -1,23 +1,27 @@
 ﻿<#
 .SYNOPSIS
-  构建 docker/images.txt 里的镜像并推送到 Harbor（默认 harbor.local/msa-shop/<镜像名>:<tag>）。
+  构建 docker/images.txt 里的镜像并推送到镜像仓库（<仓库>/<镜像名>:<tag>）。
 
 .DESCRIPTION
-  构建与推送独立于 docker compose：compose 只负责从仓库拉取运行。
+  构建与推送独立于 docker compose：compose 只负责从 MSA_IMAGE_REGISTRY 拉取运行。
+  先选推送到哪个仓库（-Registry 可写预设名字 harbor / tencent 或完整地址，不传则交互选择），再选镜像。
   每个镜像推两个标签：-Tag 指定的版本（默认当前 git 提交的短哈希）与 latest（-NoLatest 可关闭）。
-  推送前先登录：docker login harbor.local。Harbor 走 HTTP 时，Docker 需要把 harbor.local 配成 insecure registry。
+  推送前先登录对应仓库：
+    docker login harbor.local                                    # Harbor 走 HTTP 时要把它配成 insecure registry
+    docker login ccr.ccs.tencentyun.com --username=<账号ID>      # 腾讯云容器镜像服务
 
 .EXAMPLE
-  ./build-images.ps1                                 # 列出镜像，交互选择：全部或输入编号
-  ./build-images.ps1 all                             # 全部镜像，标签 = git 短哈希 + latest
-  ./build-images.ps1 catalog-service order-service -Tag 1.4.0
+  ./build-images.ps1                                 # 交互选择仓库，再选镜像
+  ./build-images.ps1 all -Registry tencent           # 全部镜像推到腾讯云，标签 = git 短哈希 + latest
+  ./build-images.ps1 catalog-service order-service -Registry harbor -Tag 1.4.0
   ./build-images.ps1 all -NoPush                     # 只构建，不推送
 #>
 param(
     # 要构建的镜像：all 表示全部；不传则列出清单交互选择。
     [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
     [string[]] $Only = @(),
-    [string] $Registry = 'harbor.local/msa-shop',
+    # 预设名字（harbor / tencent）或完整地址；不传则交互选择。
+    [string] $Registry,
     [string] $Tag,
     [string] $Platform = 'linux/amd64',
     [switch] $NoLatest,
@@ -36,6 +40,32 @@ if (-not $Tag) {
     # 工作区有未提交的改动时加 -dirty，避免同一个标签对应两份不同的代码。
     if (git -C $repository status --porcelain) { $Tag = "$Tag-dirty" }
 }
+
+# 预设仓库。腾讯云的地址是 ccr.ccs.tencentyun.com/<命名空间>，命名空间按控制台里建的改。
+$registries = @(
+    [pscustomobject]@{ Key = 'harbor';  Address = 'harbor.local/msa-shop';           Description = '内网 Harbor（HTTP，需配置 insecure registry）' }
+    [pscustomobject]@{ Key = 'tencent'; Address = 'ccr.ccs.tencentyun.com/msa-shop'; Description = '腾讯云容器镜像服务' }
+)
+if ($Registry) {
+    $preset = $registries | Where-Object Key -eq $Registry
+    if ($preset) { $Registry = $preset.Address }
+}
+else {
+    Write-Host '推送到哪个镜像仓库：'
+    for ($index = 0; $index -lt $registries.Count; $index++) {
+        Write-Host ('  {0}. {1,-36} {2}' -f ($index + 1), $registries[$index].Address, $registries[$index].Description)
+    }
+    $answer = (Read-Host '输入编号，或直接输入完整地址（回车 = 1）').Trim()
+    if (-not $answer) { $answer = '1' }
+    if ($answer -match '^\d+$') {
+        $number = [int]$answer
+        if ($number -lt 1 -or $number -gt $registries.Count) { throw "编号超出范围：$answer" }
+        $Registry = $registries[$number - 1].Address
+    }
+    else { $Registry = $answer }
+}
+$Registry = $Registry.TrimEnd('/')
+Write-Host "镜像仓库：$Registry"
 
 $images = @(Get-Content $manifest -Encoding UTF8 |
     Where-Object { $_ -and -not $_.TrimStart().StartsWith('#') } |
@@ -77,7 +107,7 @@ foreach ($image in $images) {
     if (-not $NoPush) {
         foreach ($reference in $tags) {
             & docker push $reference
-            if ($LASTEXITCODE -ne 0) { throw "推送 $reference 失败（是否已 docker login，Harbor 项目 msa-shop 是否存在？）。" }
+            if ($LASTEXITCODE -ne 0) { throw "推送 $reference 失败（是否已 docker login $($Registry.Split('/')[0])，仓库里的项目 / 命名空间是否存在？）。" }
         }
     }
     $built += $tags
@@ -86,4 +116,4 @@ foreach ($image in $images) {
 Write-Host ''
 Write-Host "完成 $($images.Count) 个镜像$(if ($NoPush) { '（未推送）' })：" -ForegroundColor Green
 $built | ForEach-Object { Write-Host "  $_" }
-Write-Host "运行指定版本：在 docker/.env 里设 MSA_IMAGE_TAG=$Tag，然后 docker compose pull && docker compose up -d"
+Write-Host "运行指定版本：在 docker/.env 里设 MSA_IMAGE_REGISTRY=$Registry、MSA_IMAGE_TAG=$Tag，然后 docker compose pull && docker compose up -d"

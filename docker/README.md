@@ -37,18 +37,24 @@ compose 只从 Harbor 拉镜像运行，不负责构建。
 
 ## 构建并推送镜像
 
-镜像推到 `harbor.local/msa-shop/<镜像名>:<标签>`，镜像名见 `images.txt`。每个镜像推两个标签：
+镜像推到 `<仓库>/<镜像名>:<标签>`，镜像名见 `images.txt`。每个镜像推两个标签：
 版本标签（默认当前 git 提交的短哈希，工作区有未提交改动时加 `-dirty`）和 `latest`。
+脚本先问推到哪个仓库，再问构建哪些镜像。预设两个仓库（在脚本顶部的列表里改，例如腾讯云的命名空间）：
+
+| 预设名 | 地址 | 登录 |
+|---|---|---|
+| `harbor`（默认） | `harbor.local/msa-shop` | `docker login harbor.local` |
+| `tencent` | `ccr.ccs.tencentyun.com/msa-shop` | `docker login ccr.ccs.tencentyun.com --username=<账号ID>` |
 
 ```powershell
-docker login harbor.local                       # 一次即可
-./scripts/build-images.ps1                      # 列出清单，交互选择：all 或编号（如 4,7）/ 镜像名
-./scripts/build-images.ps1 all                  # 全部
-./scripts/build-images.ps1 catalog-service order-service -Tag 1.4.0   # 指定几个、指定版本
-./scripts/build-images.ps1 all -NoPush          # 只构建不推送；-NoLatest 不推 latest
+./scripts/build-images.ps1                      # 交互：先选仓库（编号或完整地址），再选镜像（all 或编号如 4,7 / 镜像名）
+./scripts/build-images.ps1 all -Registry tencent                      # 全部，推到腾讯云
+./scripts/build-images.ps1 catalog-service order-service -Registry harbor -Tag 1.4.0   # 指定几个、指定版本
+./scripts/build-images.ps1 all -Registry my.registry.cn/team -NoPush  # 任意地址；只构建不推送；-NoLatest 不推 latest
 ```
 
-`build-images.sh` 参数相同（`--tag`、`--no-push`、`--no-latest`、`--registry`、`--platform`）。默认构建 `linux/amd64`。
+`build-images.sh` 参数相同（`--registry`、`--tag`、`--no-push`、`--no-latest`、`--platform`）。非交互环境不传仓库时用 `harbor`。默认构建 `linux/amd64`。
+运行机器上的 compose 从 `.env` 的 `MSA_IMAGE_REGISTRY` 拉取，换仓库后同步改它。
 
 ### Harbor 走 HTTP（harbor.local:80）
 

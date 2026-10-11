@@ -14,16 +14,21 @@ services:
   # setup:
   #   image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/elasticsearch-ik:${ES_VERSION:-9.1.5}
   #   user: "0"
+  #   # 注意：在 YAML 的 ">" 块里，比上一行缩进更深的行会保留换行。每条命令必须写在同一行，不能折行续写，
+  #   # 否则 bash 会把后半截当成另一条命令（曾经因此只生成了 CA、没解压出节点证书）。
+  #   # 判断条件看最终要用的文件而不是 zip：上次中途失败留下的 zip 不会让这一步被永久跳过。
   #   command: >
   #     bash -c '
-  #       if [ ! -f config/certs/ca.zip ]; then
-  #         bin/elasticsearch-certutil ca --silent --pem -out config/certs/ca.zip && unzip -q config/certs/ca.zip -d config/certs;
+  #       if [ ! -f config/certs/ca/ca.crt ]; then
+  #         rm -f config/certs/ca.zip;
+  #         bin/elasticsearch-certutil ca --silent --pem -out config/certs/ca.zip && unzip -qo config/certs/ca.zip -d config/certs;
   #       fi;
-  #       if [ ! -f config/certs/certs.zip ]; then
+  #       if [ ! -f config/certs/elasticsearch/elasticsearch.key ]; then
   #         printf "instances:\n  - name: elasticsearch\n    dns: [elasticsearch, localhost]\n    ip: [127.0.0.1]\n" > config/certs/instances.yml;
-  #         bin/elasticsearch-certutil cert --silent --pem -out config/certs/certs.zip --in config/certs/instances.yml
-  #           --ca-cert config/certs/ca/ca.crt --ca-key config/certs/ca/ca.key && unzip -q config/certs/certs.zip -d config/certs;
+  #         rm -f config/certs/certs.zip;
+  #         bin/elasticsearch-certutil cert --silent --pem -out config/certs/certs.zip --in config/certs/instances.yml --ca-cert config/certs/ca/ca.crt --ca-key config/certs/ca/ca.key && unzip -qo config/certs/certs.zip -d config/certs;
   #       fi;
+  #       [ -f config/certs/ca/ca.crt ] && [ -f config/certs/elasticsearch/elasticsearch.key ] || { echo "certificate generation failed" >&2; exit 1; };
   #       chown -R root:root config/certs;
   #       find config/certs -type d -exec chmod 750 {} \;;
   #       find config/certs -type f -exec chmod 640 {} \;

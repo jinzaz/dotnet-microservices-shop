@@ -16,7 +16,10 @@
   <Folder Name="/0.Root/docker/base/">
     <File Path="docker/base/dotnet-service.yaml" />
   </Folder>
-  <Folder Name="/0.Root/docker/elasticsearch/" >
+  <Folder Name="/0.Root/docker/config/payments/">
+    <File Path="appsettings.json" />
+  </Folder>
+  <Folder Name="/0.Root/docker/elasticsearch/">
     <File Path="docker/elasticsearch/.env.example" />
     <File Path="docker/elasticsearch/compose.dev.yaml" />
     <File Path="docker/elasticsearch/compose.yaml" />
