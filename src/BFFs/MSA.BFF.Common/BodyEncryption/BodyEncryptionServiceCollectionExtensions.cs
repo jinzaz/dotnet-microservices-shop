@@ -17,7 +17,13 @@ public static class BodyEncryptionServiceCollectionExtensions
     /// <summary>要在 app.MapReverseProxy() 之前调用：中间件要在 YARP 转发前解密、在 YARP 写完响应后加密。</summary>
     public static WebApplication UseBffBodyEncryption(this WebApplication app)
     {
+        // 路由要跑两次。第一次：中间件要读选中端点上的 [SkipBodyEncryption]。
+        // 但路由选端点时会按 Content-Type 匹配：带 JSON 请求体的 Minimal API 端点只接受 application/json，
+        // 看到 application/vnd.msa.enc 就选中内置的 415 端点。所以中间件解密后清掉已选端点，
+        // 第二次路由按解密后的 Content-Type 重新匹配；端点没被清掉时第二次直接跳过，不重复匹配。
+        app.UseRouting();
         app.UseMiddleware<BodyEncryptionMiddleware>();
+        app.UseRouting();
         return app;
     }
 

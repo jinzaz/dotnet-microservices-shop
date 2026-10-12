@@ -42,7 +42,7 @@ public sealed class BodyEncryptionMiddlewareTests
             context.Response.ContentType = "application/json";
             await context.Response.WriteAsync($"{{\"echo\":{body}}}");
         });
-        _app.MapGet("/whoami", () => Results.Json(new { name = "test-user" }));
+        _app.MapPost("/typed", (EchoPayload payload) => Results.Json(payload));        _app.MapGet("/whoami", () => Results.Json(new { name = "test-user" }));
         _app.MapGet("/skip-me", () => Results.Json(new { secret = "should never be encrypted" }))
             .WithMetadata(new SkipBodyEncryptionAttribute());
 
@@ -67,6 +67,24 @@ public sealed class BodyEncryptionMiddlewareTests
         Assert.AreEqual(BodyEncryptionMiddleware.ContentType, response.Content.Headers.ContentType?.MediaType);
         var decrypted = await DecryptResponseAsync(response, s2c);
         Assert.AreEqual("{\"echo\":{\"hello\":\"world\"}}", decrypted);
+    }
+
+    [DataTestMethod]
+    [DataRow(false, DisplayName = "Content-Length")]
+    [DataRow(true, DisplayName = "chunked")]
+    public async Task EncryptedBodyReachesATypedJsonEndpoint(bool chunked)
+    {
+        // 带 JSON 参数的 Minimal API 端点只接受 application/json，路由按解密前的 Content-Type 选端点会选中 415
+        // （后台上传图片拿签名地址时遇到过）。分块请求体没有 Content-Length，同样要解密。
+        using var client = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        var (c2s, s2c) = DeriveKeys(client, _serverKey.PublicKeyRaw);
+
+        using var request = EncryptedRequest(HttpMethod.Post, "/typed", client, c2s,
+            "{\"hello\":\"world\"}"u8.ToArray(), chunked: chunked);
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual("{\"hello\":\"world\"}", await DecryptResponseAsync(response, s2c));
     }
 
     [TestMethod]
@@ -193,7 +211,8 @@ public sealed class BodyEncryptionMiddlewareTests
     }
 
     private static HttpRequestMessage EncryptedRequest(
-        HttpMethod method, string path, ECDiffieHellman clientKey, byte[] c2sKey, byte[] plaintext, bool corruptTag = false)
+        HttpMethod method, string path, ECDiffieHellman clientKey, byte[] c2sKey, byte[] plaintext,
+        bool corruptTag = false, bool chunked = false)
     {
         var nonce = RandomNumberGenerator.GetBytes(12);
         var ciphertext = new byte[plaintext.Length];
@@ -209,7 +228,7 @@ public sealed class BodyEncryptionMiddlewareTests
 
         var request = new HttpRequestMessage(method, path)
         {
-            Content = new ByteArrayContent(envelope)
+            Content = chunked ? new UnknownLengthContent(envelope) : new ByteArrayContent(envelope)
         };
         request.Headers.Add(BodyEncryptionMiddleware.EphemeralKeyHeader, Convert.ToBase64String(ExportRawPublicKey(clientKey)));
         request.Content.Headers.ContentType = new MediaTypeHeaderValue(BodyEncryptionMiddleware.ContentType);
@@ -227,5 +246,20 @@ public sealed class BodyEncryptionMiddlewareTests
         using var gcm = new AesGcm(s2cKey, 16);
         gcm.Decrypt(nonce, ciphertext, tag, plaintext);
         return System.Text.Encoding.UTF8.GetString(plaintext);
+    }
+
+    private sealed record EchoPayload(string Hello);
+
+    /// <summary>不报长度的请求体：HttpClient 只能按分块发送，服务端看到的 ContentLength 为 null。</summary>
+    private sealed class UnknownLengthContent(byte[] bytes) : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            stream.WriteAsync(bytes).AsTask();
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
     }
 }

@@ -26,7 +26,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // 证书库：OpenIddict 签名 / 加密证书的来源；DataProtection 密钥环（登录 Cookie、短信验证码）也存进去，发版不再全员掉线。
 builder.Services.AddMsaCertificates(builder.Configuration);
 builder.Services.AddIdentityDefault(builder.Configuration, builder.Environment);
-builder.Services.AddIdentityRateLimiting();
+builder.Services.AddIdentityThrottling(builder.Configuration);
 builder.Services.AddSmsLogin(builder.Configuration, builder.Environment);
 
 builder.Services.AddQuartz(options =>
@@ -68,7 +68,6 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 app.UseMsaServiceDefaults();
 app.UseRouting();
-app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();

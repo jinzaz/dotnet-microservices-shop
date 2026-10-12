@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
+using MSA.IdentityService.Infrastructure.Throttling;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MSA.IdentityService.Application.Sms;
@@ -44,18 +44,10 @@ public sealed class UsersController(
         var user = await users.GetUserAsync(User);
         if (user is null)
             return Unauthorized();
-        if (string.IsNullOrWhiteSpace(request.DisplayName))
-        {
-            return ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]>
-            {
-                [nameof(request.DisplayName)] = ["显示名称不能为空。"]
-            }));
-        }
-
         var phoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber)
             ? null
             : request.PhoneNumber.Trim();
-        user.DisplayName = request.DisplayName.Trim();
+        user.DisplayName = SafeDisplayNameAttribute.Normalize(request.DisplayName);
         if (!string.Equals(user.PhoneNumber, phoneNumber, StringComparison.Ordinal))
         {
             user.PhoneNumber = phoneNumber;
@@ -67,7 +59,7 @@ public sealed class UsersController(
     }
 
     [HttpPost("me/phone/confirmation/code")]
-    [EnableRateLimiting(IdentityServiceConstants.RateLimits.SmsDispatch)]
+    [Throttle(ThrottlePolicy.SmsDispatch)]
     public async Task<ActionResult<SmsLoginCodeRequestedResponse>> RequestPhoneConfirmationCode(
         CancellationToken cancellationToken)
     {
@@ -103,7 +95,7 @@ public sealed class UsersController(
     }
 
     [HttpPost("me/phone/confirmation")]
-    [EnableRateLimiting(IdentityServiceConstants.RateLimits.Authentication)]
+    [Throttle(ThrottlePolicy.Authentication)]
     public async Task<IActionResult> ConfirmPhoneNumber(
         ConfirmPhoneNumberRequest request,
         CancellationToken cancellationToken)
@@ -245,7 +237,7 @@ public sealed class UsersController(
 
 /// <summary>更新当前账户的基础资料。</summary>
 public sealed record UpdateProfileRequest(
-    [Required, StringLength(100, MinimumLength = 1)] string DisplayName,
+    [Required, StringLength(100, MinimumLength = 1), SafeDisplayName] string DisplayName,
     [StringLength(16), RegularExpression(PhoneNumberFormat.E164Pattern, ErrorMessage = PhoneNumberFormat.E164Error)]
     string? PhoneNumber);
 

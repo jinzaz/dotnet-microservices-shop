@@ -124,7 +124,7 @@ async function post<T = void>(
   const message = response.status === 401
     ? unauthorizedMessage
     : response.status === 429
-      ? '请求过于频繁，请稍后再试。'
+      ? problem?.detail ?? '请求过于频繁，请稍后再试。'
       : firstValidationMessage(problem?.errors) ?? problem?.detail ?? problem?.title ?? fallbackMessage;
 
   throw new ApiError(message, response.status, problem);
@@ -190,6 +190,7 @@ export async function registerAndLogin(details: RegistrationDetails): Promise<vo
       rememberMe: false,
     });
   } catch {
-    throw new Error('账户已创建，但自动登录失败，请返回登录页重试。');
+    // 邮箱已注册时注册接口也返回成功（不暴露邮箱是否存在），这里的自动登录就会失败
+    throw new Error('注册已提交，但没能自动登录。如果这个邮箱之前注册过，请直接登录或找回密码。');
   }
 }

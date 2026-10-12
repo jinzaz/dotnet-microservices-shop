@@ -2,13 +2,6 @@ namespace MSA.IdentityService;
 
 internal static class IdentityServiceConstants
 {
-    internal static class RateLimits
-    {
-        internal const string Authentication = "identity-authentication";
-        internal const string Registration = "identity-registration";
-        internal const string SmsDispatch = "identity-sms-dispatch";
-    }
-
     #region Scopes
     internal static class Scopes
     {

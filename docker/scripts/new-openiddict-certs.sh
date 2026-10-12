@@ -62,10 +62,10 @@ for name in "${only[@]}"; do
 done
 
 {
-  echo "# 由 scripts/new-openiddict-certs 生成：OpenIddict 密钥证书的随机口令。不入库，与 certs/ 下的证书一起保管。"
-  for name in identity bff-web bff-bm; do
-    key="${variable[$name]}"
-    [ -n "${pw[$key]:-}" ] && echo "$key='${pw[$key]}'"
+  echo "# 由 scripts/new-openiddict-certs 和 scripts/new-bodyenc-certs 生成：密钥证书的随机口令。不入库，与 certs/ 下的证书一起保管。"
+  # 整份写回（含 bodyenc 那两项），开头已把旧文件全部读进 pw，不能只写自己的三项。
+  for key in "${!pw[@]}"; do
+    echo "$key='${pw[$key]}'"
   done
 } > "$passwords"
 # pfx 本身是密码加密的 PKCS12，光有读权限拿不到私钥；容器里跑的是镜像自带的非 root 用户（跟宿主机生成

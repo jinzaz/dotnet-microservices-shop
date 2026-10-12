@@ -1,10 +1,11 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
+using MSA.IdentityService.Infrastructure.Throttling;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
@@ -12,6 +13,8 @@ using MSA.IdentityService.Application.Sms;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace MSA.IdentityService.Controllers;
@@ -28,6 +31,7 @@ public sealed class AuthController(
     IOpenIddictScopeManager scopes,
     IAntiforgery antiforgery,
     ISmsVerificationService smsVerification,
+    IdentityThrottle throttle,
     IOptions<SmsOptions> smsOptions,
     IConfiguration configuration,
     ILogger<AuthController> logger,
@@ -49,20 +53,14 @@ public sealed class AuthController(
     [AllowAnonymous]
     [HttpPost("register")]
     [ValidateAntiForgeryToken]
-    [EnableRateLimiting(IdentityServiceConstants.RateLimits.Registration)]
+    [Throttle(ThrottlePolicy.Registration)]
     public async Task<IActionResult> Register(RegisterRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.DisplayName))
-            return ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]>
-            {
-                [nameof(request.DisplayName)] = ["显示名称不能为空。"]
-            }));
-
         var user = new ApplicationUser
         {
             UserName = request.Email.Trim(),
             Email = request.Email.Trim(),
-            DisplayName = request.DisplayName.Trim(),
+            DisplayName = SafeDisplayNameAttribute.Normalize(request.DisplayName),
             EmailConfirmed = false,
             LockoutEnabled = true,
             CreatedOnUtc = timeProvider.GetUtcNow()
@@ -71,49 +69,81 @@ public sealed class AuthController(
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var result = await users.CreateAsync(user, request.Password);
         if (!result.Succeeded)
-            return IdentityValidationProblem(result);
+        {
+            // 邮箱已注册时与注册成功返回同样的 204，注册接口不再直接回答"这个邮箱有没有注册"。
+            // CreateAsync 先校验密码再查重，所以弱密码对新旧邮箱的报错也一样。
+            // 没有邮箱确认流程时这只能提高探测成本：对方仍可以拿自己填的密码去登录试出来（登录也有限流）。
+            var errors = result.Errors
+                .Where(error => error.Code is not (nameof(IdentityErrorDescriber.DuplicateEmail)
+                    or nameof(IdentityErrorDescriber.DuplicateUserName)))
+                .ToArray();
+            if (errors.Length > 0)
+                return IdentityValidationProblem(IdentityResult.Failed(errors));
+
+            logger.LogInformation("Registration attempted with an email that is already registered.");
+            return NoContent();
+        }
 
         result = await users.AddToRoleAsync(user, "customer");
         if (!result.Succeeded)
             return IdentityValidationProblem(result);
 
         await transaction.CommitAsync(cancellationToken);
-        return Created(
-            $"/Auth/users/{user.Id}",
-            new RegisteredUserResponse(user.Id, user.Email!, user.DisplayName));
+        return NoContent();
     }
 
     [AllowAnonymous]
     [HttpPost("login/password")]
     [ValidateAntiForgeryToken]
-    [EnableRateLimiting(IdentityServiceConstants.RateLimits.Authentication)]
+    [Throttle(ThrottlePolicy.Authentication)]
     public async Task<IActionResult> PasswordLogin(PasswordLoginRequest request)
     {
-        var user = await users.FindByEmailAsync(request.Email.Trim());
+        // 失败按"客户端 IP + 账号"计数，不锁账号本身：攻击者只能挡住自己那个 IP，挡不住真正的用户。
+        // 账号不存在时同样计数、同样提示，不暴露账号是否存在。
+        var email = request.Email.Trim();
+        var failurePartition = LoginFailurePartition(email);
+        if (await throttle.PeekAsync(ThrottlePolicy.LoginFailures, failurePartition) is { } retryAfter)
+            return IdentityThrottle.TooManyRequests(HttpContext, retryAfter);
+
+        var user = await users.FindByEmailAsync(email);
         if (user is null || !user.IsActive)
-            return InvalidLogin();
+            return await FailedPasswordLogin(failurePartition);
 
         var result = await signIn.PasswordSignInAsync(
             user,
             request.Password,
             request.RememberMe,
-            lockoutOnFailure: true);
+            lockoutOnFailure: false);
         if (result.RequiresTwoFactor)
         {
             await HttpContext.SignOutAsync(IdentityConstants.TwoFactorUserIdScheme);
             return TwoFactorRequired();
         }
         if (!result.Succeeded)
-            return InvalidLogin();
+            return await FailedPasswordLogin(failurePartition);
 
+        await throttle.ResetAsync(ThrottlePolicy.LoginFailures, failurePartition);
         await RecordSuccessfulLogin(user);
         return NoContent();
+    }
+
+    private string LoginFailurePartition(string email)
+    {
+        // 键里不放明文邮箱
+        var account = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(users.NormalizeEmail(email)!)));
+        return $"{IdentityThrottle.ClientPartition(HttpContext)}:{account[..32]}";
+    }
+
+    private async Task<IActionResult> FailedPasswordLogin(string failurePartition)
+    {
+        await throttle.HitAsync(ThrottlePolicy.LoginFailures, failurePartition);
+        return InvalidLogin();
     }
 
     [AllowAnonymous]
     [HttpPost("login/sms/code")]
     [ValidateAntiForgeryToken]
-    [EnableRateLimiting(IdentityServiceConstants.RateLimits.SmsDispatch)]
+    [Throttle(ThrottlePolicy.SmsDispatch)]
     public async Task<ActionResult<SmsLoginCodeRequestedResponse>> RequestSmsLoginCode(
         RequestSmsLoginCodeRequest request,
         CancellationToken cancellationToken)
@@ -127,7 +157,7 @@ public sealed class AuthController(
     [AllowAnonymous]
     [HttpPost("login/sms")]
     [ValidateAntiForgeryToken]
-    [EnableRateLimiting(IdentityServiceConstants.RateLimits.Authentication)]
+    [Throttle(ThrottlePolicy.Authentication)]
     public async Task<IActionResult> SmsLogin(
         SmsLoginRequest request,
         CancellationToken cancellationToken)
@@ -152,7 +182,7 @@ public sealed class AuthController(
     [AllowAnonymous]
     [HttpPost("password/reset/code")]
     [ValidateAntiForgeryToken]
-    [EnableRateLimiting(IdentityServiceConstants.RateLimits.SmsDispatch)]
+    [Throttle(ThrottlePolicy.SmsDispatch)]
     public async Task<ActionResult<SmsLoginCodeRequestedResponse>> RequestPasswordResetCode(
         RequestSmsLoginCodeRequest request,
         CancellationToken cancellationToken)
@@ -166,7 +196,7 @@ public sealed class AuthController(
     [AllowAnonymous]
     [HttpPost("password/reset")]
     [ValidateAntiForgeryToken]
-    [EnableRateLimiting(IdentityServiceConstants.RateLimits.Authentication)]
+    [Throttle(ThrottlePolicy.Authentication)]
     public async Task<IActionResult> ResetPassword(
         SmsPasswordResetRequest request,
         CancellationToken cancellationToken)
@@ -391,7 +421,7 @@ public sealed class AuthController(
 
     [Authorize]
     [HttpPost("change-password")]
-    [EnableRateLimiting(IdentityServiceConstants.RateLimits.Authentication)]
+    [Throttle(ThrottlePolicy.Authentication)]
     public async Task<IActionResult> ChangePassword(
         ChangePasswordRequest request,
         CancellationToken cancellationToken)
@@ -547,7 +577,38 @@ public sealed class AuthController(
 public sealed record RegisterRequest(
     [Required, EmailAddress, StringLength(256)] string Email,
     [Required, StringLength(128, MinimumLength = 10)] string Password,
-    [Required, StringLength(100)] string DisplayName);
+    [Required, StringLength(100), SafeDisplayName] string DisplayName);
+
+/// <summary>
+/// 显示名称会出现在后台列表、商城评价等别人能看到的地方：拒绝控制字符、换行、零宽字符、
+/// RTL/LTR 方向覆盖（U+202E 之类，能把"evil"显示成"live"冒充别人）、私用区与未分配码位。
+/// 代价是带零宽连接符的组合 emoji（👨‍👩‍👧）也会被拒，单个 emoji 不受影响。
+/// </summary>
+[AttributeUsage(AttributeTargets.Parameter | AttributeTargets.Property)]
+public sealed class SafeDisplayNameAttribute() : ValidationAttribute("显示名称不能为空，且不能包含换行、零宽或方向控制等不可见字符。")
+{
+    public static string Normalize(string value) => value.Trim().Normalize(NormalizationForm.FormC);
+
+    public override bool IsValid(object? value)
+    {
+        if (value is null)
+            return true; // 交给 [Required]
+        if (value is not string text)
+            return false;
+
+        foreach (var rune in text.EnumerateRunes())
+        {
+            // 不成对的代理项会被枚举成 U+FFFD；必须先排除，否则 Normalize 会抛异常
+            if (rune == Rune.ReplacementChar)
+                return false;
+            if (Rune.GetUnicodeCategory(rune) is UnicodeCategory.Control or UnicodeCategory.Format
+                or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator
+                or UnicodeCategory.PrivateUse or UnicodeCategory.OtherNotAssigned)
+                return false;
+        }
+        return Normalize(text).Length > 0;
+    }
+}
 
 /// <summary>使用邮箱和密码登录。</summary>
 public sealed record PasswordLoginRequest(
@@ -559,9 +620,6 @@ public sealed record PasswordLoginRequest(
 public sealed record ChangePasswordRequest(
     [Required, StringLength(128)] string CurrentPassword,
     [Required, StringLength(128, MinimumLength = 10)] string NewPassword);
-
-/// <summary>注册成功后的账户摘要。</summary>
-public sealed record RegisteredUserResponse(string Id, string Email, string DisplayName);
 
 /// <summary>由客户端回传到 X-XSRF-TOKEN 请求头的防伪令牌。</summary>
 public sealed record AntiforgeryTokenResponse(string Token);

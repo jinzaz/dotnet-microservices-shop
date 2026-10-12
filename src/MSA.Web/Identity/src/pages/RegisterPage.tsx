@@ -114,6 +114,7 @@ export default function RegisterPage() {
           onChange={(event) => setEmail(event.target.value)}
           placeholder="name@example.com"
           autoComplete="email"
+          maxLength={256}
           required
           leading={<Icon name="mail" />}
           error={errors.email}

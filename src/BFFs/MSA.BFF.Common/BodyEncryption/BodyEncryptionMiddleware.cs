@@ -75,9 +75,12 @@ public sealed class BodyEncryptionMiddleware(BodyEncryptionKeyRing keyRing, ILog
             return;
         }
 
-        if (context.Request.ContentLength is > 0)
+        // 不能只看 ContentLength：分块传输的请求体没有长度（null），只看长度会原样放行密文，
+        // 后面的 JSON 绑定收到 application/vnd.msa.enc 就是 415。客户端声明了加密类型就一定要解密。
+        var encryptedBody = string.Equals(context.Request.ContentType, ContentType, StringComparison.OrdinalIgnoreCase);
+        if (encryptedBody || context.Request.ContentLength is > 0)
         {
-            if (!string.Equals(context.Request.ContentType, ContentType, StringComparison.OrdinalIgnoreCase))
+            if (!encryptedBody)
             {
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
                 return;
@@ -88,6 +91,10 @@ public sealed class BodyEncryptionMiddleware(BodyEncryptionKeyRing keyRing, ILog
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
                 return;
             }
+
+            // 端点是按解密前的 Content-Type 选的（可能是 415），清掉让后面的第二次路由重新匹配，见 UseBffBodyEncryption。
+            context.SetEndpoint(null);
+            context.Request.RouteValues.Clear();
         }
 
         var originalResponseBody = context.Response.Body;

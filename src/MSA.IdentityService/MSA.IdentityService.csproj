@@ -40,6 +40,7 @@
 	  <ProjectReference Include="..\MSA.Persistence.Postgres\MSA.Persistence.Postgres.csproj" />
 	  <ProjectReference Include="..\MSA.Infrastrucute\MSA.Infrastrucute.csproj" />
 	  <ProjectReference Include="..\MSA.Certificates\MSA.Certificates.csproj" />
+	  <ProjectReference Include="..\MSA.Redis\MSA.Redis.csproj" />
 	</ItemGroup>
 
 </Project>

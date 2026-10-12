@@ -1,6 +1,6 @@
-using System.Threading.RateLimiting;
-using Microsoft.AspNetCore.RateLimiting;
 using MSA.Certificates;
+using MSA.IdentityService.Infrastructure.Throttling;
+using MSA.Redis;
 using Microsoft.AspNetCore.WebUtilities;
 using OpenIddict.Validation.AspNetCore;
 
@@ -8,19 +8,19 @@ namespace Microsoft.Extensions.DependencyInjection;
 
 internal static class ServiceCollection
 {
-    internal static IServiceCollection AddIdentityRateLimiting(this IServiceCollection services)
+    internal static IServiceCollection AddIdentityThrottling(
+        this IServiceCollection services,
+        IConfiguration configuration)
     {
-        services.AddRateLimiter(options =>
-        {
-            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            options.AddPolicy(IdentityServiceConstants.RateLimits.Authentication, context =>
-                CreateIpLimiter(context, permitLimit: 10, TimeSpan.FromMinutes(1)));
-            options.AddPolicy(IdentityServiceConstants.RateLimits.Registration, context =>
-                CreateIpLimiter(context, permitLimit: 5, TimeSpan.FromHours(1)));
-            options.AddPolicy(IdentityServiceConstants.RateLimits.SmsDispatch, context =>
-                CreateIpLimiter(context, permitLimit: 5, TimeSpan.FromMinutes(10)));
-        });
-
+        services.AddMsaRedis(configuration, "identity");
+        services.AddOptions<ThrottleOptions>()
+            .Bind(configuration.GetSection(ThrottleOptions.SectionName))
+            .Validate(options => Enum.GetValues<ThrottlePolicy>()
+                    .Select(options.For)
+                    .All(rule => rule.PermitLimit > 0 && rule.WindowSeconds > 0),
+                "Throttling rules need a positive PermitLimit and WindowSeconds.")
+            .ValidateOnStart();
+        services.AddSingleton<IdentityThrottle>();
         return services;
     }
 
@@ -48,9 +48,7 @@ internal static class ServiceCollection
             options.Password.RequireUppercase = true;
             options.Password.RequireNonAlphanumeric = true;
             options.User.RequireUniqueEmail = true;
-            options.Lockout.MaxFailedAccessAttempts = 5;
-            options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
-            options.Lockout.AllowedForNewUsers = true;
+            // 密码错误不锁账号（别人知道邮箱就能反复把它锁住），改为按"IP + 账号"计数，见 AuthController.PasswordLogin。
             options.SignIn.RequireConfirmedEmail = false;
         })
         .AddEntityFrameworkStores<ApplicationDbContext>()
@@ -188,19 +186,4 @@ internal static class ServiceCollection
 
         return services;
     }
-
-    private static RateLimitPartition<string> CreateIpLimiter(
-        HttpContext context,
-        int permitLimit,
-        TimeSpan window) =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = permitLimit,
-                Window = window,
-                AutoReplenishment = true,
-                QueueLimit = 0,
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst
-            });
 }
