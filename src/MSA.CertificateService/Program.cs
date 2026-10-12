@@ -28,6 +28,7 @@ builder.Services.AddScoped<AcmeSubscriptions>();
 builder.Services.AddSingleton<DnsPropagationChecker>();
 builder.Services.AddSingleton<IDnsChallengeProvider, AliyunDnsProvider>();
 builder.Services.AddSingleton<IDnsChallengeProvider, CloudflareDnsProvider>();
+builder.Services.AddSingleton<IDnsChallengeProvider, DnsPodDnsProvider>();
 builder.Services.AddOptions<AcmeOptions>()
     .Bind(builder.Configuration.GetSection(AcmeOptions.SectionName))
     .Validate(options =>
@@ -41,6 +42,7 @@ builder.Services.AddHttpClient(AcmeOptions.HttpClientName, client => client.Defa
 builder.Services.AddHttpClient(DnsPropagationChecker.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddHttpClient(AliyunDnsProvider.HttpClientName, client => client.BaseAddress = new Uri("https://alidns.aliyuncs.com/"));
 builder.Services.AddHttpClient(CloudflareDnsProvider.HttpClientName, client => client.BaseAddress = new Uri("https://api.cloudflare.com/client/v4/"));
+builder.Services.AddHttpClient(DnsPodDnsProvider.HttpClientName, client => client.BaseAddress = new Uri($"https://{DnsPodDnsProvider.Host}/"));
 
 builder.Services.AddSingleton<CertificateRenewalTrigger>();
 builder.Services.AddSingleton<CertificateRenewalStatus>();

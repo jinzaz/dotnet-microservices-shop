@@ -22,6 +22,8 @@ services:
       MSA_ACME_ALIYUN_ACCESS_KEY_ID: "${MSA_ACME_ALIYUN_ACCESS_KEY_ID:-}"
       MSA_ACME_ALIYUN_ACCESS_KEY_SECRET: "${MSA_ACME_ALIYUN_ACCESS_KEY_SECRET:-}"
       MSA_ACME_CLOUDFLARE_API_TOKEN: "${MSA_ACME_CLOUDFLARE_API_TOKEN:-}"
+      MSA_ACME_DNSPOD_SECRET_ID: "${MSA_ACME_DNSPOD_SECRET_ID:-}"
+      MSA_ACME_DNSPOD_SECRET_KEY: "${MSA_ACME_DNSPOD_SECRET_KEY:-}"
       # 当前 TLS 证书写到这里：<站点名>/fullchain.pem、privkey.pem。同一个宿主机目录以只读方式挂给 nginx。
       Tls__DeployDirectory: /deploy/tls
     volumes:

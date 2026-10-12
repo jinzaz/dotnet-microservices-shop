@@ -178,6 +178,109 @@ internal sealed class AliyunDnsProvider(IHttpClientFactory httpClientFactory, Ti
 }
 
 /// <summary>
+/// 腾讯云 DNSPod（云 API 3.0，TC3-HMAC-SHA256 签名）：MSA_ACME_DNSPOD_SECRET_ID / MSA_ACME_DNSPOD_SECRET_KEY，
+/// CAM 子用户只需要 QcloudDNSPodFullAccess。
+/// </summary>
+internal sealed class DnsPodDnsProvider(IHttpClientFactory httpClientFactory, TimeProvider time) : IDnsChallengeProvider
+{
+    public const string HttpClientName = "dns-dnspod";
+    internal const string Host = "dnspod.tencentcloudapi.com";
+    private const string Service = "dnspod";
+    private const string Version = "2021-03-23";
+    private const string SecretIdVariable = "MSA_ACME_DNSPOD_SECRET_ID";
+    private const string SecretKeyVariable = "MSA_ACME_DNSPOD_SECRET_KEY";
+
+    public string Name => "dnspod";
+    public string DisplayName => "腾讯云 DNSPod";
+
+    public bool IsConfigured =>
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(SecretIdVariable)) &&
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(SecretKeyVariable));
+
+    public async Task<string> AddTxtRecordAsync(string fqdn, string value, CancellationToken cancellationToken)
+    {
+        var name = fqdn.TrimEnd('.');
+        // 账号下托管的域名里，取 fqdn 以它结尾的最长那个，剩下的前缀就是主机记录。
+        var domains = await CallAsync("DescribeDomainList", new { Limit = 3000 }, cancellationToken);
+        var domain = domains.GetProperty("DomainList").EnumerateArray()
+            .Select(item => item.GetProperty("Name").GetString()!)
+            .Where(candidate => name.EndsWith("." + candidate, StringComparison.OrdinalIgnoreCase))
+            .MaxBy(candidate => candidate.Length)
+            ?? throw new AcmeException($"No DNSPod domain hosts {fqdn}.");
+
+        var created = await CallAsync("CreateRecord", new
+        {
+            Domain = domain,
+            SubDomain = name[..^(domain.Length + 1)],
+            RecordType = "TXT",
+            RecordLine = "默认",
+            Value = value,
+            TTL = 600 // 免费套餐的最小 TTL
+        }, cancellationToken);
+        return $"{domain}/{created.GetProperty("RecordId").GetInt64()}";
+    }
+
+    public async Task RemoveTxtRecordAsync(string handle, CancellationToken cancellationToken)
+    {
+        var separator = handle.LastIndexOf('/');
+        await CallAsync("DeleteRecord", new
+        {
+            Domain = handle[..separator],
+            RecordId = long.Parse(handle[(separator + 1)..], CultureInfo.InvariantCulture)
+        }, cancellationToken);
+    }
+
+    private async Task<JsonElement> CallAsync(string action, object parameters, CancellationToken cancellationToken)
+    {
+        var secretId = Environment.GetEnvironmentVariable(SecretIdVariable) ?? throw new AcmeException($"{SecretIdVariable} is not set.");
+        var secretKey = Environment.GetEnvironmentVariable(SecretKeyVariable) ?? throw new AcmeException($"{SecretKeyVariable} is not set.");
+
+        var payload = JsonSerializer.Serialize(parameters);
+        var timestamp = time.GetUtcNow().ToUnixTimeSeconds();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/")
+        {
+            // StringContent 的 Content-Type 正好是 "application/json; charset=utf-8"，和签名里的规范头一致。
+            Content = new StringContent(payload, Encoding.UTF8, "application/json")
+        };
+        request.Headers.TryAddWithoutValidation("Authorization", Authorization(secretId, secretKey, payload, timestamp));
+        request.Headers.Add("X-TC-Action", action);
+        request.Headers.Add("X-TC-Version", Version);
+        request.Headers.Add("X-TC-Timestamp", timestamp.ToString(CultureInfo.InvariantCulture));
+
+        using var response = await httpClientFactory.CreateClient(HttpClientName).SendAsync(request, cancellationToken);
+        // 业务错误也是 HTTP 200，错误放在 Response.Error 里。
+        var body = (await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken)).GetProperty("Response");
+        if (body.TryGetProperty("Error", out var error))
+            throw new AcmeException($"DNSPod {action} failed: {error.GetProperty("Code").GetString()} {error.GetProperty("Message").GetString()}");
+        return body;
+    }
+
+    /// <summary>
+    /// TC3-HMAC-SHA256：规范请求（只签 content-type 和 host 两个头，值小写）→ 待签字符串 →
+    /// 用 "TC3"+SecretKey 依次对日期、服务名、"tc3_request" 派生签名密钥 → 十六进制小写签名。
+    /// </summary>
+    internal static string Authorization(string secretId, string secretKey, string payload, long timestamp)
+    {
+        var date = DateTimeOffset.FromUnixTimeSeconds(timestamp).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var canonicalRequest =
+            "POST\n/\n\n" +
+            $"content-type:application/json; charset=utf-8\nhost:{Host}\n\n" +
+            "content-type;host\n" +
+            Hex(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
+        var scope = $"{date}/{Service}/tc3_request";
+        var stringToSign = $"TC3-HMAC-SHA256\n{timestamp}\n{scope}\n{Hex(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalRequest)))}";
+
+        var key = HMACSHA256.HashData(Encoding.UTF8.GetBytes("TC3" + secretKey), Encoding.UTF8.GetBytes(date));
+        key = HMACSHA256.HashData(key, Encoding.UTF8.GetBytes(Service));
+        key = HMACSHA256.HashData(key, "tc3_request"u8);
+        var signature = Hex(HMACSHA256.HashData(key, Encoding.UTF8.GetBytes(stringToSign)));
+        return $"TC3-HMAC-SHA256 Credential={secretId}/{scope}, SignedHeaders=content-type;host, Signature={signature}";
+    }
+
+    private static string Hex(byte[] bytes) => Convert.ToHexStringLower(bytes);
+}
+
+/// <summary>
 /// 加完 TXT 记录后先通过 DNS-over-HTTPS 确认它查得到，再让 CA 来验证，减少因为解析还没生效导致的失败。
 /// 超时仍查不到也照样提交：CA 直接查权威服务器，公共解析器可能只是还有缓存。
 /// </summary>

@@ -204,7 +204,7 @@ ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 
 - **换证书不用重启**：各服务每分钟检查一次证书库，新证书到生效时间自动启用。
 - **定时任务**：证书服务每小时检查一轮（`Renewal__Interval`），后台可以"立即检查续期"。失败的 ACME 申请按 1、2、4…24 小时退避重试。
 - **ACME**：普通域名可用 HTTP-01（nginx 80 端口已把 `/.well-known/acme-challenge/` 转给证书服务）；通配符域名只能用 DNS-01，
-  需要配置阿里云或 Cloudflare 凭据。先用"测试环境"跑通再切正式环境。
+  需要配置阿里云、Cloudflare 或腾讯云 DNSPod 凭据。大陆服务器未备案时 80 端口被拦截，HTTP-01 也只能改用 DNS-01。先用"测试环境"跑通再切正式环境。
 - **nginx 生效**：nginx 不会自己重新读证书。把 `nginx/cert-reload.sh` 挂进 nginx 容器（官方镜像启动时会执行 `/docker-entrypoint.d/` 下的脚本），
   它每 60 秒比较一次证书目录的校验和，变了就 `nginx -t` 通过后 `nginx -s reload`（平滑重载，不断开连接）；校验失败不重载，日志里带原因，下一轮重试：
   ```yaml
