@@ -67,6 +67,7 @@
     <File Path="Directory.Packages.props" />
     <File Path="global.json" />
     <File Path="msa.env" />
+    <File Path="msa.local.env" />
     <File Path="GlobalUsings.MSBuildProjectName.props" />
     <File Path="NuGet.config" />
   </Folder>

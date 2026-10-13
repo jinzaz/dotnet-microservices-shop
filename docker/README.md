@@ -140,7 +140,7 @@ ASP.NET Core 的叠加顺序是：镜像里的 `appsettings.json` → 挂载的 
 
 - **客户端密钥不进配置**：`MSA_CLIENT_SECRET_<ClientId 大写>` 由用到的地方按 ClientId 直接读环境变量（`MsaEnvironment.ClientSecret`）——
   `ServiceAuthenticationOptions.ClientSecret`、认证中心注册客户端、BFF 的 OpenIddict 客户端；appsettings 里写了 `ClientSecret` 也不生效。
-- **本地开发**：仓库根目录的 `msa.env`（从服务目录逐级向上查找）在启动时写进进程环境变量，已设置的不覆盖。
+- **本地开发**：仓库根目录的 `msa.env`（从服务目录逐级向上查找，入库的本地默认值）和同目录的 `msa.local.env`（个人地址与口令，不入库）在启动时写进进程环境变量，已设置的不覆盖；优先级：环境变量 > `msa.local.env` > `msa.env`。
 - **Docker**：`base/dotnet-service.yaml` 的 `dotnet-infra-service` 把 `INFRA_*` 透传给除网关外的所有服务；
   `MSA_SERVICE_AUTHORITY` 与客户端密钥只注入需要它的容器（认证中心拿全部，其他服务只拿自己的）。`msa.env` 不进镜像（`.dockerignore`）。
 - 服务声明了连接串却拿不到主机地址时直接启动失败并提示缺哪个变量；没声明的部分（比如网关没有数据库）不会被合并。
@@ -254,10 +254,31 @@ ECDH P-256，跟上面的 OpenIddict 证书是完全独立的两套密钥，口�
   轮换后要等前端重新拉一次 `/bff/security/public-key`（默认每次页面刷新都会拉，不用特别处理，
   但正在进行中的一次请求可能会失败一次，刷新重试即可）。
 
+## .NET GC 与内存
+
+`base/dotnet-service.yaml` 给每个服务设了容器内存上限（`MSA_MEM_LIMIT`，默认 320m；网关、两个 BFF、认证中心、订单、目录用
+`MSA_MEM_LIMIT_LARGE`，默认 448m），并默认用 Workstation GC（`MSA_DOTNET_GC_SERVER=0`）。
+
+.NET 读得到 cgroup 的内存限制，自动把 GC 堆上限设成它的 75%：堆接近上限时先做完整回收，回收不下来才抛 OutOfMemoryException，
+不会一直涨到被内核杀掉。上限不是预留，所有服务的上限加起来可以超过机器内存。
+
+| `DOTNET_gcServer` | 模式 | 特点 | 适用 |
+|---|---|---|---|
+| `0` | Workstation GC（默认后台并发回收） | 一个堆；回收频繁但每次小，常驻内存最低 | 一台机器跑很多服务、核少（2C4G） |
+| `1` | Server GC + DATAS（.NET 9 起默认开启） | 按负载在 1 到核数个堆之间动态调整，吞吐高；空闲时会收缩，但峰值后常驻内存仍明显高于 Workstation | 核多、服务独占机器或流量大 |
+| 不设 | 跟随 runtimeconfig：Web SDK 默认写入 `System.GC.Server=true`，即 Server GC | | |
+
+相关变量（GC 的数值型环境变量按**十六进制**解析）：
+- `DOTNET_gcConcurrent=0`：关掉后台并发回收，再省一点内存和一个后台线程，代价是 gen2 回收期间暂停更长。一般不用动。
+- `DOTNET_GCConserveMemory=0~9`（`MSA_DOTNET_GC_CONSERVE_MEMORY`）：越大越积极地压缩大对象堆，适合大对象多、碎片多的服务。
+- `DOTNET_GCDynamicAdaptationMode=0`：Server GC 下关掉 DATAS，回到固定每核一个堆（.NET 8 及以前的行为），内存最高，不建议。
+- `DOTNET_GCHeapHardLimit` / `DOTNET_GCHeapHardLimitPercent`：手动指定堆上限；已经设了 `mem_limit` 时不用再配。
+
 ## 可观测性
 
 所有服务通过 `MSA.Observability` 把链路、指标、日志用 OTLP（gRPC）发往 `MSA_OTLP_ENDPOINT`。
 可以填 Collector、Aspire Dashboard 或 Jaeger 的地址。基础设施的 Collector 如果也在 `dotnet-infra_backend` 网络里，直接写它的容器名，例如 `http://otel-collector:4317`。
+仓库自带的监控栈见 [monitor/README.md](monitor/README.md)（Collector 容器名 `monitor-otel-collector`）。
 
 ## 已知限制
 

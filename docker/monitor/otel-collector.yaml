@@ -7,14 +7,38 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
+  # 必须排在每条流水线的第一个：内存超过上限时拒收（SDK 会重试），而不是把容器撑到被 OOM 杀掉。
   memory_limiter:
-    check_interval: 5s
-    limit_mib: 512
-    spike_limit_mib: 128
+    check_interval: 1s
+    limit_mib: ${env:OTEL_MEMORY_LIMIT_MIB:-200}
+    spike_limit_mib: 50
+
+  # 链路尾部采样：一条链路的所有 span 到齐（decision_wait）后再决定留不留，所以能按结果挑：
+  # 出错的、慢的全留，正常的按比例抽样。各服务的 SDK 不做采样（全量上报），在这里统一控制量。
+  # 下面三条策略是"或"的关系，命中任意一条就保留。
+  tail_sampling:
+    decision_wait: 10s
+    # 同时在内存里等待决策的链路数上限，决定这个处理器的内存占用。
+    num_traces: 20000
+    expected_new_traces_per_sec: 50
+    policies:
+      - name: errors
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
+      - name: slow
+        type: latency
+        latency:
+          threshold_ms: ${env:TRACE_SLOW_MS:-500}
+      - name: baseline
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: ${env:TRACE_SAMPLING_PERCENT:-20}
 
   batch:
     timeout: 5s
     send_batch_size: 1024
+    send_batch_max_size: 2048
 
 exporters:
   # Trace -> Tempo
@@ -26,6 +50,8 @@ exporters:
   # Metrics -> Prometheus scrape endpoint
   prometheus:
     endpoint: 0.0.0.0:8889
+    # 一个时间序列这么久没有新数据就不再暴露（服务下线、容器重建换了实例 ID 后不留僵尸序列）。
+    metric_expiration: 5m
 
   # Logs -> Loki native OTLP endpoint
   otlphttp/loki:
@@ -34,12 +60,12 @@ exporters:
 service:
   telemetry:
     logs:
-      level: info
+      level: warn
 
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, tail_sampling, batch]
       exporters: [otlp/tempo]
 
     metrics:

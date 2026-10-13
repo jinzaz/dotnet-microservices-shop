@@ -16,12 +16,18 @@ datasources:
     url: http://tempo:3200
     editable: true
     jsonData:
+      # 从链路跳到这条链路的日志。日志经 OTLP 进 Loki：service.name 变成标签 service_name，
+      # trace_id 存在结构化元数据里而不在日志正文中，所以用自定义查询按元数据过滤，不能用正文的 |= 搜索。
       tracesToLogsV2:
         datasourceUid: loki
         spanStartTimeShift: "-1m"
         spanEndTimeShift: "1m"
-        filterByTraceID: true
-        filterBySpanID: true
+        tags:
+          - key: service.name
+            value: service_name
+        customQuery: true
+        # 预置文件会展开 $VAR / ${VAR} 环境变量，Grafana 自己的模板变量要写成 $$ 转义。
+        query: '{$${__tags}} | trace_id="$${__trace.traceId}"'
       tracesToMetrics:
         datasourceUid: prometheus
         spanStartTimeShift: "-1m"
@@ -33,3 +39,13 @@ datasources:
     access: proxy
     url: http://loki:3100
     editable: true
+    jsonData:
+      # 从日志跳到链路：结构化元数据 trace_id 生成一个打开 Tempo 的链接。
+      # 链路被尾部采样丢掉时，这个链接会打不开（日志是全量的，链路只留错误、慢请求和一部分正常请求）。
+      derivedFields:
+        - name: TraceID
+          matcherType: label
+          matcherRegex: trace_id
+          url: "$${__value.raw}"
+          datasourceUid: tempo
+          urlDisplayLabel: 查看链路

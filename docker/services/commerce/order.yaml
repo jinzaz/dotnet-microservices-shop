@@ -10,6 +10,7 @@ services:
     image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/order-service:${MSA_IMAGE_TAG:-latest}
     pull_policy: ${MSA_PULL_POLICY:-missing}
     container_name: msa-order
+    mem_limit: ${MSA_MEM_LIMIT_LARGE:-448m}
     environment:
       ServiceAuthentication__ClientId: "MSA_Svc_Order"
       Kestrel__Endpoints__Http__Url: "http://+:8080"

@@ -3,7 +3,16 @@
 services:
   dotnet-service:
     restart: unless-stopped
+    # 容器内存上限。.NET 读得到 cgroup 限制，自动把 GC 堆上限设成它的 75%：堆快到上限时先做完整回收，
+    # 而不是一直涨到被内核 OOM 杀掉。流量大的服务（网关、两个 BFF、认证中心、订单、目录）在各自文件里改用 MSA_MEM_LIMIT_LARGE。
+    # 这是上限而不是预留：所有服务的上限加起来可以超过机器内存，只要实际占用加起来不超过就行。
+    mem_limit: ${MSA_MEM_LIMIT:-320m}
     environment:
+      # GC 模式（见 README「.NET GC 与内存」）。ASP.NET Core 默认 Server GC：每个核一个堆、按吞吐量放大预算，
+      # 一台机器跑十几个服务时内存占用翻倍还互相抢核。2 核小机器用 Workstation GC（0）；单独部署、核多的机器可以改回 1。
+      DOTNET_gcServer: ${MSA_DOTNET_GC_SERVER:-0}
+      # 0~9，越大越积极地压缩大对象堆、少占内存（多花一点 CPU）。默认 0 不开；内存紧张时可以试 5。
+      DOTNET_GCConserveMemory: ${MSA_DOTNET_GC_CONSERVE_MEMORY:-0}
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       # 服务只开明文 HTTP，TLS 在入口代理终止。打开转发头处理后，认证中心与 BFF 才能从 X-Forwarded-Proto
       # 认出原始请求是 HTTPS：OpenIddict 只接受 HTTPS、BFF 的会话 Cookie 带 Secure、登录回调地址也按它生成。
@@ -27,6 +36,8 @@ services:
       INFRA_POSTGRES_PORT: ${INFRA_POSTGRES_PORT:-5432}
       INFRA_POSTGRES_USER: ${INFRA_POSTGRES_USER}
       INFRA_POSTGRES_PASSWORD: ${INFRA_POSTGRES_PASSWORD}
+      # 每个连接串的连接池上限（Npgsql 默认 100）。十来个服务都按默认值时，高峰期总连接数会冲破 PostgreSQL 的 max_connections。
+      INFRA_POSTGRES_MAX_POOL_SIZE: ${INFRA_POSTGRES_MAX_POOL_SIZE:-15}
       INFRA_REDIS_HOST: ${INFRA_REDIS_HOST}
       INFRA_REDIS_PORT: ${INFRA_REDIS_PORT:-6379}
       INFRA_REDIS_PASSWORD: ${INFRA_REDIS_PASSWORD}

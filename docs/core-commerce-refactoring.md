@@ -37,12 +37,11 @@ sequenceDiagram
     Bus->>Pay: 创建支付单和 ProviderOperation（同一事务）
     Pay->>Pay: 后台租约任务调用支付渠道
     Pay-->>Bus: PaymentSucceeded / PaymentFailed
-    Bus->>Order: 校验金额、币种和定价快照
-    Order-->>Bus: CommitInventory
+    Bus->>Order: 校验金额、币种和定价快照，确认订单并核销优惠券
+    Order-->>Bus: CommitInventory + OrderConfirmed
     Bus->>Stock: 提交预占
     Stock-->>Bus: InventoryCommitted
-    Bus->>Order: 确认订单并核销优惠券
-    Order-->>Bus: OrderConfirmed
+    Bus->>Order: Saga 完成
 ```
 
 失败和超时仍由 Ordering 中的 `OrderFulfillment` Saga 编排：
@@ -50,7 +49,7 @@ sequenceDiagram
 - 库存拒绝：取消订单并释放已占优惠券。
 - 支付失败或付款截止时间到达：释放库存、释放优惠券，并按支付阶段撤销支付。
 - 支付已成功但订单无法继续：使用 Saga 中稳定的 `RefundRequestId` 发起退款，同时释放或补偿库存。
-- 只有收到 `InventoryCommitted` 后订单才进入 `Confirmed`，避免“支付成功但库存提交未知”时过早确认。
+- 支付成功即确认订单：库存在下单后已预占，提交预占不会因库存不足失败。Saga 保持运行，收到 `InventoryCommitted` 才完成；5 分钟内没收到回执，Saga 超时处理会重发 `CommitInventory`（库存侧幂等），直到提交完成。
 - 补偿消息可重试；退款、撤销、释放、提交都验证业务标识并返回幂等确认事件。
 
 ## 3. Catalog 数据库

@@ -1,9 +1,24 @@
+# 监控栈：OTel Collector → Prometheus（指标）/ Tempo（链路）/ Loki（日志）→ Grafana。
+# 保留时长、内存上限都在 .env 里调（见 .env.example）；默认按 2C4G 小机器设置。
+name: monitor
+
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION:-latest}
+    # 固定容器名：各服务的 MSA_OTLP_ENDPOINT=http://monitor-otel-collector:4317（docker/.env）按它访问。
+    container_name: monitor-otel-collector
     restart: unless-stopped
+    mem_limit: ${OTEL_MEM_LIMIT:-256m}
     command:
       - --config=/etc/otelcol-contrib/config.yaml
+    environment:
+      # Go 运行时的软上限（约为 mem_limit 的 80%）：快到上限时更积极地 GC，而不是直接被 OOM 杀掉。
+      GOMEMLIMIT: ${OTEL_GOMEMLIMIT:-200MiB}
+      # memory_limiter 的上限，超过后拒收数据（SDK 会重试），保护进程不被杀。
+      OTEL_MEMORY_LIMIT_MIB: ${OTEL_MEMORY_LIMIT_MIB:-200}
+      # 链路尾部采样：错误、慢请求全留，其余按比例留。
+      TRACE_SAMPLING_PERCENT: ${TRACE_SAMPLING_PERCENT:-20}
+      TRACE_SLOW_MS: ${TRACE_SLOW_MS:-500}
     volumes:
       - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
     networks:
@@ -16,23 +31,34 @@ services:
   prometheus:
     image: prom/prometheus:${PROMETHEUS_VERSION:-latest}
     restart: unless-stopped
+    # Prometheus 3 会按 cgroup 限制自动设置 GOMEMLIMIT，不用再配。
+    mem_limit: ${PROMETHEUS_MEM_LIMIT:-512m}
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}
+      # 按时间和大小两个条件保留，先到哪个就按哪个删最老的块：小磁盘不会被指标撑满。
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-7d}
+      - --storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-2GB}
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     networks:
       - monitor
+      # 抓取 RabbitMQ 等基础设施的指标端点（见 prometheus.yml）。
+      - backend
     depends_on:
       - otel-collector
 
   tempo:
     image: grafana/tempo:${TEMPO_VERSION:-latest}
     restart: unless-stopped
+    mem_limit: ${TEMPO_MEM_LIMIT:-384m}
     command:
       - -config.file=/etc/tempo/tempo.yaml
+      # 让配置文件里的 ${VAR:-默认值} 生效（保留时长从 .env 读）。
+      - -config.expand-env=true
+    environment:
+      TEMPO_RETENTION: ${TEMPO_RETENTION:-72h}
     volumes:
       - ./tempo.yaml:/etc/tempo/tempo.yaml:ro
       - tempo-data:/var/tempo
@@ -42,8 +68,13 @@ services:
   loki:
     image: grafana/loki:${LOKI_VERSION:-3.7.0}
     restart: unless-stopped
+    mem_limit: ${LOKI_MEM_LIMIT:-384m}
     command:
       - -config.file=/etc/loki/local-config.yaml
+      - -config.expand-env=true
+    environment:
+      GOMEMLIMIT: ${LOKI_GOMEMLIMIT:-300MiB}
+      LOKI_RETENTION: ${LOKI_RETENTION:-168h}
     volumes:
       - ./loki.yaml:/etc/loki/local-config.yaml:ro
       - loki-data:/loki
@@ -53,10 +84,16 @@ services:
   grafana:
     image: grafana/grafana:${GRAFANA_VERSION:-latest}
     restart: unless-stopped
+    mem_limit: ${GRAFANA_MEM_LIMIT:-256m}
     environment:
+      GOMEMLIMIT: ${GRAFANA_GOMEMLIMIT:-200MiB}
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      # 不向外上报、不定时检查更新：少几个后台任务，内网机器也不会一直连不上外网报错。
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
@@ -67,11 +104,10 @@ services:
       - prometheus
       - tempo
       - loki
-
-    # 推荐通过 Nginx + shop-front 反向代理 Grafana。
-    # 临时测试时再开启：
+    # 正式访问走入口代理（nginx 与 Grafana 同在 dotnet-infra_frontend，按容器名转发）。
+    # 这里只绑本机回环，临时调试用 ssh -L 3000:127.0.0.1:3000 转发，不把带默认口令的登录页暴露到公网。
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
 
 volumes:
   prometheus-data:
@@ -80,12 +116,13 @@ volumes:
   grafana-data:
 
 networks:
+  # 与 MSA 服务（docker/services/*.yaml）同一组网络：服务按容器名把 OTLP 发给 Collector。
   frontend:
     external: true
-    name: frontend
+    name: dotnet-infra_frontend
   backend:
     external: true
-    name: backend
+    name: dotnet-infra_backend
   monitor:
     driver: bridge
     name: monitor

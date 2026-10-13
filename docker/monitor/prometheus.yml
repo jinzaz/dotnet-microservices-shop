@@ -1,6 +1,7 @@
 global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
+  # 各服务的 OTLP 指标默认 60 秒导出一次，15 秒抓一次大部分是重复数据；30 秒足够，样本量减半。
+  scrape_interval: 30s
+  evaluation_interval: 30s
 
 scrape_configs:
   - job_name: otel-collector
@@ -13,14 +14,13 @@ scrape_configs:
       - targets:
           - localhost:9090
 
-# 后续如需基础设施监控，可再追加 exporter：
-#
-# RabbitMQ:
+  # RabbitMQ 自带的 Prometheus 插件（官方镜像默认启用 rabbitmq_prometheus），端口 15692。
+  # 容器名与 docker/.env 的 INFRA_RABBITMQ_HOST 一致；RabbitMQ 在另一台机器上时改成 <内网 IP>:15692 并在安全组放行。
   - job_name: rabbitmq
     static_configs:
-      - targets: ["rabbitmq:15692"]
-#
-# Node Exporter:
+      - targets: ["base-rabbitmq:15692"]
+
+# 后续如需主机监控，可再追加 exporter：
 #  - job_name: node
 #    static_configs:
 #      - targets: ["node-exporter:9100"]

@@ -1,7 +1,9 @@
+# ${VAR:-默认值} 由 -config.expand-env=true 展开（见 docker-compose.yml）。
 auth_enabled: false
 
 server:
   http_listen_port: 3100
+  log_level: warn
 
 common:
   path_prefix: /loki
@@ -24,8 +26,29 @@ schema_config:
         prefix: index_
         period: 24h
 
+# 过期删除由 compactor 执行：只配 retention_period 不开 retention_enabled，日志永远不会被删。
+compactor:
+  working_directory: /loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  # 标记删除后再等这么久才真正删文件，期间误删还能撤回。
+  retention_delete_delay: 2h
+  delete_request_store: filesystem
+
 limits_config:
   allow_structured_metadata: true
+  # 必须是索引周期（24h）的整数倍。
+  retention_period: ${LOKI_RETENTION:-168h}
+  # 默认 32：一条查询拆成很多并行子查询，2 核机器上大范围查询会把 CPU 打满。
+  max_query_parallelism: 8
+
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        # 默认 100MB，小机器上减半。
+        max_size_mb: 50
 
 analytics:
   reporting_enabled: false

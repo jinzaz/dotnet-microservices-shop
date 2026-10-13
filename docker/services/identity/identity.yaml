@@ -10,6 +10,7 @@ services:
     image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/identity-service:${MSA_IMAGE_TAG:-latest}
     pull_policy: ${MSA_PULL_POLICY:-missing}
     container_name: msa-identity
+    mem_limit: ${MSA_MEM_LIMIT_LARGE:-448m}
     environment:
       ASPNETCORE_URLS: "http://+:8080"
       IdentityUi__BaseUrl: "${MSA_IDENTITY_UI_URL}"

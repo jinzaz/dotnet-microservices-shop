@@ -7,13 +7,13 @@ namespace MSA.Common;
 /// <summary>
 /// 基础设施地址、口令与客户端密钥统一来自环境变量，本地与 Docker 用同一套变量名：
 /// 本地开发由仓库根目录的 msa.env 提供（从内容根目录逐级向上查找，写进进程环境变量），Docker 由 compose 注入。
-/// 已经设置的进程环境变量优先于 msa.env。
+/// 优先级：进程环境变量 &gt; msa.local.env（个人值，不入库）&gt; msa.env（入库的本地默认值）。
 /// <para>
 /// 各服务 appsettings.json 只保留属于自己的部分（库名、Redis 库号、队列名、ClientId 等），
 /// 地址与口令要和这些部分拼在一起，所以合并进对应的配置键，业务代码照旧读 ConnectionStrings:Postgresql、RabbitMQ:HostName：
 /// </para>
 /// <list type="bullet">
-/// <item>INFRA_POSTGRES_HOST / PORT / USER / PASSWORD → ConnectionStrings:Postgresql、DefaultConnection、Certificates</item>
+/// <item>INFRA_POSTGRES_HOST / PORT / USER / PASSWORD / MAX_POOL_SIZE →ConnectionStrings:Postgresql、DefaultConnection、Certificates</item>
 /// <item>INFRA_REDIS_HOST / PORT / PASSWORD → ConnectionStrings:Redis</item>
 /// <item>INFRA_RABBITMQ_HOST / PORT / USER / PASSWORD / VHOST → RabbitMQ:*</item>
 /// <item>INFRA_OSS_ENDPOINT / ACCESS_KEY / SECRET_KEY / REGION / FORCE_PATH_STYLE / REFERER → ObjectStorage:*</item>
@@ -28,6 +28,7 @@ namespace MSA.Common;
 public static class MsaEnvironment
 {
     public const string FileName = "msa.env";
+    public const string LocalFileName = "msa.local.env";
 
     public static IConfigurationBuilder AddMsaEnvironment(this IConfigurationBuilder builder, string? contentRoot = null)
     {
@@ -99,6 +100,8 @@ public static class MsaEnvironment
         Set(connection, "Port", env, "INFRA_POSTGRES_PORT");
         Set(connection, "Username", env, "INFRA_POSTGRES_USER");
         Set(connection, "Password", env, "INFRA_POSTGRES_PASSWORD");
+        // 每个连接串一个连接池，十来个服务的池加起来不能超过 PostgreSQL 的 max_connections，所以上限按部署统一控制。
+        Set(connection, "Maximum Pool Size", env, "INFRA_POSTGRES_MAX_POOL_SIZE");
         if (!connection.ContainsKey("Host"))
         {
             throw new InvalidOperationException(
@@ -147,10 +150,15 @@ public static class MsaEnvironment
             values[key] = value;
     }
 
-    /// <summary>把 msa.env 写进进程环境变量（已经设置的不覆盖），再返回全部非空的环境变量。</summary>
+    /// <summary>
+    /// 把 msa.local.env、msa.env 依次写进进程环境变量（已经设置的不覆盖，所以先读的优先），再返回全部非空的环境变量。
+    /// msa.local.env 与 msa.env 同目录、不入库，放个人机器上的地址与口令。
+    /// </summary>
     internal static IReadOnlyDictionary<string, string> Read(string startDirectory)
     {
-        if (Find(startDirectory) is { } file)
+        var shared = Find(startDirectory);
+        var files = shared is null ? [] : new[] { Path.Combine(Path.GetDirectoryName(shared)!, LocalFileName), shared };
+        foreach (var file in files.Where(File.Exists))
         {
             foreach (var line in File.ReadAllLines(file))
             {
