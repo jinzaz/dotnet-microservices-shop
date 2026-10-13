@@ -8,6 +8,7 @@
 ## 架构
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Segoe UI, Helvetica, Arial, sans-serif','fontSize':'14px','primaryColor':'#DEECF9','primaryBorderColor':'#0078D4','primaryTextColor':'#003A6C','lineColor':'#0078D4','secondaryColor':'#FFFFFF','tertiaryColor':'#F3F9FD','clusterBkg':'#F3F9FD','clusterBorder':'#79B8E6','edgeLabelBackground':'#FFFFFF','actorBkg':'#0078D4','actorBorder':'#005A9E','actorTextColor':'#FFFFFF','actorLineColor':'#79B8E6','signalColor':'#0078D4','signalTextColor':'#0078D4','noteBkgColor':'#FFF4CE','noteBorderColor':'#C8A400','noteTextColor':'#323130','activationBkgColor':'#DEECF9','activationBorderColor':'#0078D4','labelBoxBkgColor':'#DEECF9','labelBoxBorderColor':'#0078D4','labelTextColor':'#003A6C','loopTextColor':'#0078D4'}}}%%
 flowchart LR
     Browser[浏览器<br/>商城 / 后台 / 登录页<br/>React + Vite]
     Nginx[Nginx<br/>TLS 终止]
@@ -30,18 +31,26 @@ flowchart LR
         Cert[证书 ACME]
     end
 
-    MQ[(RabbitMQ)]
-    PG[(PostgreSQL<br/>每服务一库)]
-    Redis[(Redis)]
-    ES[(Elasticsearch)]
+    subgraph Infra[基础设施]
+        MQ[(RabbitMQ)]
+        PG[(PostgreSQL<br/>每服务一库)]
+        Redis[(Redis)]
+        ES[(Elasticsearch)]
+    end
 
     Browser --> Nginx --> BFFWeb & BFFBM
-    Nginx --> Identity
+    Nginx -->|登录 /connect| GW --> Identity
+    Nginx -.支付回调.-> Payment
     BFFWeb & BFFBM --> GW --> Commerce & User
     Commerce <-->|集成事件 Outbox/Inbox| MQ
     Order -.gRPC.-> Inventory & Catalog & User
     Commerce --> PG & Redis
     Search --> ES
+
+    classDef external fill:#F3F2F1,stroke:#8A8886,color:#323130
+    classDef store fill:#FFFFFF,stroke:#0078D4,stroke-width:2px,color:#003A6C
+    class Browser,Nginx external
+    class MQ,PG,Redis,ES store
 ```
 
 - **浏览器只和 BFF 通信**：BFF 走授权码 + PKCE 登录，令牌留在服务端（会话票据存 Redis），浏览器只拿 HttpOnly Cookie。
@@ -53,6 +62,7 @@ flowchart LR
 ### 1. 下单交易链路：Saga + Outbox/Inbox
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Segoe UI, Helvetica, Arial, sans-serif','fontSize':'14px','primaryColor':'#DEECF9','primaryBorderColor':'#0078D4','primaryTextColor':'#003A6C','lineColor':'#0078D4','secondaryColor':'#FFFFFF','tertiaryColor':'#F3F9FD','clusterBkg':'#F3F9FD','clusterBorder':'#79B8E6','edgeLabelBackground':'#FFFFFF','actorBkg':'#0078D4','actorBorder':'#005A9E','actorTextColor':'#FFFFFF','actorLineColor':'#79B8E6','signalColor':'#0078D4','signalTextColor':'#0078D4','noteBkgColor':'#FFF4CE','noteBorderColor':'#C8A400','noteTextColor':'#323130','activationBkgColor':'#DEECF9','activationBorderColor':'#0078D4','labelBoxBkgColor':'#DEECF9','labelBoxBorderColor':'#0078D4','labelTextColor':'#003A6C','loopTextColor':'#0078D4'}}}%%
 sequenceDiagram
     participant C as Client
     participant O as 订单

@@ -20,6 +20,7 @@ Catalog 的商品、促销、优惠券变更通过本地 Outbox 发布，Orderin
 成功路径保持原来的事件顺序，只强化了幂等、快照校验和最终确认条件：
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Segoe UI, Helvetica, Arial, sans-serif','fontSize':'14px','primaryColor':'#DEECF9','primaryBorderColor':'#0078D4','primaryTextColor':'#003A6C','lineColor':'#0078D4','secondaryColor':'#FFFFFF','tertiaryColor':'#F3F9FD','clusterBkg':'#F3F9FD','clusterBorder':'#79B8E6','edgeLabelBackground':'#FFFFFF','actorBkg':'#0078D4','actorBorder':'#005A9E','actorTextColor':'#FFFFFF','actorLineColor':'#79B8E6','signalColor':'#0078D4','signalTextColor':'#0078D4','noteBkgColor':'#FFF4CE','noteBorderColor':'#C8A400','noteTextColor':'#323130','activationBkgColor':'#DEECF9','activationBorderColor':'#0078D4','labelBoxBkgColor':'#DEECF9','labelBoxBorderColor':'#0078D4','labelTextColor':'#003A6C','loopTextColor':'#0078D4'}}}%%
 sequenceDiagram
     participant Client
     participant Order as Ordering DB
