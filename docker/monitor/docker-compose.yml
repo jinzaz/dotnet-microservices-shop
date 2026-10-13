@@ -1,0 +1,91 @@
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION:-latest}
+    restart: unless-stopped
+    command:
+      - --config=/etc/otelcol-contrib/config.yaml
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    networks:
+      - monitor
+      - backend
+    depends_on:
+      - tempo
+      - loki
+
+  prometheus:
+    image: prom/prometheus:${PROMETHEUS_VERSION:-latest}
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - monitor
+    depends_on:
+      - otel-collector
+
+  tempo:
+    image: grafana/tempo:${TEMPO_VERSION:-latest}
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/tempo/tempo.yaml
+    volumes:
+      - ./tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    networks:
+      - monitor
+
+  loki:
+    image: grafana/loki:${LOKI_VERSION:-3.7.0}
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - monitor
+
+  grafana:
+    image: grafana/grafana:${GRAFANA_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - frontend
+      - monitor
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+
+    # 推荐通过 Nginx + shop-front 反向代理 Grafana。
+    # 临时测试时再开启：
+    ports:
+      - "3000:3000"
+
+volumes:
+  prometheus-data:
+  tempo-data:
+  loki-data:
+  grafana-data:
+
+networks:
+  frontend:
+    external: true
+    name: frontend
+  backend:
+    external: true
+    name: backend
+  monitor:
+    driver: bridge
+    name: monitor
