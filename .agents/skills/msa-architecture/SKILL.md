@@ -47,4 +47,4 @@ Persisted business fields must carry concise Chinese database comments through E
 
 Add concise Chinese comments to core business code only when they explain intent that the code cannot express by itself: aggregate invariants, state-transition preconditions, snapshot boundaries, idempotency decisions, concurrency locks, eventual-consistency behavior, timeout/retry policy, or compensation rules. Explain why the rule exists rather than narrating individual statements. Do not comment routine CRUD, straightforward validation, framework plumbing, or every branch, and update or remove a comment whenever the associated rule changes.
 
-Before finishing, build `MicroservicesArchitecture.slnx` and report remaining warnings or infrastructure prerequisites separately from compilation failures.
+Before finishing, build `MicroservicesShop.slnx` and report remaining warnings or infrastructure prerequisites separately from compilation failures.

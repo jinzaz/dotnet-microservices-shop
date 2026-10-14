@@ -26,7 +26,7 @@ WORKDIR /src
 COPY --from=skeleton /src .
 # 包下载缓存挂成 BuildKit 缓存（不进镜像层）：依赖改了需要重新 restore 时，没变的包不用再下载。
 RUN --mount=type=cache,id=msa-nuget-http,target=/nuget-http-cache \
-    dotnet restore MicroservicesArchitecture.slnx --configfile NuGet.config
+    dotnet restore MicroservicesShop.slnx --configfile NuGet.config
 
 # ---- publish：编译一次，发布 images.txt 里的全部服务 --------------------------------------------------
 FROM restore AS publish

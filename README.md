@@ -1,9 +1,9 @@
-# MicroservicesArchitecture
+# dotnet-microservices-shop
 
 基于 .NET 10 的微服务电商系统：商品、库存、购物车、订单、支付、搜索、用户、认证、通知、证书共 11 个业务服务，加 API 网关与两个 BFF。
 每个服务独立数据库，按 DDD 分层，跨服务交易用 **Saga + Transactional Outbox/Inbox** 实现最终一致性，Docker Compose 部署，OpenTelemetry 全链路可观测。
 
-> 个人项目，重点在分布式系统里容易出错的地方：一致性、幂等、补偿、并发、零停机与安全。
+> 重点在分布式系统里容易出错的地方：一致性、幂等、补偿、并发、零停机与安全。
 
 ## 架构
 
@@ -151,7 +151,7 @@ docs/                          # 设计文档
 **依赖**：.NET SDK 10（见 [global.json](global.json)）、Node.js、PostgreSQL、Redis、RabbitMQ；搜索功能另需 Elasticsearch（[docker/elasticsearch](docker/elasticsearch/README.md)）。
 
 1. 仓库根目录的 `msa.env` 是入库的本地默认值（localhost、镜像默认账号）。自己机器上的地址与口令写进同目录的 `msa.local.env`（不入库，格式相同，只写要改的键）。优先级：环境变量 > `msa.local.env` > `msa.env`。
-2. 用 Visual Studio 打开 `MicroservicesArchitecture.slnx`，启动所需服务；首次运行需要建库时，把各服务的 `Database:MigrateOnStartup` 设为 `true`（或设置环境变量 `Database__MigrateOnStartup=true`）。
+2. 用 Visual Studio 打开 `MicroservicesShop.slnx`，启动所需服务；首次运行需要建库时，把各服务的 `Database:MigrateOnStartup` 设为 `true`（或设置环境变量 `Database__MigrateOnStartup=true`）。
 3. 启动前端：
 
    ```bash
@@ -178,7 +178,7 @@ docker compose up -d
 ## 测试
 
 ```bash
-dotnet test MicroservicesArchitecture.slnx
+dotnet test MicroservicesShop.slnx
 ```
 
 | 项目 | 覆盖内容 |
