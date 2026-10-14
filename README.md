@@ -1,5 +1,7 @@
 # dotnet-microservices-shop
 
+[![CI](https://github.com/jinzaz/dotnet-microservices-shop/actions/workflows/ci.yml/badge.svg)](https://github.com/jinzaz/dotnet-microservices-shop/actions/workflows/ci.yml)
+
 基于 .NET 10 的微服务电商系统：商品、库存、购物车、订单、支付、搜索、用户、认证、通知、证书共 11 个业务服务，加 API 网关与两个 BFF。
 每个服务独立数据库，按 DDD 分层，跨服务交易用 **Saga + Transactional Outbox/Inbox** 实现最终一致性，Docker Compose 部署，OpenTelemetry 全链路可观测。
 
@@ -180,6 +182,8 @@ docker compose up -d
 ```bash
 dotnet test MicroservicesShop.slnx
 ```
+
+分布式事务测试默认连 localhost 的 PostgreSQL / Redis / RabbitMQ（[testsettings.json](tests/MSA.DistributedTransactionTests/testsettings.json)），连不上的用例标记为 Inconclusive；自己的地址写进同目录的 `testsettings.local.json`（不入库）。CI 用服务容器提供这三者，全部用例真实执行。
 
 | 项目 | 覆盖内容 |
 |---|---|

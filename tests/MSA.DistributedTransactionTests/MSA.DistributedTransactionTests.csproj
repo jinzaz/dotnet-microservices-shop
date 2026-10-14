@@ -28,6 +28,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="testsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="testsettings*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
