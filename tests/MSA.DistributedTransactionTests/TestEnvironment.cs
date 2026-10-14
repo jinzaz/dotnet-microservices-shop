@@ -3,14 +3,16 @@ using Microsoft.Extensions.Configuration;
 namespace MSA.DistributedTransactionTests;
 
 /// <summary>
-/// 测试基础设施的连接信息。默认读取 testsettings.json，可用环境变量覆盖：
-/// MSA_TEST_POSTGRES、MSA_TEST_RABBITMQ__HostName 等（双下划线表示层级）。
+/// 测试基础设施的连接信息。testsettings.json 入库，是 localhost 默认值（与 CI 的服务容器一致）；
+/// 个人机器上的地址与口令写进 testsettings.local.json（不入库，覆盖前者）；
+/// 环境变量再覆盖两者：MSA_TEST_POSTGRES、MSA_TEST_RABBITMQ__HostName 等（双下划线表示层级）。
 /// 没有配置或连不上时，依赖它们的测试会标记为 Inconclusive 而不是失败，本地无基础设施也能跑其余用例。
 /// </summary>
 internal static class TestEnvironment
 {
     private static readonly IConfiguration Configuration = new ConfigurationBuilder()
         .AddJsonFile("testsettings.json", optional: true)
+        .AddJsonFile("testsettings.local.json", optional: true)
         .AddEnvironmentVariables("MSA_TEST_")
         .Build();
 

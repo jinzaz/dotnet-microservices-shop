@@ -1,12 +1,12 @@
 {
-  "Postgres": "Host=192.168.1.50;Port=5432;Database=TestDb;Username=postgres;Password=qwertAa!@#$;",
-  "Redis": "192.168.1.50:6379,password=qwertAaQAQ,defaultDatabase=15",
+  "Postgres": "Host=localhost;Port=5432;Database=TestDb;Username=postgres;Password=postgres;",
+  "Redis": "localhost:6379,defaultDatabase=15",
   "RabbitMQ": {
-    "HostName": "192.168.1.50",
+    "HostName": "localhost",
     "Port": 5672,
-    "UserName": "admin",
-    "Password": "qwertAa!@#$",
-    "VirtualHost": "/app",
+    "UserName": "guest",
+    "Password": "guest",
+    "VirtualHost": "/",
     "QueuePrefix": "test"
   }
 }

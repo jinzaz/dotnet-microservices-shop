@@ -366,6 +366,7 @@ docker/.env
 docker/elasticsearch/.env
 # 本地开发的个人地址与口令（覆盖仓库根目录 msa.env 的默认值）
 msa.local.env
+tests/**/testsettings.local.json
 docker/certs/
 
 # web dist

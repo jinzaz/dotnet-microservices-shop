@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Build & test (.NET)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # 与 tests/MSA.DistributedTransactionTests/testsettings.json 的 localhost 默认值一致，
+    # 依赖 PostgreSQL / Redis / RabbitMQ 的用例在 CI 里真实执行，而不是 Inconclusive。
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: TestDb
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      rabbitmq:
+        image: rabbitmq:4
+        ports: ["5672:5672"]
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s --health-timeout 10s --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # global.json 固定在 10.0.4xx 特性带（rollForward: latestPatch），这里装同一特性带的最新正式版。
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.4xx
+
+      - name: Restore
+        run: dotnet restore MicroservicesShop.slnx
+
+      - name: Build
+        run: dotnet build MicroservicesShop.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test MicroservicesShop.slnx -c Release --no-build --logger "trx" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/**/*.trx
+
+  frontend:
+    name: Build (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [Front, BM, Identity]
+    defaults:
+      run:
+        working-directory: src/MSA.Web/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/MSA.Web/${{ matrix.app }}/package-lock.json
+      - run: npm ci
+      - run: npm run build
