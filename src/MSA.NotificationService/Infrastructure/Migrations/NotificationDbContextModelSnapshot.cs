@@ -25,7 +25,6 @@ namespace MSA.NotificationService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.EventBusOutbox.OutboxMessage", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("EventType")
@@ -78,13 +77,15 @@ namespace MSA.NotificationService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "NextAttemptOnUtc", "LockedUntilUtc");
 
-                    b.ToTable("notification_outbox_messages", (string)null);
+                    b.ToTable("notification_outbox_messages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_notification_outbox_messages_Status_Enum", "\"Status\" BETWEEN 0 AND 3");
+                        });
                 });
 
             modelBuilder.Entity("MSA.NotificationService.Domain.Notification", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Body")
@@ -151,13 +152,15 @@ namespace MSA.NotificationService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "NextAttemptOnUtc", "LockedUntilUtc");
 
-                    b.ToTable("notification_notifications", (string)null);
+                    b.ToTable("notification_notifications", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_notification_notifications_Status_Enum", "\"Status\" BETWEEN 0 AND 3");
+                        });
                 });
 
             modelBuilder.Entity("MSA.NotificationService.Domain.NotificationTemplate", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Body")
@@ -188,7 +191,6 @@ namespace MSA.NotificationService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.NotificationService.Domain.UserNotificationPreference", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<bool>("EmailEnabled")
@@ -235,7 +237,6 @@ namespace MSA.NotificationService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.Saga.SagaState", b =>
                 {
                     b.Property<Guid>("CorrelationId")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasComment("跨服务流程的关联标识");
 
@@ -292,7 +293,10 @@ namespace MSA.NotificationService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "TimeoutOnUtc", "TimeoutLockedUntilUtc");
 
-                    b.ToTable("notification_saga_states", (string)null);
+                    b.ToTable("notification_saga_states", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_notification_saga_states_Status_Enum", "\"Status\" BETWEEN 0 AND 4");
+                        });
                 });
 #pragma warning restore 612, 618
         }

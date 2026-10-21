@@ -209,9 +209,11 @@ namespace MSA.IdentityService.Migrations
 
                     b.ToTable("identity_sms_messages", null, t =>
                         {
-                            t.HasCheckConstraint("CK_identity_sms_messages_attempts", "\"VerificationAttempts\" >= 0");
+                            t.HasCheckConstraint("CK_identity_sms_messages_Purpose_Enum", "\"Purpose\" BETWEEN 0 AND 2");
 
-                            t.HasCheckConstraint("CK_identity_sms_messages_status", "\"Status\" BETWEEN 0 AND 5");
+                            t.HasCheckConstraint("CK_identity_sms_messages_Status_Enum", "\"Status\" BETWEEN 0 AND 5");
+
+                            t.HasCheckConstraint("CK_identity_sms_messages_attempts", "\"VerificationAttempts\" >= 0");
 
                             t.HasCheckConstraint("CK_identity_sms_messages_timestamps", "\"ExpiresOnUtc\" > \"CreatedOnUtc\" AND \"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
                         });

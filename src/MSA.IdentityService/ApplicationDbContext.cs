@@ -9,6 +9,12 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 {
     internal DbSet<SmsVerificationMessage> SmsMessages => Set<SmsVerificationMessage>();
 
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+        optionsBuilder.UseEnumCheckConstraints();
+    }
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);

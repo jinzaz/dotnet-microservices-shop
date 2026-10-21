@@ -77,7 +77,10 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "NextAttemptOnUtc", "LockedUntilUtc");
 
-                    b.ToTable("order_outbox_messages", (string)null);
+                    b.ToTable("order_outbox_messages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_order_outbox_messages_Status_Enum", "\"Status\" BETWEEN 0 AND 3");
+                        });
                 });
 
             modelBuilder.Entity("MSA.OrderService.Domain.AfterSalesHistory", b =>
@@ -114,7 +117,12 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasIndex("RequestId", "OccurredOnUtc");
 
-                    b.ToTable("order_after_sales_history", (string)null);
+                    b.ToTable("order_after_sales_history", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_order_after_sales_history_FromStatus_Enum", "\"FromStatus\" BETWEEN 0 AND 11");
+
+                            t.HasCheckConstraint("CK_order_after_sales_history_ToStatus_Enum", "\"ToStatus\" BETWEEN 0 AND 11");
+                        });
                 });
 
             modelBuilder.Entity("MSA.OrderService.Domain.AfterSalesLine", b =>
@@ -355,6 +363,16 @@ namespace MSA.OrderService.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_after_sales_currency", "\"Currency\" ~ '^[A-Z]{3}$'");
 
                             t.HasCheckConstraint("CK_after_sales_refund_amount", "\"RefundAmount\" >= 0");
+
+                            t.HasCheckConstraint("CK_order_after_sales_requests_Reason_Enum", "\"Reason\" BETWEEN 0 AND 7");
+
+                            t.HasCheckConstraint("CK_order_after_sales_requests_ReplacementStock_Enum", "\"ReplacementStock\" BETWEEN 0 AND 5");
+
+                            t.HasCheckConstraint("CK_order_after_sales_requests_ReturnDisposition_Enum", "\"ReturnDisposition\" BETWEEN 0 AND 5");
+
+                            t.HasCheckConstraint("CK_order_after_sales_requests_Status_Enum", "\"Status\" BETWEEN 0 AND 11");
+
+                            t.HasCheckConstraint("CK_order_after_sales_requests_Type_Enum", "\"Type\" BETWEEN 0 AND 3");
                         });
                 });
 
@@ -681,6 +699,10 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.ToTable("order_orders", null, t =>
                         {
+                            t.HasCheckConstraint("CK_order_orders_FulfillmentStatus_Enum", "\"FulfillmentStatus\" BETWEEN 0 AND 5");
+
+                            t.HasCheckConstraint("CK_order_orders_Status_Enum", "\"Status\" BETWEEN 0 AND 3");
+
                             t.HasCheckConstraint("CK_orders_amounts", "\"SubtotalAmount\" > 0 AND \"DiscountAmount\" >= 0 AND \"Amount\" > 0 AND \"Amount\" = \"SubtotalAmount\" - \"DiscountAmount\"");
 
                             t.HasCheckConstraint("CK_orders_cancelled_fields", "\"Status\" <> 3 OR (\"CancellationReason\" IS NOT NULL AND \"CancelledOnUtc\" IS NOT NULL)");
@@ -696,8 +718,6 @@ namespace MSA.OrderService.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_orders_snapshot_hashes", "\"RequestFingerprint\" ~ '^[0-9A-F]{64}$' AND \"PricingSnapshotHash\" ~ '^[0-9A-F]{64}$'");
 
                             t.HasCheckConstraint("CK_orders_source_basket_pair", "(\"SourceBasketId\" IS NULL AND \"SourceBasketVersion\" IS NULL) OR (\"SourceBasketId\" IS NOT NULL AND \"SourceBasketVersion\" IS NOT NULL AND \"SourceBasketVersion\" >= 0)");
-
-                            t.HasCheckConstraint("CK_orders_status", "\"Status\" BETWEEN 0 AND 3");
                         });
                 });
 
@@ -763,9 +783,9 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.ToTable("order_coupon_redemptions", null, t =>
                         {
-                            t.HasCheckConstraint("CK_order_coupon_redemptions_amount", "\"DiscountAmount\" > 0");
+                            t.HasCheckConstraint("CK_order_coupon_redemptions_Status_Enum", "\"Status\" BETWEEN 0 AND 2");
 
-                            t.HasCheckConstraint("CK_order_coupon_redemptions_status", "\"Status\" BETWEEN 0 AND 2");
+                            t.HasCheckConstraint("CK_order_coupon_redemptions_amount", "\"DiscountAmount\" > 0");
                         });
                 });
 
@@ -874,7 +894,12 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasIndex("OrderId", "OccurredOnUtc");
 
-                    b.ToTable("order_fulfillment_status_history", (string)null);
+                    b.ToTable("order_fulfillment_status_history", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_order_fulfillment_status_history_FromStatus_Enum", "\"FromStatus\" BETWEEN 0 AND 5");
+
+                            t.HasCheckConstraint("CK_order_fulfillment_status_history_ToStatus_Enum", "\"ToStatus\" BETWEEN 0 AND 5");
+                        });
                 });
 
             modelBuilder.Entity("MSA.OrderService.Domain.OrderLine", b =>
@@ -1068,7 +1093,9 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.ToTable("order_status_history", null, t =>
                         {
-                            t.HasCheckConstraint("CK_order_status_history_status", "(\"FromStatus\" IS NULL OR \"FromStatus\" BETWEEN 0 AND 3) AND \"ToStatus\" BETWEEN 0 AND 3");
+                            t.HasCheckConstraint("CK_order_status_history_FromStatus_Enum", "\"FromStatus\" BETWEEN 0 AND 3");
+
+                            t.HasCheckConstraint("CK_order_status_history_ToStatus_Enum", "\"ToStatus\" BETWEEN 0 AND 3");
                         });
                 });
 
@@ -1234,7 +1261,10 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "TimeoutOnUtc", "TimeoutLockedUntilUtc");
 
-                    b.ToTable("order_saga_states", (string)null);
+                    b.ToTable("order_saga_states", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_order_saga_states_Status_Enum", "\"Status\" BETWEEN 0 AND 4");
+                        });
                 });
 
             modelBuilder.Entity("MSA.OrderService.Domain.AfterSalesHistory", b =>

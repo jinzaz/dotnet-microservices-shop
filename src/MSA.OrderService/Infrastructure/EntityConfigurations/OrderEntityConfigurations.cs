@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using MSA.OrderService.Domain;
+using static MSA.Persistence.Postgres.CheckSql;
 
 namespace MSA.OrderService.Infrastructure.EntityConfigurations;
 
@@ -11,13 +12,12 @@ internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         entity.ToTable("order_orders", table =>
         {
             table.HasCheckConstraint("CK_orders_amounts", "\"SubtotalAmount\" > 0 AND \"DiscountAmount\" >= 0 AND \"Amount\" > 0 AND \"Amount\" = \"SubtotalAmount\" - \"DiscountAmount\"");
-            table.HasCheckConstraint("CK_orders_status", "\"Status\" BETWEEN 0 AND 3");
             table.HasCheckConstraint("CK_orders_payment_due", "\"PaymentDueOnUtc\" > \"CreatedOnUtc\"");
-            table.HasCheckConstraint("CK_orders_currency", "\"Currency\" ~ '^[A-Z]{3}$'");
+            table.HasCheckConstraint("CK_orders_currency", CurrencyCode(nameof(Order.Currency)));
             table.HasCheckConstraint("CK_orders_payment_method", "\"PaymentMethod\" IN ('Alipay', 'WeChatPay', 'Unknown')");
-            table.HasCheckConstraint("CK_orders_snapshot_hashes", "\"RequestFingerprint\" ~ '^[0-9A-F]{64}$' AND \"PricingSnapshotHash\" ~ '^[0-9A-F]{64}$'");
-            table.HasCheckConstraint("CK_orders_confirmed_fields", "\"Status\" <> 2 OR (\"ReservationId\" IS NOT NULL AND \"PaymentId\" IS NOT NULL AND \"ConfirmedOnUtc\" IS NOT NULL)");
-            table.HasCheckConstraint("CK_orders_cancelled_fields", "\"Status\" <> 3 OR (\"CancellationReason\" IS NOT NULL AND \"CancelledOnUtc\" IS NOT NULL)");
+            table.HasCheckConstraint("CK_orders_snapshot_hashes", $"{Sha256Hex(nameof(Order.RequestFingerprint))} AND {Sha256Hex(nameof(Order.PricingSnapshotHash))}");
+            table.HasCheckConstraint("CK_orders_confirmed_fields", $"\"Status\" <> {(int)OrderStatus.Confirmed} OR (\"ReservationId\" IS NOT NULL AND \"PaymentId\" IS NOT NULL AND \"ConfirmedOnUtc\" IS NOT NULL)");
+            table.HasCheckConstraint("CK_orders_cancelled_fields", $"\"Status\" <> {(int)OrderStatus.Cancelled} OR (\"CancellationReason\" IS NOT NULL AND \"CancelledOnUtc\" IS NOT NULL)");
             table.HasCheckConstraint(
                 "CK_orders_source_basket_pair",
                 "(\"SourceBasketId\" IS NULL AND \"SourceBasketVersion\" IS NULL) OR (\"SourceBasketId\" IS NOT NULL AND \"SourceBasketVersion\" IS NOT NULL AND \"SourceBasketVersion\" >= 0)");
@@ -114,7 +114,7 @@ internal sealed class OrderLineConfiguration : IEntityTypeConfiguration<OrderLin
         {
             table.HasCheckConstraint("CK_order_lines_quantity", "\"Quantity\" > 0");
             table.HasCheckConstraint("CK_order_lines_prices", "\"ListUnitPrice\" >= 0 AND \"UnitPrice\" >= 0 AND \"UnitPrice\" <= \"ListUnitPrice\" AND \"LineSubtotal\" = round(\"ListUnitPrice\" * \"Quantity\", 2) AND \"DiscountAmount\" BETWEEN 0 AND \"LineSubtotal\" AND \"LineAmount\" = \"LineSubtotal\" - \"DiscountAmount\" AND \"UnitPrice\" = round(\"LineAmount\" / \"Quantity\", 2)");
-            table.HasCheckConstraint("CK_order_lines_variant_attributes", "jsonb_typeof(\"VariantAttributesJson\") = 'object'");
+            table.HasCheckConstraint("CK_order_lines_variant_attributes", JsonObject(nameof(OrderLine.VariantAttributesJson)));
         });
         entity.HasKey(line => line.Id);
         entity.HasIndex("OrderId", nameof(OrderLine.Sku)).IsUnique();
@@ -156,8 +156,7 @@ internal sealed class OrderStatusHistoryConfiguration : IEntityTypeConfiguration
 {
     public void Configure(EntityTypeBuilder<OrderStatusHistory> entity)
     {
-        entity.ToTable("order_status_history", table =>
-            table.HasCheckConstraint("CK_order_status_history_status", "(\"FromStatus\" IS NULL OR \"FromStatus\" BETWEEN 0 AND 3) AND \"ToStatus\" BETWEEN 0 AND 3"));
+        entity.ToTable("order_status_history");
         entity.HasKey(history => history.Id);
         entity.HasIndex(history => new { history.OrderId, history.OccurredOnUtc });
         entity.Property(history => history.Actor).HasMaxLength(200);
@@ -192,7 +191,7 @@ internal sealed class OrderProductProjectionConfiguration : IEntityTypeConfigura
         entity.ToTable("order_product_projections", table =>
         {
             table.HasCheckConstraint("CK_product_projections_price", "\"Price\" >= 0");
-            table.HasCheckConstraint("CK_product_projections_attributes", "jsonb_typeof(\"AttributesJson\") = 'object'");
+            table.HasCheckConstraint("CK_product_projections_attributes", JsonObject(nameof(OrderProductProjection.AttributesJson)));
         });
         entity.HasKey(product => product.VariantId);
         entity.HasIndex(product => product.Sku).IsUnique();
@@ -217,7 +216,7 @@ internal sealed class InventoryAllocationProjectionConfiguration : IEntityTypeCo
         entity.ToTable("order_inventory_allocation_projections", table =>
         {
             table.HasCheckConstraint("CK_inventory_allocation_projections_limit", "\"PerUserLimit\" > 0");
-            table.HasCheckConstraint("CK_inventory_allocation_projections_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
+            table.HasCheckConstraint("CK_inventory_allocation_projections_window", Before(nameof(InventoryAllocationProjection.StartsOnUtc), nameof(InventoryAllocationProjection.EndsOnUtc)));
         });
         entity.HasKey(allocation => allocation.AllocationId);
         entity.HasIndex(allocation => new { allocation.OfferId, allocation.Sku }).IsUnique();
@@ -236,7 +235,7 @@ internal sealed class PromotionProjectionConfiguration : IEntityTypeConfiguratio
     {
         entity.ToTable("order_promotion_projections", table =>
         {
-            table.HasCheckConstraint("CK_promotion_projections_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
+            table.HasCheckConstraint("CK_promotion_projections_window", Before(nameof(PromotionProjection.StartsOnUtc), nameof(PromotionProjection.EndsOnUtc)));
             table.HasCheckConstraint("CK_promotion_projections_revision", "\"SourceRevision\" >= 0");
         });
         entity.HasKey(promotion => promotion.Id);
@@ -263,7 +262,7 @@ internal sealed class CouponProjectionConfiguration : IEntityTypeConfiguration<C
         entity.ToTable("order_coupon_projections", table =>
         {
             table.HasCheckConstraint("CK_coupon_projections_limits", "(\"TotalLimit\" IS NULL OR \"TotalLimit\" > 0) AND \"PerUserLimit\" > 0");
-            table.HasCheckConstraint("CK_coupon_projections_window", "\"ValidFromUtc\" < \"ValidUntilUtc\"");
+            table.HasCheckConstraint("CK_coupon_projections_window", Before(nameof(CouponProjection.ValidFromUtc), nameof(CouponProjection.ValidUntilUtc)));
         });
         entity.HasKey(coupon => coupon.Id);
         entity.HasIndex(coupon => coupon.CodeDigest).IsUnique();
@@ -308,7 +307,6 @@ internal sealed class OrderCouponRedemptionConfiguration : IEntityTypeConfigurat
         entity.ToTable("order_coupon_redemptions", table =>
         {
             table.HasCheckConstraint("CK_order_coupon_redemptions_amount", "\"DiscountAmount\" > 0");
-            table.HasCheckConstraint("CK_order_coupon_redemptions_status", "\"Status\" BETWEEN 0 AND 2");
         });
         entity.HasKey(redemption => redemption.Id);
         entity.HasIndex(redemption => new { redemption.OrderId, redemption.CouponId }).IsUnique();

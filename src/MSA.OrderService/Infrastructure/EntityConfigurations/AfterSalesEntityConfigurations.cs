@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using MSA.OrderService.Domain;
+using static MSA.Persistence.Postgres.CheckSql;
 
 namespace MSA.OrderService.Infrastructure.EntityConfigurations;
 
@@ -11,7 +12,7 @@ internal sealed class AfterSalesRequestConfiguration : IEntityTypeConfiguration<
         entity.ToTable("order_after_sales_requests", table =>
         {
             table.HasCheckConstraint("CK_after_sales_refund_amount", "\"RefundAmount\" >= 0");
-            table.HasCheckConstraint("CK_after_sales_currency", "\"Currency\" ~ '^[A-Z]{3}$'");
+            table.HasCheckConstraint("CK_after_sales_currency", CurrencyCode(nameof(AfterSalesRequest.Currency)));
         });
         entity.HasKey(request => request.Id);
         entity.HasIndex(request => request.RequestNumber).IsUnique();

@@ -163,7 +163,7 @@ namespace MSA.BFF.BM.Migrations
 
                     b.ToTable("pbac_permissions", "bff_bm", t =>
                         {
-                            t.HasCheckConstraint("ck_pbac_permissions_action", "action IN ('Query', 'Create', 'Edit', 'Delete')");
+                            t.HasCheckConstraint("CK_pbac_permissions_action_Enum", "action IN ('Query', 'Create', 'Edit', 'Delete')");
                         });
 
                     b.HasData(
@@ -783,7 +783,7 @@ namespace MSA.BFF.BM.Migrations
 
                     b.ToTable("pbac_policies", "bff_bm", t =>
                         {
-                            t.HasCheckConstraint("ck_pbac_policies_effect", "effect IN ('Allow', 'Deny')");
+                            t.HasCheckConstraint("CK_pbac_policies_effect_Enum", "effect IN ('Allow', 'Deny')");
                         });
 
                     b.HasData(

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using MSA.BasketService.Domain;
+using static MSA.Persistence.Postgres.CheckSql;
 
 namespace MSA.BasketService.Infrastructure.EntityConfigurations;
 
@@ -12,7 +13,7 @@ internal sealed class BasketConfiguration : IEntityTypeConfiguration<Basket>
         {
             table.HasCheckConstraint("CK_baskets_version", "\"Version\" >= 0");
             table.HasCheckConstraint("CK_baskets_user", "char_length(trim(\"UserId\")) > 0");
-            table.HasCheckConstraint("CK_baskets_timestamps", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+            table.HasCheckConstraint("CK_baskets_timestamps", NotBefore(nameof(Basket.UpdatedOnUtc), nameof(Basket.CreatedOnUtc)));
         });
         entity.HasKey(value => value.Id);
         entity.HasIndex(value => value.UserId).IsUnique();
@@ -43,12 +44,12 @@ internal sealed class BasketItemConfiguration : IEntityTypeConfiguration<BasketI
             table.HasCheckConstraint(
                 "CK_basket_items_quantity",
                 $"\"Quantity\" BETWEEN 1 AND {BasketLimits.MaximumSupportedLineQuantity}");
-            table.HasCheckConstraint("CK_basket_items_sku", "\"Sku\" = upper(trim(\"Sku\"))");
+            table.HasCheckConstraint("CK_basket_items_sku", UpperTrimmed(nameof(BasketItem.Sku)));
             table.HasCheckConstraint("CK_basket_items_price", "\"UnitPriceAtSelection\" >= 0");
-            table.HasCheckConstraint("CK_basket_items_currency", "\"CurrencyAtSelection\" ~ '^[A-Z]{3}$'");
+            table.HasCheckConstraint("CK_basket_items_currency", CurrencyCode(nameof(BasketItem.CurrencyAtSelection)));
             table.HasCheckConstraint("CK_basket_items_revision", "\"ProductRevisionAtSelection\" >= 0");
-            table.HasCheckConstraint("CK_basket_items_variant_attributes", "jsonb_typeof(\"VariantAttributesJsonAtSelection\") = 'object'");
-            table.HasCheckConstraint("CK_basket_items_timestamps", "\"UpdatedOnUtc\" >= \"AddedOnUtc\"");
+            table.HasCheckConstraint("CK_basket_items_variant_attributes", JsonObject(nameof(BasketItem.VariantAttributesJsonAtSelection)));
+            table.HasCheckConstraint("CK_basket_items_timestamps", NotBefore(nameof(BasketItem.UpdatedOnUtc), nameof(BasketItem.AddedOnUtc)));
         });
         entity.HasKey(value => value.Id);
         entity.HasIndex(value => new { value.BasketId, value.Sku }).IsUnique();
@@ -71,7 +72,7 @@ internal sealed class BasketCouponConfiguration : IEntityTypeConfiguration<Baske
     public void Configure(EntityTypeBuilder<BasketCoupon> entity)
     {
         entity.ToTable("basket_coupons", table =>
-            table.HasCheckConstraint("CK_basket_coupons_code", "\"Code\" = upper(trim(\"Code\"))"));
+            table.HasCheckConstraint("CK_basket_coupons_code", UpperTrimmed(nameof(BasketCoupon.Code))));
         entity.HasKey(value => value.Id);
         entity.HasIndex(value => new { value.BasketId, value.Code }).IsUnique();
         entity.Property(value => value.Code).HasMaxLength(80).HasComment("待在结算时校验的标准化优惠券码");
@@ -85,11 +86,11 @@ internal sealed class BasketProductSnapshotConfiguration
     {
         entity.ToTable("basket_product_snapshots", table =>
         {
-            table.HasCheckConstraint("CK_basket_product_snapshots_sku", "\"Sku\" = upper(trim(\"Sku\"))");
+            table.HasCheckConstraint("CK_basket_product_snapshots_sku", UpperTrimmed(nameof(BasketProductSnapshot.Sku)));
             table.HasCheckConstraint("CK_basket_product_snapshots_price", "\"Price\" >= 0");
-            table.HasCheckConstraint("CK_basket_product_snapshots_currency", "\"Currency\" ~ '^[A-Z]{3}$'");
+            table.HasCheckConstraint("CK_basket_product_snapshots_currency", CurrencyCode(nameof(BasketProductSnapshot.Currency)));
             table.HasCheckConstraint("CK_basket_product_snapshots_revision", "\"SourceRevision\" >= 0");
-            table.HasCheckConstraint("CK_basket_product_snapshots_attributes", "jsonb_typeof(\"AttributesJson\") = 'object'");
+            table.HasCheckConstraint("CK_basket_product_snapshots_attributes", JsonObject(nameof(BasketProductSnapshot.AttributesJson)));
         });
         entity.HasKey(value => value.VariantId);
         entity.HasIndex(value => value.Sku).IsUnique();

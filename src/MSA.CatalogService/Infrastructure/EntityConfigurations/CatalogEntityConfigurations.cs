@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using MSA.CatalogService.Domain;
+using static MSA.Persistence.Postgres.CheckSql;
 
 namespace MSA.CatalogService.Infrastructure.EntityConfigurations;
 
@@ -10,11 +11,8 @@ internal sealed class CategoryConfiguration : IEntityTypeConfiguration<Category>
     {
         entity.ToTable("catalog_categories", table =>
         {
-            table.HasCheckConstraint(
-                "CK_categories_status",
-                $"\"Status\" BETWEEN {(int)CategoryLifecycleStatus.Draft} AND {(int)CategoryLifecycleStatus.Archived}");
-            table.HasCheckConstraint("CK_categories_audit", "\"Version\" > 0 AND \"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
-            table.HasCheckConstraint("CK_categories_normalized_code", "\"NormalizedCode\" = upper(trim(\"Code\"))");
+            table.HasCheckConstraint("CK_categories_audit", $"\"Version\" > 0 AND {NotBefore(nameof(Category.UpdatedOnUtc), nameof(Category.CreatedOnUtc))}");
+            table.HasCheckConstraint("CK_categories_normalized_code", UpperTrimmed(nameof(Category.NormalizedCode), nameof(Category.Code)));
         });
         entity.HasKey(value => value.Id);
         entity.Property(value => value.Code).HasMaxLength(60).IsRequired().HasComment("分类业务编码");
@@ -41,11 +39,8 @@ internal sealed class BrandConfiguration : IEntityTypeConfiguration<Brand>
         entity.ToTable("catalog_brands", table =>
         {
             table.HasComment("商品品牌");
-            table.HasCheckConstraint(
-                "CK_brands_status",
-                $"\"Status\" BETWEEN {(int)BrandLifecycleStatus.Draft} AND {(int)BrandLifecycleStatus.Archived}");
-            table.HasCheckConstraint("CK_brands_audit", "\"Version\" > 0 AND \"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
-            table.HasCheckConstraint("CK_brands_normalized_code", "\"NormalizedCode\" = upper(trim(\"Code\"))");
+            table.HasCheckConstraint("CK_brands_audit", $"\"Version\" > 0 AND {NotBefore(nameof(Brand.UpdatedOnUtc), nameof(Brand.CreatedOnUtc))}");
+            table.HasCheckConstraint("CK_brands_normalized_code", UpperTrimmed(nameof(Brand.NormalizedCode), nameof(Brand.Code)));
         });
         entity.HasKey(value => value.Id);
         entity.Property(value => value.Code).HasMaxLength(60).IsRequired().HasComment("品牌业务编码");
@@ -66,11 +61,8 @@ internal sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
     {
         entity.ToTable("catalog_products", table =>
         {
-            table.HasCheckConstraint(
-                "CK_products_lifecycle",
-                $"\"LifecycleStatus\" BETWEEN {(int)ProductLifecycleStatus.Draft} AND {(int)ProductLifecycleStatus.Archived}");
             table.HasCheckConstraint("CK_products_revision", "\"Revision\" > 0 AND \"Version\" > 0");
-            table.HasCheckConstraint("CK_products_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+            table.HasCheckConstraint("CK_products_audit", NotBefore(nameof(Product.UpdatedOnUtc), nameof(Product.CreatedOnUtc)));
             table.HasCheckConstraint(
                 "CK_products_active_lifecycle",
                 $"(\"IsActive\" AND \"LifecycleStatus\" = {(int)ProductLifecycleStatus.Published} AND \"EffectiveOnUtc\" IS NOT NULL) OR (NOT \"IsActive\" AND \"LifecycleStatus\" <> {(int)ProductLifecycleStatus.Published})");
@@ -130,10 +122,10 @@ internal sealed class ProductVariantConfiguration : IEntityTypeConfiguration<Pro
         entity.ToTable("catalog_product_variants", table =>
         {
             table.HasCheckConstraint("CK_product_variants_price", "\"Price\" >= 0");
-            table.HasCheckConstraint("CK_product_variants_currency", "\"Currency\" ~ '^[A-Z]{3}$'");
-            table.HasCheckConstraint("CK_product_variants_normalized_sku", "\"NormalizedSku\" = upper(trim(\"Sku\"))");
-            table.HasCheckConstraint("CK_product_variants_attributes", "jsonb_typeof(\"AttributesJson\") = 'object'");
-            table.HasCheckConstraint("CK_product_variants_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+            table.HasCheckConstraint("CK_product_variants_currency", CurrencyCode(nameof(ProductVariant.Currency)));
+            table.HasCheckConstraint("CK_product_variants_normalized_sku", UpperTrimmed(nameof(ProductVariant.NormalizedSku), nameof(ProductVariant.Sku)));
+            table.HasCheckConstraint("CK_product_variants_attributes", JsonObject(nameof(ProductVariant.AttributesJson)));
+            table.HasCheckConstraint("CK_product_variants_audit", NotBefore(nameof(ProductVariant.UpdatedOnUtc), nameof(ProductVariant.CreatedOnUtc)));
         });
         entity.HasKey(value => value.Id);
         entity.Property(value => value.ProductId).HasComment("SKU 所属的 SPU 商品标识");
@@ -167,9 +159,8 @@ internal sealed class ProductMediaConfiguration : IEntityTypeConfiguration<Produ
     {
         entity.ToTable("catalog_product_media", table =>
         {
-            table.HasCheckConstraint("CK_product_media_type", "\"MediaType\" BETWEEN 0 AND 1");
             table.HasCheckConstraint("CK_product_media_sort_order", "\"SortOrder\" BETWEEN 0 AND 10000");
-            table.HasCheckConstraint("CK_product_media_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+            table.HasCheckConstraint("CK_product_media_audit", NotBefore(nameof(ProductMedia.UpdatedOnUtc), nameof(ProductMedia.CreatedOnUtc)));
         });
         entity.HasKey(value => value.Id);
         entity.Property(value => value.ProductId).HasComment("媒体所属的 SPU 商品标识");
@@ -195,14 +186,11 @@ internal sealed class PromotionConfiguration : IEntityTypeConfiguration<Promotio
     {
         entity.ToTable("catalog_promotions", table =>
         {
-            table.HasCheckConstraint("CK_promotions_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
+            table.HasCheckConstraint("CK_promotions_window", Before(nameof(Promotion.StartsOnUtc), nameof(Promotion.EndsOnUtc)));
             table.HasCheckConstraint("CK_promotions_revision", "\"Revision\" > 0 AND \"Version\" > 0");
             table.HasCheckConstraint("CK_promotions_priority", "\"Priority\" BETWEEN -1000000 AND 1000000");
-            table.HasCheckConstraint("CK_promotions_trigger", "\"TriggerType\" IN (0, 1)");
-            table.HasCheckConstraint("CK_promotions_status", "\"Status\" BETWEEN 0 AND 5");
-            table.HasCheckConstraint("CK_promotions_stack_policy", "\"StackPolicy\" IN (0, 1)");
-            table.HasCheckConstraint("CK_promotions_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
-            table.HasCheckConstraint("CK_promotions_normalized_code", "\"NormalizedCode\" = upper(trim(\"Code\"))");
+            table.HasCheckConstraint("CK_promotions_audit", NotBefore(nameof(Promotion.UpdatedOnUtc), nameof(Promotion.CreatedOnUtc)));
+            table.HasCheckConstraint("CK_promotions_normalized_code", UpperTrimmed(nameof(Promotion.NormalizedCode), nameof(Promotion.Code)));
             table.HasCheckConstraint(
                 "CK_promotions_published_snapshot",
                 $"\"Status\" = {(int)PromotionStatus.Draft} OR (\"PublishedRevision\" IS NOT NULL AND length(\"DefinitionChecksum\") = 64)");
@@ -308,16 +296,14 @@ internal sealed class CouponConfiguration : IEntityTypeConfiguration<Coupon>
     {
         entity.ToTable("catalog_coupons", table =>
         {
-            table.HasCheckConstraint("CK_coupons_window", "\"ValidFromUtc\" < \"ValidUntilUtc\"");
+            table.HasCheckConstraint("CK_coupons_window", Before(nameof(Coupon.ValidFromUtc), nameof(Coupon.ValidUntilUtc)));
             table.HasCheckConstraint("CK_coupons_total_limit", "\"TotalLimit\" IS NULL OR \"TotalLimit\" > 0");
             table.HasCheckConstraint(
                 "CK_coupons_per_user_limit",
                 "\"PerUserLimit\" > 0 AND (\"TotalLimit\" IS NULL OR \"PerUserLimit\" <= \"TotalLimit\")");
             table.HasCheckConstraint("CK_coupons_revision", "\"Revision\" > 0 AND \"Version\" > 0");
-            table.HasCheckConstraint("CK_coupons_status", "\"Status\" BETWEEN 0 AND 3");
-            table.HasCheckConstraint("CK_coupons_quota_strategy", "\"QuotaStrategy\" IN (0, 1)");
-            table.HasCheckConstraint("CK_coupons_code_digest", "\"CodeDigest\" ~ '^[0-9A-F]{64}$'");
-            table.HasCheckConstraint("CK_coupons_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+            table.HasCheckConstraint("CK_coupons_code_digest", Sha256Hex(nameof(Coupon.CodeDigest)));
+            table.HasCheckConstraint("CK_coupons_audit", NotBefore(nameof(Coupon.UpdatedOnUtc), nameof(Coupon.CreatedOnUtc)));
         });
         entity.HasKey(value => value.Id);
         entity.Property(value => value.PromotionId).HasComment("优惠券关联的促销活动标识");
@@ -362,13 +348,12 @@ internal sealed class CouponCampaignConfiguration : IEntityTypeConfiguration<Cou
     {
         entity.ToTable("catalog_coupon_campaigns", table =>
         {
-            table.HasCheckConstraint("CK_coupon_campaigns_window", "\"ClaimStartsOnUtc\" < \"ClaimEndsOnUtc\"");
-            table.HasCheckConstraint("CK_coupon_campaigns_status", "\"Status\" BETWEEN 0 AND 3");
+            table.HasCheckConstraint("CK_coupon_campaigns_window", Before(nameof(CouponCampaign.ClaimStartsOnUtc), nameof(CouponCampaign.ClaimEndsOnUtc)));
             // 与领域校验互为兜底：即使绕过聚合直接改库，也不会出现超发。
             table.HasCheckConstraint("CK_coupon_campaigns_claimed", "\"ClaimedQuantity\" >= 0 AND (\"TotalQuantity\" IS NULL OR \"ClaimedQuantity\" <= \"TotalQuantity\")");
             table.HasCheckConstraint("CK_coupon_campaigns_limits", "\"PerUserLimit\" > 0 AND \"UsesPerCoupon\" > 0 AND (\"DailyQuantity\" IS NULL OR \"DailyQuantity\" > 0) AND (\"PerUserDailyLimit\" IS NULL OR \"PerUserDailyLimit\" BETWEEN 1 AND \"PerUserLimit\")");
-            table.HasCheckConstraint("CK_coupon_campaigns_validity", "(\"ValidityMode\" = 0 AND \"ValidFromUtc\" < \"ValidUntilUtc\" AND \"ValidDays\" IS NULL) OR (\"ValidityMode\" = 1 AND \"ValidDays\" > 0 AND \"ValidFromUtc\" IS NULL AND \"ValidUntilUtc\" IS NULL)");
-            table.HasCheckConstraint("CK_coupon_campaigns_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+            table.HasCheckConstraint("CK_coupon_campaigns_validity", $"(\"ValidityMode\" = {(int)CouponValidityMode.Fixed} AND \"ValidFromUtc\" < \"ValidUntilUtc\" AND \"ValidDays\" IS NULL) OR (\"ValidityMode\" = {(int)CouponValidityMode.RelativeToClaim} AND \"ValidDays\" > 0 AND \"ValidFromUtc\" IS NULL AND \"ValidUntilUtc\" IS NULL)");
+            table.HasCheckConstraint("CK_coupon_campaigns_audit", NotBefore(nameof(CouponCampaign.UpdatedOnUtc), nameof(CouponCampaign.CreatedOnUtc)));
         });
         entity.HasKey(value => value.Id);
         entity.Property(value => value.PromotionId).HasComment("领券活动所属的凭券促销标识");

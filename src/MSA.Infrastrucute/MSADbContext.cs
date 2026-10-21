@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using MSA.Infrastrucute.Abstractions;
 using MSA.Infrastrucute.Events;
@@ -21,6 +22,10 @@ public abstract class MSADbContext(DbContextOptions options, IMediator mediator)
         // 行锁写在 LINQ 里（ForUpdate / ForUpdateSkipLocked），这里统一启用把标签翻译成 SQL 的拦截器，
         // 免得某个上下文漏配后锁悄悄失效。
         optionsBuilder.UsePostgresExtensions();
+        // 枚举列的 CHECK 约束按 CLR 枚举定义自动生成，新增枚举值时迁移会跟着变，不再手写取值范围。
+        // 该插件依赖关系型服务，InMemory 测试库下不能启用。
+        if (optionsBuilder.Options.Extensions.OfType<RelationalOptionsExtension>().Any())
+            optionsBuilder.UseEnumCheckConstraints();
     }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)

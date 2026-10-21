@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using MSA.IdentityService.Domain;
+using static MSA.Persistence.Postgres.CheckSql;
 
 namespace MSA.IdentityService.Infrastructure.EntityConfigurations;
 
@@ -27,11 +28,10 @@ internal sealed class SmsVerificationMessageConfiguration : IEntityTypeConfigura
     {
         entity.ToTable("identity_sms_messages", table =>
         {
-            table.HasCheckConstraint("CK_identity_sms_messages_status", "\"Status\" BETWEEN 0 AND 5");
             table.HasCheckConstraint("CK_identity_sms_messages_attempts", "\"VerificationAttempts\" >= 0");
             table.HasCheckConstraint(
                 "CK_identity_sms_messages_timestamps",
-                "\"ExpiresOnUtc\" > \"CreatedOnUtc\" AND \"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+                $"\"ExpiresOnUtc\" > \"CreatedOnUtc\" AND {NotBefore(nameof(SmsVerificationMessage.UpdatedOnUtc), nameof(SmsVerificationMessage.CreatedOnUtc))}");
         });
 
         entity.HasKey(message => message.Id);
