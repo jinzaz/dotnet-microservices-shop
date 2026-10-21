@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using MSA.InventoryService.Domain;
+using static MSA.Persistence.Postgres.CheckSql;
 
 namespace MSA.InventoryService.Infrastructure.EntityConfigurations;
 internal sealed class StockItemConfiguration : IEntityTypeConfiguration<StockItem>
@@ -12,7 +13,7 @@ internal sealed class StockItemConfiguration : IEntityTypeConfiguration<StockIte
             table.HasCheckConstraint(
                 "CK_stock_items_quantities",
                 "\"OnHand\" >= 0 AND \"Reserved\" >= 0 AND \"Reserved\" <= \"OnHand\"");
-            table.HasCheckConstraint("CK_stock_items_sku", "\"Sku\" = upper(trim(\"Sku\"))");
+            table.HasCheckConstraint("CK_stock_items_sku", UpperTrimmed(nameof(StockItem.Sku)));
         });
         entity.HasKey(value => value.Id);
         entity.HasIndex(value => value.Sku).IsUnique();
@@ -36,7 +37,7 @@ internal sealed class InventoryAllocationConfiguration : IEntityTypeConfiguratio
         {
             table.HasCheckConstraint("CK_inventory_allocations_quantity", "\"TotalQuantity\" > 0");
             table.HasCheckConstraint("CK_inventory_allocations_limit", "\"PerUserLimit\" > 0 AND \"PerUserLimit\" <= \"TotalQuantity\"");
-            table.HasCheckConstraint("CK_inventory_allocations_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
+            table.HasCheckConstraint("CK_inventory_allocations_window", Before(nameof(InventoryAllocation.StartsOnUtc), nameof(InventoryAllocation.EndsOnUtc)));
             table.HasCheckConstraint(
                 "CK_inventory_allocations_counters",
                 "\"ReservedQuantity\" >= 0 AND \"SoldQuantity\" >= 0 AND \"ReleasedQuantity\" >= 0 AND \"ReservedQuantity\" + \"SoldQuantity\" + \"ReleasedQuantity\" <= \"TotalQuantity\"");
@@ -92,16 +93,13 @@ internal sealed class InventoryReservationConfiguration : IEntityTypeConfigurati
         entity.ToTable("inventory_reservations", table =>
         {
             table.HasCheckConstraint(
-                "CK_inventory_reservations_status",
-                "\"Status\" BETWEEN 0 AND 2");
-            table.HasCheckConstraint(
                 "CK_inventory_reservations_timestamps",
-                "\"ExpiresOnUtc\" > \"CreatedOnUtc\" AND \"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
+                $"\"ExpiresOnUtc\" > \"CreatedOnUtc\" AND {NotBefore(nameof(InventoryReservation.UpdatedOnUtc), nameof(InventoryReservation.CreatedOnUtc))}");
             table.HasCheckConstraint(
                 "CK_inventory_reservations_terminal_state",
-                "(\"Status\" = 0 AND \"CommittedOnUtc\" IS NULL AND \"ReleasedOnUtc\" IS NULL AND \"TerminalReason\" IS NULL) OR "
-                + "(\"Status\" = 1 AND \"CommittedOnUtc\" IS NOT NULL AND \"ReleasedOnUtc\" IS NULL AND \"TerminalReason\" IS NULL) OR "
-                + "(\"Status\" = 2 AND \"CommittedOnUtc\" IS NULL AND \"ReleasedOnUtc\" IS NOT NULL AND \"TerminalReason\" IS NOT NULL)");
+                $"(\"Status\" = {(int)ReservationStatus.Reserved} AND \"CommittedOnUtc\" IS NULL AND \"ReleasedOnUtc\" IS NULL AND \"TerminalReason\" IS NULL) OR "
+                + $"(\"Status\" = {(int)ReservationStatus.Committed} AND \"CommittedOnUtc\" IS NOT NULL AND \"ReleasedOnUtc\" IS NULL AND \"TerminalReason\" IS NULL) OR "
+                + $"(\"Status\" = {(int)ReservationStatus.Released} AND \"CommittedOnUtc\" IS NULL AND \"ReleasedOnUtc\" IS NOT NULL AND \"TerminalReason\" IS NOT NULL)");
         });
         entity.HasKey(value => value.Id);
         entity.HasIndex(value => value.OrderId).IsUnique();
@@ -155,15 +153,12 @@ internal sealed class InventoryRequestDecisionConfiguration : IEntityTypeConfigu
         entity.ToTable("inventory_request_decisions", table =>
         {
             table.HasCheckConstraint(
-                "CK_inventory_request_decisions_status",
-                "\"Status\" BETWEEN 0 AND 1");
-            table.HasCheckConstraint(
                 "CK_inventory_request_decisions_hash",
                 "char_length(\"RequestHash\") = 64");
             table.HasCheckConstraint(
                 "CK_inventory_request_decisions_result",
-                "(\"Status\" = 0 AND \"ReservationId\" IS NOT NULL AND \"RejectionReason\" IS NULL) OR "
-                + "(\"Status\" = 1 AND \"ReservationId\" IS NULL AND \"RejectionReason\" IS NOT NULL)");
+                $"(\"Status\" = {(int)InventoryRequestDecisionStatus.Accepted} AND \"ReservationId\" IS NOT NULL AND \"RejectionReason\" IS NULL) OR "
+                + $"(\"Status\" = {(int)InventoryRequestDecisionStatus.Rejected} AND \"ReservationId\" IS NULL AND \"RejectionReason\" IS NOT NULL)");
         });
         entity.HasKey(value => value.OrderId);
         entity.HasIndex(value => value.ReservationId)
@@ -189,12 +184,6 @@ internal sealed class StockMovementConfiguration : IEntityTypeConfiguration<Stoc
         entity.ToTable("inventory_stock_movements", table =>
         {
             table.HasCheckConstraint(
-                "CK_stock_movements_type",
-                "\"Type\" BETWEEN 0 AND 7");
-            table.HasCheckConstraint(
-                "CK_stock_movements_reference_type",
-                "\"ReferenceType\" BETWEEN 0 AND 3");
-            table.HasCheckConstraint(
                 "CK_stock_movements_delta",
                 "\"OnHandDelta\" <> 0 OR \"ReservedDelta\" <> 0");
             table.HasCheckConstraint(
@@ -202,7 +191,7 @@ internal sealed class StockMovementConfiguration : IEntityTypeConfiguration<Stoc
                 "\"OnHandAfter\" >= 0 AND \"ReservedAfter\" >= 0 AND \"ReservedAfter\" <= \"OnHandAfter\"");
             table.HasCheckConstraint(
                 "CK_stock_movements_reference",
-                "(\"ReferenceType\" = 0 AND \"ReferenceId\" IS NULL) OR (\"ReferenceType\" <> 0 AND \"ReferenceId\" IS NOT NULL)");
+                $"(\"ReferenceType\" = {(int)StockMovementReferenceType.None} AND \"ReferenceId\" IS NULL) OR (\"ReferenceType\" <> {(int)StockMovementReferenceType.None} AND \"ReferenceId\" IS NOT NULL)");
             table.HasCheckConstraint(
                 "CK_stock_movements_idempotency",
                 "(\"IdempotencyKey\" IS NULL AND \"RequestHash\" IS NULL) OR "

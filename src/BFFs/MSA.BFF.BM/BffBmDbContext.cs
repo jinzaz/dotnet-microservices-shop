@@ -15,6 +15,12 @@ public sealed class BffBmDbContext(DbContextOptions<BffBmDbContext> options) : D
     internal DbSet<PbacUserPolicy> PbacUserPolicies => Set<PbacUserPolicy>();
     internal DbSet<PbacRolePolicy> PbacRolePolicies => Set<PbacRolePolicy>();
 
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+        optionsBuilder.UseEnumCheckConstraints();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("bff_bm");

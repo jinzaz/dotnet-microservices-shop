@@ -86,7 +86,7 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_brands_normalized_code", "\"NormalizedCode\" = upper(trim(\"Code\"))");
 
-                            t.HasCheckConstraint("CK_brands_status", "\"Status\" BETWEEN 0 AND 2");
+                            t.HasCheckConstraint("CK_catalog_brands_Status_Enum", "\"Status\" BETWEEN 0 AND 2");
                         });
                 });
 
@@ -190,11 +190,11 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.ToTable("catalog_categories", null, t =>
                         {
+                            t.HasCheckConstraint("CK_catalog_categories_Status_Enum", "\"Status\" BETWEEN 0 AND 2");
+
                             t.HasCheckConstraint("CK_categories_audit", "\"Version\" > 0 AND \"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
 
                             t.HasCheckConstraint("CK_categories_normalized_code", "\"NormalizedCode\" = upper(trim(\"Code\"))");
-
-                            t.HasCheckConstraint("CK_categories_status", "\"Status\" BETWEEN 0 AND 2");
                         });
                 });
 
@@ -290,17 +290,17 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.ToTable("catalog_coupons", null, t =>
                         {
+                            t.HasCheckConstraint("CK_catalog_coupons_QuotaStrategy_Enum", "\"QuotaStrategy\" IN (0, 1)");
+
+                            t.HasCheckConstraint("CK_catalog_coupons_Status_Enum", "\"Status\" BETWEEN 0 AND 3");
+
                             t.HasCheckConstraint("CK_coupons_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
 
                             t.HasCheckConstraint("CK_coupons_code_digest", "\"CodeDigest\" ~ '^[0-9A-F]{64}$'");
 
                             t.HasCheckConstraint("CK_coupons_per_user_limit", "\"PerUserLimit\" > 0 AND (\"TotalLimit\" IS NULL OR \"PerUserLimit\" <= \"TotalLimit\")");
 
-                            t.HasCheckConstraint("CK_coupons_quota_strategy", "\"QuotaStrategy\" IN (0, 1)");
-
                             t.HasCheckConstraint("CK_coupons_revision", "\"Revision\" > 0 AND \"Version\" > 0");
-
-                            t.HasCheckConstraint("CK_coupons_status", "\"Status\" BETWEEN 0 AND 3");
 
                             t.HasCheckConstraint("CK_coupons_total_limit", "\"TotalLimit\" IS NULL OR \"TotalLimit\" > 0");
 
@@ -413,13 +413,15 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.ToTable("catalog_coupon_campaigns", null, t =>
                         {
+                            t.HasCheckConstraint("CK_catalog_coupon_campaigns_Status_Enum", "\"Status\" BETWEEN 0 AND 3");
+
+                            t.HasCheckConstraint("CK_catalog_coupon_campaigns_ValidityMode_Enum", "\"ValidityMode\" IN (0, 1)");
+
                             t.HasCheckConstraint("CK_coupon_campaigns_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
 
                             t.HasCheckConstraint("CK_coupon_campaigns_claimed", "\"ClaimedQuantity\" >= 0 AND (\"TotalQuantity\" IS NULL OR \"ClaimedQuantity\" <= \"TotalQuantity\")");
 
                             t.HasCheckConstraint("CK_coupon_campaigns_limits", "\"PerUserLimit\" > 0 AND \"UsesPerCoupon\" > 0 AND (\"DailyQuantity\" IS NULL OR \"DailyQuantity\" > 0) AND (\"PerUserDailyLimit\" IS NULL OR \"PerUserDailyLimit\" BETWEEN 1 AND \"PerUserLimit\")");
-
-                            t.HasCheckConstraint("CK_coupon_campaigns_status", "\"Status\" BETWEEN 0 AND 3");
 
                             t.HasCheckConstraint("CK_coupon_campaigns_validity", "(\"ValidityMode\" = 0 AND \"ValidFromUtc\" < \"ValidUntilUtc\" AND \"ValidDays\" IS NULL) OR (\"ValidityMode\" = 1 AND \"ValidDays\" > 0 AND \"ValidFromUtc\" IS NULL AND \"ValidUntilUtc\" IS NULL)");
 
@@ -577,11 +579,11 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.ToTable("catalog_products", null, t =>
                         {
+                            t.HasCheckConstraint("CK_catalog_products_LifecycleStatus_Enum", "\"LifecycleStatus\" BETWEEN 0 AND 3");
+
                             t.HasCheckConstraint("CK_products_active_lifecycle", "(\"IsActive\" AND \"LifecycleStatus\" = 1 AND \"EffectiveOnUtc\" IS NOT NULL) OR (NOT \"IsActive\" AND \"LifecycleStatus\" <> 1)");
 
                             t.HasCheckConstraint("CK_products_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
-
-                            t.HasCheckConstraint("CK_products_lifecycle", "\"LifecycleStatus\" BETWEEN 0 AND 3");
 
                             t.HasCheckConstraint("CK_products_revision", "\"Revision\" > 0 AND \"Version\" > 0");
                         });
@@ -640,11 +642,11 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.ToTable("catalog_product_media", null, t =>
                         {
+                            t.HasCheckConstraint("CK_catalog_product_media_MediaType_Enum", "\"MediaType\" IN (0, 1)");
+
                             t.HasCheckConstraint("CK_product_media_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
 
                             t.HasCheckConstraint("CK_product_media_sort_order", "\"SortOrder\" BETWEEN 0 AND 10000");
-
-                            t.HasCheckConstraint("CK_product_media_type", "\"MediaType\" BETWEEN 0 AND 1");
                         });
                 });
 
@@ -845,6 +847,12 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.ToTable("catalog_promotions", null, t =>
                         {
+                            t.HasCheckConstraint("CK_catalog_promotions_StackPolicy_Enum", "\"StackPolicy\" IN (0, 1)");
+
+                            t.HasCheckConstraint("CK_catalog_promotions_Status_Enum", "\"Status\" IN (0, 2, 3, 4, 5)");
+
+                            t.HasCheckConstraint("CK_catalog_promotions_TriggerType_Enum", "\"TriggerType\" IN (0, 1)");
+
                             t.HasCheckConstraint("CK_promotions_audit", "\"UpdatedOnUtc\" >= \"CreatedOnUtc\"");
 
                             t.HasCheckConstraint("CK_promotions_normalized_code", "\"NormalizedCode\" = upper(trim(\"Code\"))");
@@ -854,12 +862,6 @@ namespace MSA.CatalogService.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_promotions_published_snapshot", "\"Status\" = 0 OR (\"PublishedRevision\" IS NOT NULL AND length(\"DefinitionChecksum\") = 64)");
 
                             t.HasCheckConstraint("CK_promotions_revision", "\"Revision\" > 0 AND \"Version\" > 0");
-
-                            t.HasCheckConstraint("CK_promotions_stack_policy", "\"StackPolicy\" IN (0, 1)");
-
-                            t.HasCheckConstraint("CK_promotions_status", "\"Status\" BETWEEN 0 AND 5");
-
-                            t.HasCheckConstraint("CK_promotions_trigger", "\"TriggerType\" IN (0, 1)");
 
                             t.HasCheckConstraint("CK_promotions_window", "\"StartsOnUtc\" < \"EndsOnUtc\"");
                         });
@@ -1055,7 +1057,10 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "NextAttemptOnUtc", "LockedUntilUtc");
 
-                    b.ToTable("catalog_outbox_messages", (string)null);
+                    b.ToTable("catalog_outbox_messages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_catalog_outbox_messages_Status_Enum", "\"Status\" BETWEEN 0 AND 3");
+                        });
                 });
 
             modelBuilder.Entity("MSA.Repositories.Persistence.InboxMessage", b =>
@@ -1137,7 +1142,10 @@ namespace MSA.CatalogService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "TimeoutOnUtc", "TimeoutLockedUntilUtc");
 
-                    b.ToTable("catalog_saga_states", (string)null);
+                    b.ToTable("catalog_saga_states", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_catalog_saga_states_Status_Enum", "\"Status\" BETWEEN 0 AND 4");
+                        });
                 });
 
             modelBuilder.Entity("MSA.CatalogService.Domain.Coupon", b =>

@@ -25,7 +25,6 @@ namespace MSA.BasketService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.BasketService.Domain.Basket", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("CreatedOnUtc")
@@ -64,7 +63,6 @@ namespace MSA.BasketService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.BasketService.Domain.BasketCoupon", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("AddedOnUtc")
@@ -93,7 +91,6 @@ namespace MSA.BasketService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.BasketService.Domain.BasketItem", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("AddedOnUtc")
@@ -185,7 +182,6 @@ namespace MSA.BasketService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.BasketService.Domain.BasketProductSnapshot", b =>
                 {
                     b.Property<Guid>("VariantId")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasComment("目录 SKU 变体标识");
 
@@ -265,7 +261,6 @@ namespace MSA.BasketService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.EventBusOutbox.OutboxMessage", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("EventType")
@@ -318,7 +313,10 @@ namespace MSA.BasketService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "NextAttemptOnUtc", "LockedUntilUtc");
 
-                    b.ToTable("basket_outbox_messages", (string)null);
+                    b.ToTable("basket_outbox_messages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_basket_outbox_messages_Status_Enum", "\"Status\" BETWEEN 0 AND 3");
+                        });
                 });
 
             modelBuilder.Entity("MSA.Repositories.Persistence.InboxMessage", b =>
@@ -344,7 +342,6 @@ namespace MSA.BasketService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.Saga.SagaState", b =>
                 {
                     b.Property<Guid>("CorrelationId")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasComment("跨服务流程的关联标识");
 
@@ -401,7 +398,10 @@ namespace MSA.BasketService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "TimeoutOnUtc", "TimeoutLockedUntilUtc");
 
-                    b.ToTable("basket_saga_states", (string)null);
+                    b.ToTable("basket_saga_states", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_basket_saga_states_Status_Enum", "\"Status\" BETWEEN 0 AND 4");
+                        });
                 });
 
             modelBuilder.Entity("MSA.BasketService.Domain.BasketCoupon", b =>

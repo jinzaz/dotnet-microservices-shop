@@ -25,7 +25,6 @@ namespace MSA.PaymentService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.EventBusOutbox.OutboxMessage", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("EventType")
@@ -78,13 +77,15 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "NextAttemptOnUtc", "LockedUntilUtc");
 
-                    b.ToTable("payment_outbox_messages", (string)null);
+                    b.ToTable("payment_outbox_messages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_payment_outbox_messages_Status_Enum", "\"Status\" BETWEEN 0 AND 3");
+                        });
                 });
 
             modelBuilder.Entity("MSA.PaymentService.Domain.Payment", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<decimal>("Amount")
@@ -186,9 +187,11 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.ToTable("payment_payments", null, t =>
                         {
-                            t.HasCheckConstraint("CK_payments_amount", "\"Amount\" > 0");
+                            t.HasCheckConstraint("CK_payment_payments_Channel_Enum", "\"Channel\" IN (0, 1)");
 
-                            t.HasCheckConstraint("CK_payments_channel", "\"Channel\" IN (0, 1)");
+                            t.HasCheckConstraint("CK_payment_payments_Status_Enum", "\"Status\" BETWEEN 0 AND 7");
+
+                            t.HasCheckConstraint("CK_payments_amount", "\"Amount\" > 0");
 
                             t.HasCheckConstraint("CK_payments_closed_fields", "\"Status\" <> 5 OR \"ClosedOnUtc\" IS NOT NULL");
 
@@ -202,8 +205,6 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_payments_refunded_status", "\"Status\" <> 4 OR \"RefundedAmount\" = \"Amount\"");
 
-                            t.HasCheckConstraint("CK_payments_status", "\"Status\" IN (0, 1, 2, 3, 4, 5, 6, 7)");
-
                             t.HasCheckConstraint("CK_payments_succeeded_fields", "\"Status\" NOT IN (1, 3, 4) OR (\"ProviderTransactionId\" IS NOT NULL AND \"PaidOnUtc\" IS NOT NULL)");
 
                             t.HasCheckConstraint("CK_payments_version", "\"Version\" >= 0");
@@ -213,7 +214,6 @@ namespace MSA.PaymentService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.PaymentService.Domain.PaymentCancellationIntent", b =>
                 {
                     b.Property<Guid>("OrderId")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Reason")
@@ -245,7 +245,6 @@ namespace MSA.PaymentService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.PaymentService.Domain.PaymentNotificationRecord", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<decimal>("Amount")
@@ -323,24 +322,23 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.ToTable("payment_notifications", null, t =>
                         {
-                            t.HasCheckConstraint("CK_payment_notifications_amount", "\"Amount\" >= 0");
+                            t.HasCheckConstraint("CK_payment_notifications_Channel_Enum", "\"Channel\" IN (0, 1)");
 
-                            t.HasCheckConstraint("CK_payment_notifications_channel", "\"Channel\" IN (0, 1)");
+                            t.HasCheckConstraint("CK_payment_notifications_Status_Enum", "\"Status\" BETWEEN 0 AND 2");
+
+                            t.HasCheckConstraint("CK_payment_notifications_amount", "\"Amount\" >= 0");
 
                             t.HasCheckConstraint("CK_payment_notifications_conflict", "\"Status\" <> 2 OR \"ConflictReason\" IS NOT NULL");
 
                             t.HasCheckConstraint("CK_payment_notifications_currency", "char_length(\"Currency\") = 3 AND \"Currency\" = upper(\"Currency\")");
 
                             t.HasCheckConstraint("CK_payment_notifications_processed", "\"Status\" = 0 OR \"ProcessedOnUtc\" IS NOT NULL");
-
-                            t.HasCheckConstraint("CK_payment_notifications_status", "\"Status\" IN (0, 1, 2)");
                         });
                 });
 
             modelBuilder.Entity("MSA.PaymentService.Domain.PaymentProviderOperation", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<int>("AttemptCount")
@@ -425,6 +423,10 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.ToTable("payment_provider_operations", null, t =>
                         {
+                            t.HasCheckConstraint("CK_payment_provider_operations_Status_Enum", "\"Status\" BETWEEN 0 AND 4");
+
+                            t.HasCheckConstraint("CK_payment_provider_operations_Type_Enum", "\"Type\" BETWEEN 0 AND 2");
+
                             t.HasCheckConstraint("CK_payment_provider_operations_attempts", "\"AttemptCount\" >= 0");
 
                             t.HasCheckConstraint("CK_payment_provider_operations_completion", "\"Status\" <> 2 OR \"CompletedOnUtc\" IS NOT NULL");
@@ -433,10 +435,6 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_payment_provider_operations_reference", "(\"Type\" = 2 AND \"BusinessReferenceId\" IS NOT NULL) OR (\"Type\" <> 2 AND \"BusinessReferenceId\" IS NULL)");
 
-                            t.HasCheckConstraint("CK_payment_provider_operations_status", "\"Status\" IN (0, 1, 2, 3, 4)");
-
-                            t.HasCheckConstraint("CK_payment_provider_operations_type", "\"Type\" IN (0, 1, 2)");
-
                             t.HasCheckConstraint("CK_payment_provider_operations_version", "\"Version\" >= 0");
                         });
                 });
@@ -444,7 +442,6 @@ namespace MSA.PaymentService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.PaymentService.Domain.PaymentRefund", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<decimal>("Amount")
@@ -530,6 +527,8 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.ToTable("payment_refunds", null, t =>
                         {
+                            t.HasCheckConstraint("CK_payment_refunds_Status_Enum", "\"Status\" BETWEEN 0 AND 2");
+
                             t.HasCheckConstraint("CK_payment_refunds_amount", "\"Amount\" > 0");
 
                             t.HasCheckConstraint("CK_payment_refunds_completion", "\"Status\" = 0 OR \"CompletedOnUtc\" IS NOT NULL");
@@ -540,8 +539,6 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_payment_refunds_request_id", "\"RefundRequestId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
 
-                            t.HasCheckConstraint("CK_payment_refunds_status", "\"Status\" IN (0, 1, 2)");
-
                             t.HasCheckConstraint("CK_payment_refunds_version", "\"Version\" >= 0");
                         });
                 });
@@ -549,7 +546,6 @@ namespace MSA.PaymentService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.PaymentService.Domain.PaymentStatusHistory", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Details")
@@ -580,9 +576,9 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.ToTable("payment_status_history", null, t =>
                         {
-                            t.HasCheckConstraint("CK_payment_status_history_from_status", "\"FromStatus\" IS NULL OR \"FromStatus\" IN (0, 1, 2, 3, 4, 5, 6, 7)");
+                            t.HasCheckConstraint("CK_payment_status_history_FromStatus_Enum", "\"FromStatus\" BETWEEN 0 AND 7");
 
-                            t.HasCheckConstraint("CK_payment_status_history_to_status", "\"ToStatus\" IN (0, 1, 2, 3, 4, 5, 6, 7)");
+                            t.HasCheckConstraint("CK_payment_status_history_ToStatus_Enum", "\"ToStatus\" BETWEEN 0 AND 7");
                         });
                 });
 
@@ -609,7 +605,6 @@ namespace MSA.PaymentService.Infrastructure.Migrations
             modelBuilder.Entity("MSA.Saga.SagaState", b =>
                 {
                     b.Property<Guid>("CorrelationId")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasComment("跨服务流程的关联标识");
 
@@ -666,7 +661,10 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "TimeoutOnUtc", "TimeoutLockedUntilUtc");
 
-                    b.ToTable("payment_saga_states", (string)null);
+                    b.ToTable("payment_saga_states", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_payment_saga_states_Status_Enum", "\"Status\" BETWEEN 0 AND 4");
+                        });
                 });
 
             modelBuilder.Entity("MSA.PaymentService.Domain.PaymentNotificationRecord", b =>

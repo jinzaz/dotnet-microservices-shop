@@ -78,7 +78,10 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "NextAttemptOnUtc", "LockedUntilUtc");
 
-                    b.ToTable("inventory_outbox_messages", (string)null);
+                    b.ToTable("inventory_outbox_messages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_inventory_outbox_messages_Status_Enum", "\"Status\" BETWEEN 0 AND 3");
+                        });
                 });
 
             modelBuilder.Entity("MSA.InventoryService.Domain.InventoryAllocation", b =>
@@ -150,6 +153,8 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.ToTable("inventory_allocations", null, t =>
                         {
+                            t.HasCheckConstraint("CK_inventory_allocations_Status_Enum", "\"Status\" IN (0, 1)");
+
                             t.HasCheckConstraint("CK_inventory_allocations_counters", "\"ReservedQuantity\" >= 0 AND \"SoldQuantity\" >= 0 AND \"ReleasedQuantity\" >= 0 AND \"ReservedQuantity\" + \"SoldQuantity\" + \"ReleasedQuantity\" <= \"TotalQuantity\"");
 
                             t.HasCheckConstraint("CK_inventory_allocations_limit", "\"PerUserLimit\" > 0 AND \"PerUserLimit\" <= \"TotalQuantity\"");
@@ -243,11 +248,11 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.ToTable("inventory_request_decisions", null, t =>
                         {
+                            t.HasCheckConstraint("CK_inventory_request_decisions_Status_Enum", "\"Status\" IN (0, 1)");
+
                             t.HasCheckConstraint("CK_inventory_request_decisions_hash", "char_length(\"RequestHash\") = 64");
 
                             t.HasCheckConstraint("CK_inventory_request_decisions_result", "(\"Status\" = 0 AND \"ReservationId\" IS NOT NULL AND \"RejectionReason\" IS NULL) OR (\"Status\" = 1 AND \"ReservationId\" IS NULL AND \"RejectionReason\" IS NOT NULL)");
-
-                            t.HasCheckConstraint("CK_inventory_request_decisions_status", "\"Status\" BETWEEN 0 AND 1");
                         });
                 });
 
@@ -309,7 +314,7 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.ToTable("inventory_reservations", null, t =>
                         {
-                            t.HasCheckConstraint("CK_inventory_reservations_status", "\"Status\" BETWEEN 0 AND 2");
+                            t.HasCheckConstraint("CK_inventory_reservations_Status_Enum", "\"Status\" BETWEEN 0 AND 2");
 
                             t.HasCheckConstraint("CK_inventory_reservations_terminal_state", "(\"Status\" = 0 AND \"CommittedOnUtc\" IS NULL AND \"ReleasedOnUtc\" IS NULL AND \"TerminalReason\" IS NULL) OR (\"Status\" = 1 AND \"CommittedOnUtc\" IS NOT NULL AND \"ReleasedOnUtc\" IS NULL AND \"TerminalReason\" IS NULL) OR (\"Status\" = 2 AND \"CommittedOnUtc\" IS NULL AND \"ReleasedOnUtc\" IS NOT NULL AND \"TerminalReason\" IS NOT NULL)");
 
@@ -489,6 +494,10 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.ToTable("inventory_stock_movements", null, t =>
                         {
+                            t.HasCheckConstraint("CK_inventory_stock_movements_ReferenceType_Enum", "\"ReferenceType\" BETWEEN 0 AND 3");
+
+                            t.HasCheckConstraint("CK_inventory_stock_movements_Type_Enum", "\"Type\" BETWEEN 0 AND 7");
+
                             t.HasCheckConstraint("CK_stock_movements_balances", "\"OnHandAfter\" >= 0 AND \"ReservedAfter\" >= 0 AND \"ReservedAfter\" <= \"OnHandAfter\"");
 
                             t.HasCheckConstraint("CK_stock_movements_delta", "\"OnHandDelta\" <> 0 OR \"ReservedDelta\" <> 0");
@@ -498,10 +507,6 @@ namespace MSA.InventoryService.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_stock_movements_idempotency", "(\"IdempotencyKey\" IS NULL AND \"RequestHash\" IS NULL) OR (\"IdempotencyKey\" IS NOT NULL AND \"RequestHash\" IS NOT NULL AND \"OperatorId\" IS NOT NULL)");
 
                             t.HasCheckConstraint("CK_stock_movements_reference", "(\"ReferenceType\" = 0 AND \"ReferenceId\" IS NULL) OR (\"ReferenceType\" <> 0 AND \"ReferenceId\" IS NOT NULL)");
-
-                            t.HasCheckConstraint("CK_stock_movements_reference_type", "\"ReferenceType\" BETWEEN 0 AND 3");
-
-                            t.HasCheckConstraint("CK_stock_movements_type", "\"Type\" BETWEEN 0 AND 7");
                         });
                 });
 
@@ -584,7 +589,10 @@ namespace MSA.InventoryService.Infrastructure.Migrations
 
                     b.HasIndex("Status", "TimeoutOnUtc", "TimeoutLockedUntilUtc");
 
-                    b.ToTable("inventory_saga_states", (string)null);
+                    b.ToTable("inventory_saga_states", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_inventory_saga_states_Status_Enum", "\"Status\" BETWEEN 0 AND 4");
+                        });
                 });
 
             modelBuilder.Entity("MSA.InventoryService.Domain.InventoryAllocationBuyer", b =>

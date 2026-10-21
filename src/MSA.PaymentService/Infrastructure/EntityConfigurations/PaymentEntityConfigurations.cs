@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using MSA.PaymentService.Domain;
+using static MSA.Persistence.Postgres.CheckSql;
 
 namespace MSA.PaymentService.Infrastructure.EntityConfigurations;
 
@@ -14,27 +15,25 @@ internal sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
             table.HasCheckConstraint(
                 "CK_payments_currency",
                 "char_length(\"Currency\") = 3 AND \"Currency\" = upper(\"Currency\")");
-            table.HasCheckConstraint("CK_payments_channel", "\"Channel\" IN (0, 1)");
-            table.HasCheckConstraint("CK_payments_status", "\"Status\" IN (0, 1, 2, 3, 4, 5, 6, 7)");
             table.HasCheckConstraint(
                 "CK_payments_succeeded_fields",
-                "\"Status\" NOT IN (1, 3, 4) OR (\"ProviderTransactionId\" IS NOT NULL AND \"PaidOnUtc\" IS NOT NULL)");
+                $"\"Status\" NOT IN ({(int)PaymentStatus.Succeeded}, {(int)PaymentStatus.Refunding}, {(int)PaymentStatus.Refunded}) OR (\"ProviderTransactionId\" IS NOT NULL AND \"PaidOnUtc\" IS NOT NULL)");
             table.HasCheckConstraint(
                 "CK_payments_failure_fields",
-                "\"Status\" NOT IN (2, 6) OR \"FailureReason\" IS NOT NULL");
+                $"\"Status\" NOT IN ({(int)PaymentStatus.Failed}, {(int)PaymentStatus.Expired}) OR \"FailureReason\" IS NOT NULL");
             table.HasCheckConstraint("CK_payments_version", "\"Version\" >= 0");
             table.HasCheckConstraint(
                 "CK_payments_refunded_amount",
                 "\"RefundedAmount\" >= 0 AND \"RefundedAmount\" <= \"Amount\"");
             table.HasCheckConstraint(
                 "CK_payments_refunded_status",
-                "\"Status\" <> 4 OR \"RefundedAmount\" = \"Amount\"");
+                $"\"Status\" <> {(int)PaymentStatus.Refunded} OR \"RefundedAmount\" = \"Amount\"");
             table.HasCheckConstraint(
                 "CK_payments_closed_fields",
-                "\"Status\" <> 5 OR \"ClosedOnUtc\" IS NOT NULL");
+                $"\"Status\" <> {(int)PaymentStatus.Closed} OR \"ClosedOnUtc\" IS NOT NULL");
             table.HasCheckConstraint(
                 "CK_payments_pricing_snapshot",
-                "(\"PricingSnapshotId\" IS NULL AND \"PricingSnapshotHash\" IS NULL) OR (\"PricingSnapshotId\" IS NOT NULL AND \"PricingSnapshotHash\" ~ '^[0-9A-F]{64}$')");
+                $"(\"PricingSnapshotId\" IS NULL AND \"PricingSnapshotHash\" IS NULL) OR (\"PricingSnapshotId\" IS NOT NULL AND {Sha256Hex(nameof(Payment.PricingSnapshotHash))})");
         });
 
         entity.HasKey(value => value.Id);
@@ -71,20 +70,18 @@ internal sealed class PaymentProviderOperationConfiguration
     {
         entity.ToTable("payment_provider_operations", table =>
         {
-            table.HasCheckConstraint("CK_payment_provider_operations_type", "\"Type\" IN (0, 1, 2)");
-            table.HasCheckConstraint("CK_payment_provider_operations_status", "\"Status\" IN (0, 1, 2, 3, 4)");
             table.HasCheckConstraint("CK_payment_provider_operations_attempts", "\"AttemptCount\" >= 0");
             table.HasCheckConstraint(
                 "CK_payment_provider_operations_lease",
-                "(\"Status\" = 1 AND \"LockId\" IS NOT NULL AND \"LockedUntilUtc\" IS NOT NULL) OR "
-                + "(\"Status\" <> 1 AND \"LockId\" IS NULL AND \"LockedUntilUtc\" IS NULL)");
+                $"(\"Status\" = {(int)PaymentProviderOperationStatus.Processing} AND \"LockId\" IS NOT NULL AND \"LockedUntilUtc\" IS NOT NULL) OR "
+                + $"(\"Status\" <> {(int)PaymentProviderOperationStatus.Processing} AND \"LockId\" IS NULL AND \"LockedUntilUtc\" IS NULL)");
             table.HasCheckConstraint(
                 "CK_payment_provider_operations_completion",
-                "\"Status\" <> 2 OR \"CompletedOnUtc\" IS NOT NULL");
+                $"\"Status\" <> {(int)PaymentProviderOperationStatus.Completed} OR \"CompletedOnUtc\" IS NOT NULL");
             table.HasCheckConstraint(
                 "CK_payment_provider_operations_reference",
-                "(\"Type\" = 2 AND \"BusinessReferenceId\" IS NOT NULL) OR "
-                + "(\"Type\" <> 2 AND \"BusinessReferenceId\" IS NULL)");
+                $"(\"Type\" = {(int)PaymentProviderOperationType.RefundPayment} AND \"BusinessReferenceId\" IS NOT NULL) OR "
+                + $"(\"Type\" <> {(int)PaymentProviderOperationType.RefundPayment} AND \"BusinessReferenceId\" IS NULL)");
             table.HasCheckConstraint("CK_payment_provider_operations_version", "\"Version\" >= 0");
         });
 
@@ -133,14 +130,12 @@ internal sealed class PaymentNotificationConfiguration
             table.HasCheckConstraint(
                 "CK_payment_notifications_currency",
                 "char_length(\"Currency\") = 3 AND \"Currency\" = upper(\"Currency\")");
-            table.HasCheckConstraint("CK_payment_notifications_channel", "\"Channel\" IN (0, 1)");
-            table.HasCheckConstraint("CK_payment_notifications_status", "\"Status\" IN (0, 1, 2)");
             table.HasCheckConstraint(
                 "CK_payment_notifications_processed",
-                "\"Status\" = 0 OR \"ProcessedOnUtc\" IS NOT NULL");
+                $"\"Status\" = {(int)PaymentNotificationStatus.Received} OR \"ProcessedOnUtc\" IS NOT NULL");
             table.HasCheckConstraint(
                 "CK_payment_notifications_conflict",
-                "\"Status\" <> 2 OR \"ConflictReason\" IS NOT NULL");
+                $"\"Status\" <> {(int)PaymentNotificationStatus.Conflict} OR \"ConflictReason\" IS NOT NULL");
         });
 
         entity.HasKey(value => value.Id);
@@ -170,15 +165,7 @@ internal sealed class PaymentStatusHistoryConfiguration
 {
     public void Configure(EntityTypeBuilder<PaymentStatusHistory> entity)
     {
-        entity.ToTable("payment_status_history", table =>
-        {
-            table.HasCheckConstraint(
-                "CK_payment_status_history_from_status",
-                "\"FromStatus\" IS NULL OR \"FromStatus\" IN (0, 1, 2, 3, 4, 5, 6, 7)");
-            table.HasCheckConstraint(
-                "CK_payment_status_history_to_status",
-                "\"ToStatus\" IN (0, 1, 2, 3, 4, 5, 6, 7)");
-        });
+        entity.ToTable("payment_status_history");
 
         entity.HasKey(value => value.Id);
         entity.HasOne<Payment>()
@@ -201,16 +188,15 @@ internal sealed class PaymentRefundConfiguration : IEntityTypeConfiguration<Paym
             table.HasCheckConstraint(
                 "CK_payment_refunds_request_id",
                 "\"RefundRequestId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
-            table.HasCheckConstraint("CK_payment_refunds_status", "\"Status\" IN (0, 1, 2)");
             table.HasCheckConstraint(
                 "CK_payment_refunds_currency",
                 "char_length(\"Currency\") = 3 AND \"Currency\" = upper(\"Currency\")");
             table.HasCheckConstraint(
                 "CK_payment_refunds_completion",
-                "\"Status\" = 0 OR \"CompletedOnUtc\" IS NOT NULL");
+                $"\"Status\" = {(int)PaymentRefundStatus.Requested} OR \"CompletedOnUtc\" IS NOT NULL");
             table.HasCheckConstraint(
                 "CK_payment_refunds_failure",
-                "\"Status\" <> 2 OR \"FailureReason\" IS NOT NULL");
+                $"\"Status\" <> {(int)PaymentRefundStatus.Failed} OR \"FailureReason\" IS NOT NULL");
             table.HasCheckConstraint("CK_payment_refunds_version", "\"Version\" >= 0");
         });
 

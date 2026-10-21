@@ -73,10 +73,7 @@ internal sealed class PbacPermissionConfiguration : IEntityTypeConfiguration<Pba
 {
     public void Configure(EntityTypeBuilder<PbacPermission> entity)
     {
-        entity.ToTable("pbac_permissions", table =>
-            table.HasCheckConstraint(
-                "ck_pbac_permissions_action",
-                "action IN ('Query', 'Create', 'Edit', 'Delete')"));
+        entity.ToTable("pbac_permissions");
         entity.HasKey(permission => permission.Id);
         entity.Property(permission => permission.Id).HasColumnName("id");
         entity.Property(permission => permission.Code)
@@ -138,10 +135,7 @@ internal sealed class PbacPolicyConfiguration : IEntityTypeConfiguration<PbacPol
 {
     public void Configure(EntityTypeBuilder<PbacPolicy> entity)
     {
-        entity.ToTable("pbac_policies", table =>
-            table.HasCheckConstraint(
-                "ck_pbac_policies_effect",
-                "effect IN ('Allow', 'Deny')"));
+        entity.ToTable("pbac_policies");
         entity.HasKey(policy => policy.Id);
         entity.Property(policy => policy.Id).HasColumnName("id");
         entity.Property(policy => policy.Name)
