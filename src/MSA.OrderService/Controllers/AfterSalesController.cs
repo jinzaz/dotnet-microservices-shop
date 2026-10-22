@@ -15,23 +15,23 @@ namespace MSA.OrderService.Controllers;
 public sealed class AfterSalesController(ISender sender) : ControllerBase
 {
     public sealed record AfterSalesItemRequest(
-        [property: Required, MaxLength(80)] string Sku,
-        [property: Range(1, 999)] int Quantity);
+        [Required, MaxLength(80)] string Sku,
+        [Range(1, 999)] int Quantity);
 
     public sealed record CreateAfterSalesRequest(
         AfterSalesType Type,
         AfterSalesReason ReasonCode,
-        [property: MaxLength(500)] string? Description,
-        [property: Required, MinLength(1), MaxLength(50)] IReadOnlyList<AfterSalesItemRequest> Lines,
-        [property: MaxLength(AfterSalesRequest.MaxEvidenceCount)] IReadOnlyList<string>? EvidenceObjectKeys);
+        [MaxLength(500)] string? Description,
+        [Required, MinLength(1), MaxLength(50)] IReadOnlyList<AfterSalesItemRequest> Lines,
+        [MaxLength(AfterSalesRequest.MaxEvidenceCount)] IReadOnlyList<string>? EvidenceObjectKeys);
 
     public sealed record ReturnShipmentRequest(
-        [property: Required, MaxLength(120)] string CarrierName,
-        [property: Required, MaxLength(120)] string TrackingNumber);
+        [Required, MaxLength(120)] string CarrierName,
+        [Required, MaxLength(120)] string TrackingNumber);
 
     public sealed record EvidenceUploadRequest(
-        [property: Required, MaxLength(255)] string FileName,
-        [property: Required, MaxLength(100)] string ContentType,
+        [Required, MaxLength(255)] string FileName,
+        [Required, MaxLength(100)] string ContentType,
         long ContentLength);
 
     [HttpGet("after-sales")]
