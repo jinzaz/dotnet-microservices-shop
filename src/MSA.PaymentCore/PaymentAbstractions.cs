@@ -52,7 +52,10 @@ public sealed class PaylinksOptions
     public AlipaySettings AliVibePay { get; set; } = new();
     public sealed class AlipaySettings
     {
-        public string ServerUrl { get; set; } = "https://openapi.alipay.com"; public string AppId { get; set; } = ""; public string AppPrivateKey { get; set; } = ""; public string AlipayPublicKey { get; set; } = "";
+        public string ServerUrl { get; set; } = "https://openapi.alipay.com";
+        public string AppId { get; set; } = "";
+        public string AppPrivateKey { get; set; } = "";
+        public string AlipayPublicKey { get; set; } = "";
         /// <summary>收款支付宝账号的 PID（2088 开头）；配置后异步通知会校验 seller_id。</summary>
         public string SellerId { get; set; } = "";
         public bool IsConfigured => !string.IsNullOrWhiteSpace(AppId) && !string.IsNullOrWhiteSpace(AppPrivateKey) && !string.IsNullOrWhiteSpace(AlipayPublicKey);
