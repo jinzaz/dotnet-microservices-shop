@@ -7,7 +7,21 @@ export const statusPresentation: Record<OrderFulfillmentStatus, { label: string;
   InTransit: { label: '运输中', tone: 'info', hint: '包裹正在路上，请保持电话畅通。' },
   Delivered: { label: '已签收', tone: 'success', hint: '订单已完成，签收后 7 天内可申请售后。' },
   Cancelled: { label: '已取消', tone: 'muted', hint: '订单已关闭，如有已付款项将按原路退回。' },
+  ReturnedToSender: { label: '已退款', tone: 'muted', hint: '商品已全部退款，包裹将退回商家；如快递员派送，请直接拒收。' },
 };
+
+/** Fully refunded orders read as closed even though payment stays confirmed. */
+export function isFullyRefunded(order: { amount: number; refundedAmount?: number }): boolean {
+  return (order.refundedAmount ?? 0) >= order.amount;
+}
+
+/** Status badge for an order: a fully refunded order shows「已退款」whatever its last fulfillment step was. */
+export function presentOrderStatus(order: { fulfillmentStatus: string; amount: number; refundedAmount?: number }) {
+  const status = presentStatus(order.fulfillmentStatus);
+  return isFullyRefunded(order) && order.fulfillmentStatus !== 'ReturnedToSender'
+    ? { label: '已退款', tone: 'muted', hint: '订单商品已全部退款，款项已原路退回。' }
+    : status;
+}
 
 export function presentStatus(status: string) {
   return statusPresentation[status as OrderFulfillmentStatus] ?? { label: status, tone: 'muted', hint: '' };

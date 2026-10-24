@@ -12,6 +12,8 @@ import {
   cancellationReasons,
   formatAddress,
   fulfillmentSteps,
+  isFullyRefunded,
+  presentOrderStatus,
   presentStatus,
   stepIndexOf,
 } from '../features/orders/order-presentation';
@@ -58,6 +60,18 @@ function useCopy() {
 }
 
 function OrderProgress({ order }: { order: OrderDetails }) {
+  // 售后全额退款后不再推进物流：未发货的关闭履约，已发货的包裹退回商家。
+  if (order.fulfillmentStatus === 'ReturnedToSender' || (order.fulfillmentStatus === 'Cancelled' && order.status === 'Confirmed' && isFullyRefunded(order))) {
+    return (
+      <div className="order-cancelled-banner" role="status">
+        <Icon name="alert-circle" />
+        <div>
+          <strong>订单已全额退款</strong>
+          <span>{order.fulfillmentStatus === 'ReturnedToSender' ? '包裹将退回商家，如快递员派送请直接拒收。' : '商品未发出，退款已原路退回。'}</span>
+        </div>
+      </div>
+    );
+  }
   if (order.fulfillmentStatus === 'Cancelled') {
     return (
       <div className="order-cancelled-banner" role="status">
@@ -142,7 +156,7 @@ export default function OrderDetailPage() {
     );
   }
 
-  const status = presentStatus(order.fulfillmentStatus);
+  const status = presentOrderStatus(order);
   const eligibility = getAfterSalesEligibility(order);
   const history = [...(order.fulfillmentHistory ?? [])].sort((left, right) => Date.parse(right.occurredOnUtc) - Date.parse(left.occurredOnUtc));
   const payment = paymentQuery.data;
@@ -260,6 +274,7 @@ export default function OrderDetailPage() {
                       <span>{formatMoney(line.unitPrice, order.currency)} × {line.quantity}</span>
                       {line.discountAmount > 0 ? <small>已优惠 {formatMoney(line.discountAmount, order.currency)}</small> : null}
                       <strong>{formatMoney(line.lineAmount, order.currency)}</strong>
+                      {line.refundedQuantity ? <small>已退款 {line.refundedQuantity} 件</small> : null}
                       {eligibility.eligible ? (
                         <Link className="text-link" to={`/orders/${order.id}/after-sales/new?sku=${encodeURIComponent(line.sku)}${demoMode ? '&demo=1' : ''}`}>售后</Link>
                       ) : null}

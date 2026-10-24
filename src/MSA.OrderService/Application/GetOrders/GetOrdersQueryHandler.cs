@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using MSA.OrderService.Domain;
 using MSA.OrderService.Infrastructure;
 
 namespace MSA.OrderService.Application.GetOrders;
@@ -68,7 +69,10 @@ internal sealed class GetOrdersQueryHandler(OrderDbContext db)
                 order.CarrierName,
                 order.TrackingNumber,
                 order.CreatedOnUtc,
-                order.UpdatedOnUtc))
+                order.UpdatedOnUtc,
+                db.AfterSalesRequests
+                    .Where(request => request.OrderId == order.Id && request.Status == AfterSalesStatus.Refunded)
+                    .Sum(request => request.RefundAmount)))
             .ToArrayAsync(cancellationToken);
     }
 }

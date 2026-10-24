@@ -31,6 +31,7 @@ internal sealed class AfterSalesRequestConfiguration : IEntityTypeConfiguration<
         entity.Property(request => request.PaymentId).HasComment("原路退款使用的支付单标识");
         entity.Property(request => request.IdempotencyKey).HasMaxLength(100).HasComment("用户维度的售后申请幂等键");
         entity.Property(request => request.Type).HasComment("售后类型：仅退款、退货退款、换货、补寄");
+        entity.Property(request => request.InTransitAtSubmission).HasComment("申请时包裹已发出未签收；此类仅退款不自动同意");
         entity.Property(request => request.Status).HasComment("售后状态");
         entity.Property(request => request.Reason).HasComment("售后原因编码");
         entity.Property(request => request.Description).HasMaxLength(500).HasComment("买家补充说明");

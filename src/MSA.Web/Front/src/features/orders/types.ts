@@ -4,7 +4,8 @@ export type OrderFulfillmentStatus =
   | 'Shipped'
   | 'InTransit'
   | 'Delivered'
-  | 'Cancelled';
+  | 'Cancelled'
+  | 'ReturnedToSender';
 
 export type OrderStatus = 'Submitted' | 'AwaitingPayment' | 'Confirmed' | 'Cancelled';
 
@@ -25,6 +26,8 @@ export type OrderListItem = {
   trackingNumber: string | null;
   createdOnUtc: string;
   updatedOnUtc: string;
+  /** Total refunded through after-sales. */
+  refundedAmount?: number;
 };
 
 export type OrderLine = {
@@ -40,6 +43,8 @@ export type OrderLine = {
   lineSubtotal: number;
   discountAmount: number;
   lineAmount: number;
+  /** Units refunded through after-sales. */
+  refundedQuantity?: number;
 };
 
 export type OrderDiscount = {
@@ -100,6 +105,7 @@ export type OrderDetails = {
   shippedOnUtc?: string | null;
   inTransitOnUtc?: string | null;
   deliveredOnUtc?: string | null;
+  refundedAmount?: number;
 };
 
 export type CancelOrderResult = {

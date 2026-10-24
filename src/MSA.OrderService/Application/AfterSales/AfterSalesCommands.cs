@@ -256,8 +256,13 @@ internal static class AfterSalesRefundAcknowledgement
             request.MarkRefundFailed(refundRequestId, failureReason, now);
             return true;
         }
-        if (request.MarkRefunded(refundRequestId, now) && request.Type == AfterSalesType.RefundOnly)
-            await CloseFulfillmentIfFullyRefundedAsync(db, lockedOrder, request, now, cancellationToken);
+        if (!request.MarkRefunded(refundRequestId, now) || request.Type != AfterSalesType.RefundOnly)
+            return true;
+
+        await db.Entry(request).Collection(value => value.Lines).LoadAsync(cancellationToken);
+        if (lockedOrder.FulfillmentStatus == OrderFulfillmentStatus.AwaitingShipment)
+            request.RestockUnshippedGoods(now);
+        await CloseFulfillmentIfFullyRefundedAsync(db, lockedOrder, request, now, cancellationToken);
         return true;
     }
 
@@ -268,23 +273,31 @@ internal static class AfterSalesRefundAcknowledgement
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        if (order.FulfillmentStatus != OrderFulfillmentStatus.AwaitingShipment)
+        if (order.FulfillmentStatus is not (OrderFulfillmentStatus.AwaitingShipment or OrderFulfillmentStatus.Shipped or OrderFulfillmentStatus.InTransit))
             return;
         await db.Entry(order).Collection(value => value.Lines).LoadAsync(cancellationToken);
-        await db.Entry(current).Collection(value => value.Lines).LoadAsync(cancellationToken);
-        var earlier = await db.AfterSalesRequests
+        // 订单锁已持有：同一订单的售后写入都先锁订单，这里加载的售后单不会被并发修改。
+        var refundedRequests = await db.AfterSalesRequests
+            .Include(value => value.Lines)
             .Where(value => value.OrderId == order.Id
                 && value.Id != current.Id
                 && value.Type == AfterSalesType.RefundOnly
                 && value.Status == AfterSalesStatus.Refunded)
-            .SelectMany(value => value.Lines)
-            .Select(line => new { line.Sku, line.Quantity })
             .ToListAsync(cancellationToken);
-        var refunded = earlier
-            .Concat(current.Lines.Select(line => new { line.Sku, line.Quantity }))
+        refundedRequests.Add(current);
+        var refunded = refundedRequests
+            .SelectMany(value => value.Lines)
             .GroupBy(line => line.Sku)
             .ToDictionary(group => group.Key, group => group.Sum(line => line.Quantity));
-        if (order.Lines.All(line => refunded.GetValueOrDefault(line.Sku) >= line.Quantity))
-            order.CloseFulfillmentAfterFullRefund(now);
+        if (!order.Lines.All(line => refunded.GetValueOrDefault(line.Sku) >= line.Quantity)
+            || !order.CloseFulfillmentAfterFullRefund(now))
+            return;
+
+        // 整个包裹会退回：之前在途时部分退款的商品也在包裹里，一并等仓库入库；未发货时退的早已回库，不受影响。
+        if (order.FulfillmentStatus == OrderFulfillmentStatus.ReturnedToSender)
+        {
+            foreach (var request in refundedRequests)
+                request.AwaitReturnedParcel(now);
+        }
     }
 }

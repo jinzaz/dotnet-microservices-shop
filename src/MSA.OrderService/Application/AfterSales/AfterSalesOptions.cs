@@ -39,7 +39,10 @@ public sealed class AfterSalesOptions
         var canApproveReturns = !string.IsNullOrWhiteSpace(DefaultReturnAddress);
         return request =>
             request.Status == AfterSalesStatus.Requested && request.StatusChangedOnUtc <= review
-                && (canApproveReturns || request.Type == AfterSalesType.RefundOnly || request.Type == AfterSalesType.Reship)
+                && (request.Type == AfterSalesType.Reship
+                    // 包裹在途时的仅退款要商家确认拦截或拒收，自动同意会出现钱货两失。
+                    || request.Type == AfterSalesType.RefundOnly && !request.InTransitAtSubmission
+                    || canApproveReturns && (request.Type == AfterSalesType.ReturnAndRefund || request.Type == AfterSalesType.Exchange))
             || request.Status == AfterSalesStatus.AwaitingReturn && request.StatusChangedOnUtc <= returnShipment
             || request.Status == AfterSalesStatus.ReturnInTransit && request.Type == AfterSalesType.ReturnAndRefund && request.StatusChangedOnUtc <= returnReceipt
             || request.Status == AfterSalesStatus.ReturnReceived && request.Type == AfterSalesType.ReturnAndRefund && request.StatusChangedOnUtc <= refund
@@ -47,10 +50,12 @@ public sealed class AfterSalesOptions
     }
 
     /// <summary>When the current status will be handled automatically, for display; null when nothing is automatic.</summary>
-    public DateTimeOffset? DeadlineFor(AfterSalesStatus status, AfterSalesType type, DateTimeOffset statusChangedOnUtc) =>
+    public DateTimeOffset? DeadlineFor(AfterSalesStatus status, AfterSalesType type, bool inTransitAtSubmission, DateTimeOffset statusChangedOnUtc) =>
         status switch
         {
-            AfterSalesStatus.Requested when type is AfterSalesType.RefundOnly or AfterSalesType.Reship || !string.IsNullOrWhiteSpace(DefaultReturnAddress)
+            AfterSalesStatus.Requested when type == AfterSalesType.Reship
+                || type == AfterSalesType.RefundOnly && !inTransitAtSubmission
+                || type is AfterSalesType.ReturnAndRefund or AfterSalesType.Exchange && !string.IsNullOrWhiteSpace(DefaultReturnAddress)
                 => statusChangedOnUtc + ReviewTimeout,
             AfterSalesStatus.AwaitingReturn => statusChangedOnUtc + ReturnShipmentTimeout,
             AfterSalesStatus.ReturnInTransit when type == AfterSalesType.ReturnAndRefund => statusChangedOnUtc + ReturnReceiptTimeout,
