@@ -1,0 +1,28 @@
+# 目录造数工具（tools/MSA.CatalogSeeder）：一次性任务，不是常驻服务。
+# 放在 tools profile 里，`docker compose up -d` 不会启动它；用 `docker compose run --rm msa-catalog-seeder [参数]` 跑一次，结束后容器自动删除。
+# 只需要 PostgreSQL（目录、库存、购物车、订单四个库）和对象存储（上传图片池）。
+services:
+  msa-catalog-seeder:
+    image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/catalog-seeder:${MSA_IMAGE_TAG:-latest}
+    pull_policy: ${MSA_PULL_POLICY:-missing}
+    profiles: [tools]
+    restart: "no"
+    environment:
+      DOTNET_gcServer: ${MSA_DOTNET_GC_SERVER:-0}
+      INFRA_POSTGRES_HOST: ${INFRA_POSTGRES_HOST}
+      INFRA_POSTGRES_PORT: ${INFRA_POSTGRES_PORT:-5432}
+      INFRA_POSTGRES_USER: ${INFRA_POSTGRES_USER}
+      INFRA_POSTGRES_PASSWORD: ${INFRA_POSTGRES_PASSWORD}
+      INFRA_OSS_ENDPOINT: "${INFRA_OSS_ENDPOINT}"
+      INFRA_OSS_ACCESS_KEY: "${INFRA_OSS_ACCESS_KEY}"
+      INFRA_OSS_SECRET_KEY: "${INFRA_OSS_SECRET_KEY}"
+      INFRA_OSS_REGION: "${INFRA_OSS_REGION:-us-east-1}"
+      INFRA_OSS_FORCE_PATH_STYLE: "${INFRA_OSS_FORCE_PATH_STYLE:-true}"
+      INFRA_OSS_REFERER: "${INFRA_OSS_REFERER:-}"
+    networks:
+      - backend
+
+networks:
+  backend:
+    name: dotnet-infra_backend
+    external: true

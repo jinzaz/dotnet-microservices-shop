@@ -46,7 +46,7 @@ export function PageHeader({ eyebrow, title, description, actions }: { eyebrow: 
 const statusLabels: Record<string, string> = {
   active: '启用', draft: '草稿', published: '已发布', unpublished: '已下架', archived: '已归档', paused: '已暂停', ended: '已结束',
   scheduled: '待开始', disabled: '已停用', expired: '已过期', open: '开放', closed: '已关闭', soldout: '已售罄',
-  pendingpayment: '待支付', awaitingshipment: '待发货', shipped: '已发货', intransit: '运输中', delivered: '已送达', cancelled: '已取消',
+  pendingpayment: '待支付', awaitingshipment: '待发货', shipped: '已发货', intransit: '运输中', delivered: '已送达', cancelled: '已取消', returnedtosender: '拒收退回',
   submitted: '已提交', awaitingpayment: '待支付', confirmed: '已确认',
   pending: '处理中', succeeded: '支付成功', failed: '失败', refunding: '退款中', refunded: '已退款', cancelling: '取消中',
   sending: '发送中', sent: '已送达', allow: '允许', deny: '拒绝',

@@ -32,6 +32,7 @@ RUN --mount=type=cache,id=msa-nuget-http,target=/nuget-http-cache \
 FROM restore AS publish
 ARG BUILD_CONFIGURATION=Release
 COPY src/ src/
+COPY tools/ tools/
 COPY docker/images.txt /tmp/images.txt
 # 第一个服务编译公共库，后面的服务复用已经编译好的库（增量编译），每个库只编译一次。
 # 代码风格与分析器在本地 / CI 构建里检查，打镜像时关掉，省掉一大半编译时间。
@@ -102,3 +103,8 @@ ENTRYPOINT ["dotnet", "MSA.BFF.Web.dll"]
 FROM runtime AS bff-bm
 COPY --from=publish /app/bff-bm .
 ENTRYPOINT ["dotnet", "MSA.BFF.BM.dll"]
+
+# 造数工具：一次性任务，跑完就退出（用法见 docker/README.md「造数」）。
+FROM runtime AS catalog-seeder
+COPY --from=publish /app/catalog-seeder .
+ENTRYPOINT ["dotnet", "MSA.CatalogSeeder.dll"]

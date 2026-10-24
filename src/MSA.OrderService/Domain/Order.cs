@@ -276,18 +276,22 @@ public sealed class Order : AggregateRoot<Guid>
         return true;
     }
 
-    /// <summary>Every item of an unshipped order was refunded through after-sales: stop fulfillment, keep the paid status.</summary>
+    /// <summary>
+    /// Every item was refunded through refund-only after-sales: stop fulfillment, keep the paid status.
+    /// 未发货的直接关闭；已发出的包裹会被拒收退回商家，不能再标记送达。
+    /// </summary>
     public bool CloseFulfillmentAfterFullRefund(DateTimeOffset changedOnUtc)
     {
-        if (FulfillmentStatus != OrderFulfillmentStatus.AwaitingShipment)
+        var (next, note) = FulfillmentStatus switch
+        {
+            OrderFulfillmentStatus.AwaitingShipment => (OrderFulfillmentStatus.Cancelled, "All items were refunded before shipment."),
+            OrderFulfillmentStatus.Shipped or OrderFulfillmentStatus.InTransit =>
+                (OrderFulfillmentStatus.ReturnedToSender, "All items were refunded; the parcel is returning to the merchant."),
+            _ => (FulfillmentStatus, null)
+        };
+        if (note is null)
             return false;
-        TransitionFulfillmentTo(
-            OrderFulfillmentStatus.Cancelled,
-            changedOnUtc,
-            "All items were refunded before shipment.",
-            "system",
-            null,
-            null);
+        TransitionFulfillmentTo(next, changedOnUtc, note, "system", null, null);
         return true;
     }
 
@@ -714,7 +718,9 @@ public enum OrderFulfillmentStatus
     Shipped = 2,
     InTransit = 3,
     Delivered = 4,
-    Cancelled = 5
+    Cancelled = 5,
+    /// <summary>Fully refunded after shipment; the parcel is rejected and goes back to the merchant.</summary>
+    ReturnedToSender = 6
 }
 
 internal static class Money

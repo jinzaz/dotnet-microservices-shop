@@ -223,6 +223,10 @@ namespace MSA.OrderService.Infrastructure.Migrations
                         .HasColumnType("character varying(100)")
                         .HasComment("用户维度的售后申请幂等键");
 
+                    b.Property<bool>("InTransitAtSubmission")
+                        .HasColumnType("boolean")
+                        .HasComment("申请时包裹已发出未签收；此类仅退款不自动同意");
+
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uuid")
                         .HasComment("关联订单标识");
@@ -699,7 +703,7 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.ToTable("order_orders", null, t =>
                         {
-                            t.HasCheckConstraint("CK_order_orders_FulfillmentStatus_Enum", "\"FulfillmentStatus\" BETWEEN 0 AND 5");
+                            t.HasCheckConstraint("CK_order_orders_FulfillmentStatus_Enum", "\"FulfillmentStatus\" BETWEEN 0 AND 6");
 
                             t.HasCheckConstraint("CK_order_orders_Status_Enum", "\"Status\" BETWEEN 0 AND 3");
 
@@ -896,9 +900,9 @@ namespace MSA.OrderService.Infrastructure.Migrations
 
                     b.ToTable("order_fulfillment_status_history", null, t =>
                         {
-                            t.HasCheckConstraint("CK_order_fulfillment_status_history_FromStatus_Enum", "\"FromStatus\" BETWEEN 0 AND 5");
+                            t.HasCheckConstraint("CK_order_fulfillment_status_history_FromStatus_Enum", "\"FromStatus\" BETWEEN 0 AND 6");
 
-                            t.HasCheckConstraint("CK_order_fulfillment_status_history_ToStatus_Enum", "\"ToStatus\" BETWEEN 0 AND 5");
+                            t.HasCheckConstraint("CK_order_fulfillment_status_history_ToStatus_Enum", "\"ToStatus\" BETWEEN 0 AND 6");
                         });
                 });
 

@@ -9,7 +9,7 @@ internal sealed class SeederOptions
 
         用法：dotnet run --project tools/MSA.CatalogSeeder -- [选项]
 
-          --products <N>         导入的商品数，默认 500000；0 表示只执行 --reset
+          --products <N>         导入的商品数，默认 500000；超过词表能拼出的不重名商品数时按它截断；0 表示只执行 --reset
           --seed <N>             随机种子，同一个种子生成同一批商品，默认 20261008
           --batch <N>            每个事务写入的商品数，默认 5000
           --parallel <N>         同时写入的批数，默认 4；数据库服务器核数多、磁盘快可以调大
@@ -26,7 +26,7 @@ internal sealed class SeederOptions
           --no-inventory         不导入库存
         """;
 
-    public int Products { get; private set; } = 500_000;
+    public int Products { get; set; } = 500_000;
     public int Seed { get; private set; } = 20261008;
     public int BatchSize { get; private set; } = 5_000;
     public int Parallelism { get; private set; } = 4;

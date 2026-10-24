@@ -15,7 +15,9 @@ public sealed record OrderLineDto(
     decimal UnitPrice,
     decimal LineSubtotal,
     decimal DiscountAmount,
-    decimal LineAmount);
+    decimal LineAmount,
+    /// <summary>Units refunded through after-sales; unshipped orders ship only the rest.</summary>
+    int RefundedQuantity = 0);
 
 public sealed record OrderDiscountDto(
     Guid PromotionId,
@@ -82,7 +84,9 @@ public sealed record OrderDto(
     /// 支付服务此刻的状态。订单自身的状态要等支付成功事件送达才会变，
     /// 这一项让「刚付完、事件还在路上」的订单也能显示正确结果；问不到时为 null。
     /// </summary>
-    string? LivePaymentStatus = null);
+    string? LivePaymentStatus = null,
+    /// <summary>Total refunded through after-sales; equal to <see cref="Amount"/> once fully refunded.</summary>
+    decimal RefundedAmount = 0);
 
 public sealed record GetOrderQuery(
     Guid OrderId,

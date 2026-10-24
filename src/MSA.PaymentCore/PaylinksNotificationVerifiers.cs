@@ -10,7 +10,27 @@ namespace MSA.PaymentCore;
 public sealed class AlipayNotificationVerifier(IAlipayNotifyClient client, IOptions<PaylinksOptions> configured) : IPaymentNotificationVerifier
 {
     public PaymentChannel Channel => PaymentChannel.Alipay;
-    public async Task<VerifiedPaymentNotification> VerifyAsync(PaymentNotification n, CancellationToken ct) { var c = configured.Value.Alipay; var value = await client.ExecuteAsync<AlipayTradeStatusSyncNotify>(new Dictionary<string, string>(n.Parameters), new AlipayClientOptions { ServerUrl = c.ServerUrl, AppId = c.AppId, AppPrivateKey = c.AppPrivateKey, AlipayPublicKey = c.AlipayPublicKey }); var amount = decimal.Parse(value.TotalAmount, CultureInfo.InvariantCulture); return new(value.OutTradeNo, value.TradeNo, value.TradeStatus is "TRADE_SUCCESS" or "TRADE_FINISHED", amount, "CNY"); }
+    public async Task<VerifiedPaymentNotification> VerifyAsync(PaymentNotification n, CancellationToken ct)
+    {
+        var c = configured.Value.Alipay;
+        var value = await client.ExecuteAsync<AlipayTradeStatusSyncNotify>(
+            new Dictionary<string, string>(n.Parameters),
+            new AlipayClientOptions {
+                ServerUrl = c.ServerUrl,
+                AppId = c.AppId,
+                AppPrivateKey = c.AppPrivateKey,
+                AlipayPublicKey = c.AlipayPublicKey
+            });
+
+        var amount = decimal.Parse(value.TotalAmount, CultureInfo.InvariantCulture);
+
+        return new(
+            value.OutTradeNo,
+            value.TradeNo,
+            value.TradeStatus is "TRADE_SUCCESS" or "TRADE_FINISHED",
+            amount,
+            "CNY");
+    }
 }
 public sealed class WeChatPayNotificationVerifier(IWeChatPayNotifyClient client, IOptions<PaylinksOptions> configured) : IPaymentNotificationVerifier
 {

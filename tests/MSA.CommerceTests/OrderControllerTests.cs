@@ -175,4 +175,23 @@ public sealed class OrderControllerTests
 
     private static ShippingAddressInput Address() => new(null, "Buyer", "13800000000", "CN",
         "Province", "City", "District", "Street", null, null);
+
+    [TestMethod]
+    public void RequestRecords_PutValidationOnConstructorParameters()
+    {
+        // MVC 校验 record 请求体时只认主构造函数参数上的验证特性；写成 [property: Required] 会在模型绑定时抛
+        // InvalidOperationException，被 ApiExceptionHandler 映射成笼统的 409，报价、取消订单、售后接口全部不可用。
+        var offenders = typeof(OrdersController).Assembly.GetTypes()
+            .Where(type => type.IsNested
+                           && typeof(ControllerBase).IsAssignableFrom(type.DeclaringType)
+                           && type.GetMethod("<Clone>$") is not null)
+            .SelectMany(type => type.GetConstructors()
+                .SelectMany(constructor => constructor.GetParameters())
+                .Select(parameter => type.GetProperty(parameter.Name!))
+                .Where(property => property?.GetCustomAttributes<System.ComponentModel.DataAnnotations.ValidationAttribute>(inherit: false).Any() == true)
+                .Select(property => $"{type.DeclaringType!.Name}.{type.Name}.{property!.Name}"))
+            .ToList();
+
+        Assert.AreEqual(0, offenders.Count, "Move these validation attributes from [property: ...] to the constructor parameter: " + string.Join(", ", offenders));
+    }
 }

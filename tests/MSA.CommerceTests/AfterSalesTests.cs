@@ -109,6 +109,46 @@ public sealed class AfterSalesTests
     }
 
     [TestMethod]
+    public void RefundOnly_BeforeShipment_RestocksEveryUnitOnceRefunded()
+    {
+        var request = Submit(ConfirmedOrder(), [], AfterSalesType.RefundOnly, 2);
+        var now = Created.AddMinutes(5);
+        Assert.IsFalse(request.RestockUnshippedGoods(now));
+
+        request.Approve(null, null, "operator", now);
+        request.MarkRefunded(request.RefundRequestId!.Value, now);
+
+        Assert.IsTrue(request.RestockUnshippedGoods(now));
+        Assert.IsFalse(request.RestockUnshippedGoods(now));
+        Assert.AreEqual(ReturnDisposition.Restocked, request.ReturnDisposition);
+        var restock = StockEvents(request).Single();
+        Assert.AreEqual(AfterSalesStockOperation.Restock, restock.Operation);
+        Assert.AreEqual(2, restock.Items.Single().Quantity);
+    }
+
+    [TestMethod]
+    public void RefundOnly_FullRefundInTransit_ReturnsParcelAndAwaitsWarehouse()
+    {
+        var order = ConfirmedOrder();
+        order.Ship("ship", new string('B', 64), "SF", "顺丰", "SF1", null, "operator", Created.AddMinutes(3));
+        var request = Submit(order, [], AfterSalesType.RefundOnly, 3);
+        var now = Created.AddMinutes(5);
+        request.Approve(null, null, "operator", now);
+        request.MarkRefunded(request.RefundRequestId!.Value, now);
+
+        Assert.IsTrue(order.CloseFulfillmentAfterFullRefund(now));
+        Assert.AreEqual(OrderFulfillmentStatus.ReturnedToSender, order.FulfillmentStatus);
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
+            order.MarkDelivered("delivered", new string('D', 64), null, "operator", now));
+        Assert.IsEmpty(AfterSalesRequest.AllowedTypes(order, now));
+
+        Assert.IsTrue(request.AwaitReturnedParcel(now));
+        Assert.AreEqual(ReturnDisposition.Pending, request.ReturnDisposition);
+        Assert.IsTrue(request.DisposeReturn([new AfterSalesItem("SKU-1", 3)], null, "warehouse", now));
+        Assert.AreEqual(AfterSalesStockOperation.Restock, StockEvents(request).Single().Operation);
+    }
+
+    [TestMethod]
     public void Reship_ShipsAfterApprovalAndCustomerCompletes()
     {
         var request = Submit(DeliveredOrder(), [], AfterSalesType.Reship, 1);
@@ -185,7 +225,20 @@ public sealed class AfterSalesTests
         // 没配置默认退货地址时，退货 / 换货不能被自动同意。
         Assert.IsFalse(due(exchange));
         Assert.IsTrue(new AfterSalesOptions { DefaultReturnAddress = "上海市退货仓" }.Due(now + policy.ReviewTimeout).Compile()(exchange));
-        Assert.AreEqual(now + policy.ReviewTimeout, policy.DeadlineFor(refundOnly.Status, refundOnly.Type, refundOnly.StatusChangedOnUtc));
+        Assert.AreEqual(now + policy.ReviewTimeout, policy.DeadlineFor(refundOnly.Status, refundOnly.Type, refundOnly.InTransitAtSubmission, refundOnly.StatusChangedOnUtc));
+    }
+
+    [TestMethod]
+    public void TimeoutPolicy_NeverAutoApprovesRefundOnlyWhileParcelIsInTransit()
+    {
+        var order = ConfirmedOrder();
+        order.Ship("ship", new string('B', 64), "SF", "顺丰", "SF1", null, "operator", Created.AddMinutes(3));
+        var request = Submit(order, [], AfterSalesType.RefundOnly, 1);
+        var policy = new AfterSalesOptions { DefaultReturnAddress = "上海市退货仓" };
+
+        Assert.IsTrue(request.InTransitAtSubmission);
+        Assert.IsFalse(policy.Due(request.StatusChangedOnUtc + TimeSpan.FromDays(30)).Compile()(request));
+        Assert.IsNull(policy.DeadlineFor(request.Status, request.Type, request.InTransitAtSubmission, request.StatusChangedOnUtc));
     }
 
     private static AfterSalesStockRequestedDomainEvent[] StockEvents(AfterSalesRequest request) =>

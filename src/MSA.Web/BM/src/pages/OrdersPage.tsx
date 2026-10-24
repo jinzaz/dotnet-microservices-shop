@@ -20,7 +20,10 @@ type Order = {
   trackingNumber?: string;
   createdOnUtc: string;
   updatedOnUtc: string;
+  refundedAmount: number;
 };
+
+type OrderLine = { variantId?: string; offerId?: string; sku: string; productName: string; variantName: string; quantity: number; unitPrice: number; lineAmount: number; refundedQuantity: number };
 
 type OrderDetail = {
   id: string;
@@ -46,7 +49,8 @@ type OrderDetail = {
     streetLine1: string;
     streetLine2?: string;
   };
-  lines: Array<{ variantId?: string; offerId?: string; sku: string; productName: string; variantName: string; quantity: number; unitPrice: number; lineAmount: number }>;
+  refundedAmount: number;
+  lines: OrderLine[];
   fulfillmentHistory: Array<{ fromStatus?: string; toStatus: string; note?: string; actor: string; occurredOnUtc: string }>;
 };
 
@@ -64,7 +68,7 @@ type FulfillmentEditor = { id: string; orderNumber: string; recipientName: strin
 const PAGE_SIZE = 20;
 const actionLabels: Record<Action, string> = { ship: '确认发货', 'in-transit': '确认进入运输', delivered: '确认送达' };
 const nextStatus: Record<Action, string> = { ship: 'Shipped', 'in-transit': 'InTransit', delivered: 'Delivered' };
-const statuses = ['PendingPayment', 'AwaitingShipment', 'Shipped', 'InTransit', 'Delivered', 'Cancelled'];
+const statuses = ['PendingPayment', 'AwaitingShipment', 'Shipped', 'InTransit', 'Delivered', 'Cancelled', 'ReturnedToSender'];
 const carriers = [['SF', '顺丰速运'], ['JD', '京东物流'], ['YTO', '圆通速递'], ['ZTO', '中通快递'], ['STO', '申通快递'], ['EMS', 'EMS']] as const;
 const LAST_CARRIER_KEY = 'bm.orders.lastCarrier';
 
@@ -110,6 +114,12 @@ export default function OrdersPage() {
     queryKey: ['orders', 'overview', detailOrderId],
     queryFn: () => api<OrderOverview>(`/bff/orders/${detailOrderId}/overview`),
     enabled: Boolean(detailOrderId) && canQuery,
+  });
+  // 发货时核对实发件数：与详情共用缓存，未发货时已退款的商品不再发出。
+  const shipDetailQuery = useQuery({
+    queryKey: ['orders', 'detail', fulfillment?.id],
+    queryFn: () => api<OrderDetail>(`/api/order/admin/orders/${fulfillment!.id}`),
+    enabled: fulfillment?.action === 'ship' && canQuery,
   });
   const mutation = useMutation({
     mutationFn: ({ editor, body }: { editor: FulfillmentEditor; body: unknown }) =>
@@ -166,7 +176,7 @@ export default function OrdersPage() {
           return <tr key={order.id} className="is-clickable" onClick={() => setDetailOrderId(order.id)}>
             <td><span className="cell-with-copy"><button className="table-link" type="button" onClick={(event) => { event.stopPropagation(); setDetailOrderId(order.id); }}>{order.orderNumber}</button><CopyButton value={order.orderNumber} label="复制订单号" /></span><small>{order.id.slice(0, 8)}</small></td>
             <td><strong>{order.recipientName}</strong><small>{order.phoneNumber}</small></td>
-            <td><strong>{formatMoney(order.amount, order.currency)}</strong></td>
+            <td><strong>{formatMoney(order.amount, order.currency)}</strong>{order.refundedAmount ? <small>已退款 {formatMoney(order.refundedAmount, order.currency)}</small> : null}</td>
             <td><Status>{order.orderStatus}</Status></td>
             <td><Status>{order.fulfillmentStatus}</Status></td>
             <td>{order.carrierName ?? '—'}<small>{order.trackingNumber ?? '尚无运单'}</small></td>
@@ -187,6 +197,7 @@ export default function OrdersPage() {
           <div><span>订单金额</span><strong>{formatMoney(fulfillment.amount, fulfillment.currency)}</strong></div>
           <div><span>下一状态</span><Status>{nextStatus[fulfillment.action]}</Status></div>
         </div>
+        {fulfillment.action === 'ship' ? <ShipLines lines={shipDetailQuery.data?.lines} /> : null}
         {fulfillment.action === 'ship' ? <div className="form-row">
           <Field label="承运商" hint="默认使用上次选择的承运商"><select name="carrier" required defaultValue={rememberedCarrier()}>{carriers.map(([code, name]) => <option key={code} value={`${code}|${name}`}>{name}</option>)}</select></Field>
           <Field label="物流单号"><input name="trackingNumber" required maxLength={120} autoFocus autoComplete="off" placeholder="扫描或输入运单号" pattern="[A-Za-z0-9\-]{6,120}" title="6–120 位字母、数字或连字符" /></Field>
@@ -211,7 +222,7 @@ function OrderDetailPanel({ order, overview, canEdit, canViewPayment, onAdvance 
   const fullAddress = `${address.province}${address.city}${address.district}${address.streetLine1}${address.streetLine2 ?? ''}`;
   return <div className="order-detail">
     <div className="order-detail__summary">
-      <div><span>应付金额</span><strong>{formatMoney(order.amount, order.currency)}</strong><small>商品 {formatMoney(order.subtotalAmount, order.currency)} · 优惠 {formatMoney(order.discountAmount, order.currency)}</small></div>
+      <div><span>应付金额</span><strong>{formatMoney(order.amount, order.currency)}</strong><small>商品 {formatMoney(order.subtotalAmount, order.currency)} · 优惠 {formatMoney(order.discountAmount, order.currency)}{order.refundedAmount ? ` · 已退款 ${formatMoney(order.refundedAmount, order.currency)}` : ''}</small></div>
       <div><span>订单 / 履约</span><p><Status>{order.status}</Status> <Status>{order.fulfillmentStatus}</Status></p><small>{order.paymentMethod}{order.cancellationReason ? ` · 取消原因：${order.cancellationReason}` : ''}</small></div>
     </div>
     <div className="detail-actions">
@@ -225,10 +236,22 @@ function OrderDetailPanel({ order, overview, canEdit, canViewPayment, onAdvance 
     {overview?.reservation ? <section><h3>库存预占</h3><p><Status>{overview.reservation.status}</Status> {overview.reservation.lines.map((line) => `${line.sku} × ${line.quantity}`).join('、')}</p>{overview.reservation.expiresOnUtc ? <small>预占到 {formatDate(overview.reservation.expiresOnUtc)}</small> : null}</section> : null}
     {overview?.unavailable.length ? <p className="muted-copy">以下信息暂时读不到：{overview.unavailable.join('、')}。</p> : null}
     <section><h3>商品明细</h3><div className="compact-list">{order.lines.map((line) => <article key={`${line.sku}-${line.offerId ?? ''}`}>
-      <div><strong>{line.productName}</strong><small>{line.variantName} · {line.sku}{line.offerId ? ' · 活动价' : ''}</small></div>
+      <div><strong>{line.productName}</strong><small>{line.variantName} · {line.sku}{line.offerId ? ' · 活动价' : ''}{line.refundedQuantity ? ` · 已退款 ${line.refundedQuantity} 件` : ''}</small></div>
       <span>{formatMoney(line.unitPrice, order.currency)} × {line.quantity}</span><strong>{formatMoney(line.lineAmount, order.currency)}</strong>
     </article>)}</div></section>
     <section><h3>配送地址</h3><p className="cell-with-copy">{address.recipientName} · {address.phoneNumber}<CopyButton value={`${address.recipientName} ${address.phoneNumber} ${fullAddress}`} label="复制收货信息" /></p><small>{fullAddress}</small></section>
     <section><h3>履约记录</h3>{order.fulfillmentHistory.length ? <ol className="timeline">{order.fulfillmentHistory.map((item, index) => <li key={`${item.occurredOnUtc}-${index}`}><i /><div><strong>{statusLabel(item.toStatus)}</strong><small>{formatDate(item.occurredOnUtc)} · {item.actor}</small>{item.note ? <p>{item.note}</p> : null}</div></li>)}</ol> : <p className="muted-copy">尚未产生履约操作。</p>}</section>
   </div>;
+}
+
+function ShipLines({ lines }: { lines?: OrderLine[] }) {
+  if (!lines) return <Loading label="正在读取发货商品" />;
+  const refunded = lines.some((line) => line.refundedQuantity > 0);
+  return <>
+    {refunded ? <div className="notice notice--warning" role="status"><Icon name="alert" /><span>部分商品已在售后中退款，请按「实发」件数打包，已退款的商品不要发出。</span></div> : null}
+    <div className="compact-list">{lines.map((line) => <article key={`${line.sku}-${line.offerId ?? ''}`}>
+      <div><strong>{line.productName}</strong><small>{line.variantName} · {line.sku}{line.refundedQuantity ? ` · 已退款 ${line.refundedQuantity} 件` : ''}</small></div>
+      <span>共 {line.quantity} 件</span><strong>实发 × {line.quantity - line.refundedQuantity}</strong>
+    </article>)}</div>
+  </>;
 }

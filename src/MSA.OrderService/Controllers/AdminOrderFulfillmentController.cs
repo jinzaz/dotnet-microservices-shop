@@ -14,13 +14,13 @@ namespace MSA.OrderService.Controllers;
 public sealed class AdminOrderFulfillmentController(ISender sender) : ControllerBase
 {
     public sealed record ShipOrderRequest(
-        [property: Required, MaxLength(50)] string CarrierCode,
-        [property: Required, MaxLength(120)] string CarrierName,
-        [property: Required, MaxLength(120)] string TrackingNumber,
-        [property: MaxLength(1000)] string? Note);
+        [Required, MaxLength(50)] string CarrierCode,
+        [Required, MaxLength(120)] string CarrierName,
+        [Required, MaxLength(120)] string TrackingNumber,
+        [MaxLength(1000)] string? Note);
 
     public sealed record FulfillmentNoteRequest(
-        [property: MaxLength(1000)] string? Note);
+        [MaxLength(1000)] string? Note);
 
     [HttpPost("ship")]
     public Task<OrderFulfillmentCommandResult> Ship(

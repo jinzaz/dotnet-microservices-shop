@@ -14,7 +14,7 @@ const modules: Array<{ bases: string[]; label: string; path: string; icon: IconN
   { bases: ['system.authorization'], label: '权限治理', path: '/access', icon: 'shield', note: '用户、角色与策略' },
 ];
 
-const pipeline = ['PendingPayment', 'AwaitingShipment', 'Shipped', 'InTransit', 'Delivered', 'Cancelled'];
+const pipeline = ['PendingPayment', 'AwaitingShipment', 'Shipped', 'InTransit', 'Delivered', 'Cancelled', 'ReturnedToSender'];
 const paymentTones: Record<string, string> = { Succeeded: 'good', Refunded: 'neutral', Refunding: 'warn', Pending: 'warn', Cancelling: 'warn', Failed: 'bad', Closed: 'bad', Expired: 'bad' };
 
 function greeting() {

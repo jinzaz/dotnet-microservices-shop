@@ -13,27 +13,27 @@ namespace MSA.OrderService.Controllers;
 public sealed class AdminAfterSalesController(ISender sender) : ControllerBase
 {
     public sealed record ApproveRequest(
-        [property: MaxLength(500)] string? ReturnAddress,
-        [property: MaxLength(1000)] string? Note);
+        [MaxLength(500)] string? ReturnAddress,
+        [MaxLength(1000)] string? Note);
 
-    public sealed record RejectRequest([property: Required, MaxLength(500)] string Reply);
+    public sealed record RejectRequest([Required, MaxLength(500)] string Reply);
 
-    public sealed record NoteRequest([property: MaxLength(1000)] string? Note);
+    public sealed record NoteRequest([MaxLength(1000)] string? Note);
 
     public sealed record ShipReplacementRequest(
-        [property: Required, MaxLength(50)] string CarrierCode,
-        [property: Required, MaxLength(120)] string CarrierName,
-        [property: Required, MaxLength(120)] string TrackingNumber,
-        [property: MaxLength(1000)] string? Note);
+        [Required, MaxLength(50)] string CarrierCode,
+        [Required, MaxLength(120)] string CarrierName,
+        [Required, MaxLength(120)] string TrackingNumber,
+        [MaxLength(1000)] string? Note);
 
     public sealed record RestockLineRequest(
-        [property: Required, MaxLength(80)] string Sku,
-        [property: Range(0, 999)] int Quantity);
+        [Required, MaxLength(80)] string Sku,
+        [Range(0, 999)] int Quantity);
 
     /// <summary>Units per SKU going back to sellable stock; a note is required when any unit is not restocked.</summary>
     public sealed record DisposeReturnRequest(
-        [property: Required, MaxLength(50)] IReadOnlyList<RestockLineRequest> Lines,
-        [property: MaxLength(500)] string? Note);
+        [Required, MaxLength(50)] IReadOnlyList<RestockLineRequest> Lines,
+        [MaxLength(500)] string? Note);
 
     [HttpGet]
     [Authorize(Policy = "order.admin.read")]

@@ -5,7 +5,8 @@ namespace MSA.OrderService.Domain;
 
 /// <summary>
 /// 售后单：一次针对已付款订单部分或全部商品的退款、退货、换货或补寄请求。
-/// 与订单是同一限界上下文内的两个聚合：订单只提供资格与金额快照，售后进度不回写订单状态。
+/// 与订单是同一限界上下文内的两个聚合：订单只提供资格与金额快照，售后进度不回写订单状态；
+/// 唯一例外是整单仅退款后关闭履约（见 <see cref="Order.CloseFulfillmentAfterFullRefund"/>）。
 /// </summary>
 public sealed class AfterSalesRequest : AggregateRoot<Guid>
 {
@@ -26,6 +27,8 @@ public sealed class AfterSalesRequest : AggregateRoot<Guid>
     public Guid PaymentId { get; private set; }
     public string IdempotencyKey { get; private set; } = string.Empty;
     public AfterSalesType Type { get; private set; }
+    /// <summary>The parcel had left the warehouse but was not yet delivered when the customer applied.</summary>
+    public bool InTransitAtSubmission { get; private set; }
     public AfterSalesStatus Status { get; private set; }
     public AfterSalesReason Reason { get; private set; }
     public string? Description { get; private set; }
@@ -121,6 +124,7 @@ public sealed class AfterSalesRequest : AggregateRoot<Guid>
             PaymentId = order.PaymentId!.Value,
             IdempotencyKey = Required(idempotencyKey, 100, nameof(idempotencyKey)),
             Type = type,
+            InTransitAtSubmission = order.FulfillmentStatus is OrderFulfillmentStatus.Shipped or OrderFulfillmentStatus.InTransit,
             Reason = reason,
             Description = normalizedDescription,
             EvidenceObjectKeys = evidenceObjectKeys.ToArray(),
@@ -420,6 +424,30 @@ public sealed class AfterSalesRequest : AggregateRoot<Guid>
                 _lines.Where(line => line.RestockedQuantity > 0).Select(line => new AfterSalesItem(line.Sku, line.RestockedQuantity!.Value)),
                 actor);
         }
+        return true;
+    }
+
+    /// <summary>
+    /// 仅退款的商品若从未发出，退款到账即全部回库：付款时库存已按出库扣减，不补回会少算实物。
+    /// </summary>
+    public bool RestockUnshippedGoods(DateTimeOffset now)
+    {
+        if (Type != AfterSalesType.RefundOnly || Status != AfterSalesStatus.Refunded || ReturnDisposition != ReturnDisposition.NotApplicable)
+            return false;
+        ReturnDisposition = ReturnDisposition.Pending;
+        return DisposeReturn(AllLines().ToArray(), "订单未发货，退款后商品自动回库", "system", now);
+    }
+
+    /// <summary>
+    /// 整单仅退款后包裹被拒收退回：转为待入库处理，仓库收到包裹后沿用退货入库流程验货回库。
+    /// </summary>
+    public bool AwaitReturnedParcel(DateTimeOffset now)
+    {
+        if (Type != AfterSalesType.RefundOnly || Status != AfterSalesStatus.Refunded || ReturnDisposition != ReturnDisposition.NotApplicable)
+            return false;
+        ReturnDisposition = ReturnDisposition.Pending;
+        UpdatedOnUtc = now;
+        Version++;
         return true;
     }
 

@@ -29,15 +29,15 @@ public sealed class OrdersController(ISender sender) : ControllerBase
         IReadOnlyList<Guid>? WalletCouponIds = null);
 
     public sealed record QuoteItemRequest(
-        [property: Required, MaxLength(80)] string Sku,
-        [property: Range(1, 999)] int Quantity);
+        [Required, MaxLength(80)] string Sku,
+        [Range(1, 999)] int Quantity);
 
     public sealed record QuoteOrderRequest(
-        [property: Required, MinLength(1), MaxLength(50)] IReadOnlyList<QuoteItemRequest> Items,
-        [property: MaxLength(5)] IReadOnlyList<string>? CouponCodes = null,
-        [property: MaxLength(5)] IReadOnlyList<Guid>? WalletCouponIds = null);
+        [Required, MinLength(1), MaxLength(50)] IReadOnlyList<QuoteItemRequest> Items,
+        [MaxLength(5)] IReadOnlyList<string>? CouponCodes = null,
+        [MaxLength(5)] IReadOnlyList<Guid>? WalletCouponIds = null);
 
-    public sealed record CancelOrderRequest([property: MaxLength(200)] string? Reason = null);
+    public sealed record CancelOrderRequest([MaxLength(200)] string? Reason = null);
 
     [HttpPost]
     [Authorize(Policy = "order-api")]

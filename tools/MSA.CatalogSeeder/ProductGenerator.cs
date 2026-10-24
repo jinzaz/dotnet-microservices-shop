@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -37,6 +38,8 @@ internal sealed record SeedProduct(
 /// <summary>
 /// 按分类权重抽品类，再按品类词表生成商品。同一个随机种子总是生成同一批数据（id 除外），方便复现问题。
 /// <list type="bullet">
+/// <item>商品名：把每个品类词表能拼出的名字全部列出来、打乱后逐个取用，不重复也不补型号；
+/// 某个品类的名字用完就不再往它分配商品，所以能生成的商品总数有上限（生成前的 <see cref="Remaining"/>）；</item>
 /// <item>规格数：约 35% 单规格，30% 2–3 个，25% 4–6 个，10% 7–12 个（由品类的销售属性组合而成）；</item>
 /// <item>状态：约 92% 已发布（其中 1% 定时上架、生效时间在未来），4% 已下架，4% 草稿；</item>
 /// <item>价格：在品类价格区间内按对数均匀分布（便宜货多、贵货少），按价位取整成 x9 / x99 这类常见价格；</item>
@@ -56,15 +59,35 @@ internal sealed partial class ProductGenerator(
     private const int Draft = 0;
 
     private readonly Random _random = new(seed);
-    private readonly double[] _cumulativeWeights = Cumulative(categories);
+    // 每个品类还没用过的名字（已打乱），从末尾取。
+    private readonly List<(string Name, string? Brand)>[] _names = Shuffled(categories, new Random(seed));
+    private double[]? _cumulativeWeights;
     private long _variantSequence;
-    private readonly HashSet<string> _names = new(StringComparer.Ordinal);
+
+    /// <summary>还能生成多少个不重名的商品；生成前就是词表的上限，导入数超过它时按它截断。</summary>
+    public int Remaining => _names.Sum(pool => pool.Count);
+
+    private static List<(string Name, string? Brand)>[] Shuffled(IReadOnlyList<SeedCategory> categories, Random random)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        return categories.Select(category =>
+        {
+            var names = AllNames(category.Spec, seen);
+            random.Shuffle(CollectionsMarshal.AsSpan(names));
+            return names;
+        }).ToArray();
+    }
 
     public SeedProduct Next(long sequence)
     {
-        var category = PickCategory();
+        var index = PickCategory();
+        var category = categories[index];
         var spec = category.Spec;
-        var (name, brand) = UniqueName(spec);
+        var pool = _names[index];
+        var (name, brand) = pool[^1];
+        pool.RemoveAt(pool.Count - 1);
+        if (pool.Count == 0)
+            _cumulativeWeights = Cumulative();
         var basePrice = NicePrice(LogUniform(spec.MinPrice, spec.MaxPrice));
         var variants = Variants(spec, sequence, basePrice);
 
@@ -98,9 +121,9 @@ internal sealed partial class ProductGenerator(
             active = false;
         }
 
-        var pool = images.GetValueOrDefault(spec.Code) ?? [];
-        var imageCount = Math.Min(pool.Length, _random.NextDouble() switch { < .3 => 1, < .65 => 2, < .9 => 3, _ => 4 });
-        var picked = pool.OrderBy(_ => _random.Next()).Take(imageCount).ToArray();
+        var imagePool = images.GetValueOrDefault(spec.Code) ?? [];
+        var imageCount = Math.Min(imagePool.Length, _random.NextDouble() switch { < .3 => 1, < .65 => 2, < .9 => 3, _ => 4 });
+        var picked = imagePool.OrderBy(_ => _random.Next()).Take(imageCount).ToArray();
 
         // 主键用「现在」生成的 UUIDv7，按写入顺序递增：B-tree 只在最右边追加。
         // 用随机的创建时间生成的话，主键在两年的时间范围里乱序插入，每行都可能落到不同的索引页，越写越慢。
@@ -121,19 +144,26 @@ internal sealed partial class ProductGenerator(
             picked);
     }
 
-    private SeedCategory PickCategory()
+    private int PickCategory()
     {
+        _cumulativeWeights ??= Cumulative();
+        if (_cumulativeWeights[^1] == 0)
+            throw new InvalidOperationException("词表能拼出的商品名已经用完，先按 Remaining 截断导入数。");
         var roll = _random.NextDouble() * _cumulativeWeights[^1];
+        // 名字用完的品类权重为 0、累计值和前一个相同；找第一个累计值大于 roll 的，跳过它们。
         var index = Array.BinarySearch(_cumulativeWeights, roll);
-        return categories[index < 0 ? ~index : index];
+        index = index < 0 ? ~index : index + 1;
+        while (_names[index].Count == 0)
+            index++;
+        return index;
     }
 
-    private static double[] Cumulative(IReadOnlyList<SeedCategory> categories)
+    private double[] Cumulative()
     {
         var sums = new double[categories.Count];
         double total = 0;
         for (var index = 0; index < categories.Count; index++)
-            sums[index] = total += categories[index].Spec.Weight;
+            sums[index] = total += _names[index].Count == 0 ? 0 : categories[index].Spec.Weight;
         return sums;
     }
 
@@ -144,50 +174,51 @@ internal sealed partial class ProductGenerator(
     private static partial Regex Spaces();
 
     /// <summary>
-    /// 商品名不重复：词表组合少的品类（例如天幕只有 品牌 × 款式 16 种）随机几次仍然撞名时，像真实商品一样带上型号，
-    /// 例如「野径 加厚银胶天幕 TE-4071」。否则 50 万商品里会有成百上千个同名商品，后台按名字查到的未必是前台看到的那一个。
+    /// 列出一个品类所有模板能拼出的全部名字（同时记下名字里的品牌）。以前是随机拼、撞名了就补一个随机型号，
+    /// 结果 50 万商品里八成是「远山 黑胶天幕 OU-1234」这种同品牌、同分类、同名只差型号的商品，看起来全是重复的。
+    /// 词表里的空串（可以省略的段）和不同模板可能拼出同一个名字，由 <paramref name="seen"/> 去重（跨品类也不重名）。
     /// </summary>
-    private (string Name, string? Brand) UniqueName(CategorySpec spec)
+    internal static List<(string Name, string? Brand)> AllNames(CategorySpec spec, HashSet<string> seen)
     {
-        for (var attempt = 0; attempt < 5; attempt++)
+        var result = new List<(string Name, string? Brand)>();
+        foreach (var template in spec.Templates)
         {
-            var candidate = Name(spec, out var candidateBrand);
-            if (_names.Add(candidate))
-                return (candidate, candidateBrand);
-        }
-
-        var baseName = Name(spec, out var brand);
-        var prefix = spec.Code[..2];
-        while (true)
-        {
-            var candidate = string.Create(CultureInfo.InvariantCulture, $"{baseName} {prefix}-{_random.Next(1000, 10000)}");
-            if (_names.Add(candidate))
-                return (candidate, brand);
-        }
-    }
-
-    internal string Name(CategorySpec spec, out string? brand)
-    {
-        var template = spec.Templates[_random.Next(spec.Templates.Length)];
-        string? chosenBrand = null;
-        var name = Token().Replace(template, match =>
-        {
-            if (match.Groups["slot"].Success)
+            // 模板拆成「字面量、候选词、字面量、候选词……」，候选词带上是不是品牌位。
+            var parts = new List<(string Literal, string[] Words, bool IsBrand)>();
+            var position = 0;
+            foreach (Match match in Token().Matches(template))
             {
-                var slot = match.Groups["slot"].Value;
-                var words = spec.Slots[slot];
-                var word = words[_random.Next(words.Length)];
-                if (slot == "brand")
-                    chosenBrand = word;
-                return word;
+                string[] words;
+                if (match.Groups["slot"].Success)
+                    words = spec.Slots[match.Groups["slot"].Value];
+                else
+                {
+                    var from = int.Parse(match.Groups["from"].Value, CultureInfo.InvariantCulture);
+                    var to = int.Parse(match.Groups["to"].Value, CultureInfo.InvariantCulture);
+                    words = Enumerable.Range(from, to - from + 1).Select(number => number.ToString(CultureInfo.InvariantCulture)).ToArray();
+                }
+
+                parts.Add((template[position..match.Index], words, match.Groups["slot"].Value == "brand"));
+                position = match.Index + match.Length;
             }
 
-            var from = int.Parse(match.Groups["from"].Value, CultureInfo.InvariantCulture);
-            var to = int.Parse(match.Groups["to"].Value, CultureInfo.InvariantCulture);
-            return _random.Next(from, to + 1).ToString(CultureInfo.InvariantCulture);
-        });
-        brand = chosenBrand;
-        return Spaces().Replace(name, " ").Trim();
+            IEnumerable<(string Text, string? Brand)> names = [(string.Empty, null)];
+            foreach (var (literal, words, isBrand) in parts)
+            {
+                names = names.SelectMany(prefix => words.Select(word =>
+                    (prefix.Text + literal + word, isBrand ? word : prefix.Brand)));
+            }
+
+            var tail = template[position..];
+            foreach (var (text, brand) in names)
+            {
+                var name = Spaces().Replace(text + tail, " ").Trim();
+                if (seen.Add(name))
+                    result.Add((name, brand));
+            }
+        }
+
+        return result;
     }
 
     private string Description(CategorySpec spec, string name)

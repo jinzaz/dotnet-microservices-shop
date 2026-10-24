@@ -38,6 +38,9 @@ include:
     env_file: [.env, certs/cert-passwords.env]
   - path: services/commerce/search.yaml
     env_file: [.env, certs/cert-passwords.env]
+  # 造数工具（tools profile，只用 docker compose run --rm 跑一次）
+  - path: services/commerce/catalog-seeder.yaml
+    env_file: [.env, certs/cert-passwords.env]
   # 平台服务
   - path: services/platform/notification.yaml
     env_file: [.env, certs/cert-passwords.env]

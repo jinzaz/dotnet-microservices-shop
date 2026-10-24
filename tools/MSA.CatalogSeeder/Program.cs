@@ -30,7 +30,9 @@ if (options.DryRun)
     var fakeImages = Taxonomy.All.ToDictionary(spec => spec.Code, spec => new[] { $"/seed/{spec.Code.ToLowerInvariant()}/01.svg" });
     var fakeBrands = Taxonomy.BrandNames.ToDictionary(name => name, _ => Guid.NewGuid());
     var sample = new ProductGenerator(fakeCategories, fakeBrands, fakeImages, options.Seed, now);
-    for (var sequence = 1; sequence <= options.DryRunCount; sequence++)
+    var count = Math.Min(options.DryRunCount, sample.Remaining);
+    Console.WriteLine($"词表最多能生成 {sample.Remaining:N0} 个不重名商品。");
+    for (var sequence = 1; sequence <= count; sequence++)
     {
         var product = sample.Next(sequence);
         var category = fakeCategories.First(item => item.Id == product.CategoryId).Spec.Name;
@@ -97,11 +99,20 @@ var images = await new ImagePool(options, http).PrepareAsync(Taxonomy.All, token
 
 var categories = await writer.EnsureCategoriesAsync(Taxonomy.All, now, token);
 var brands = await writer.EnsureBrandsAsync(Taxonomy.BrandNames, now, token);
-Console.WriteLine($"分类 {categories.Count} 个、品牌 {brands.Count} 个就绪。开始导入 {options.Products:N0} 个商品…");
+Console.WriteLine($"分类 {categories.Count} 个、品牌 {brands.Count} 个就绪。");
 
 // 生成是单线程的（同一个随机种子生成同一批数据，必须按顺序），每秒两万个以上，不是瓶颈；
 // 写库才是。所以生成一批就放进队列，由 --parallel 个写入任务同时 COPY，每批里目录、库存、两份投影四个库也同时写。
 var generator = new ProductGenerator(categories, brands, images, options.Seed, now);
+if (options.Products > generator.Remaining)
+{
+    // 名字不重复优先于数量：词表能拼出的名字用完就停，不再补随机型号凑数。
+    Console.WriteLine($"词表最多能生成 {generator.Remaining:N0} 个不重名商品，导入数从 {options.Products:N0} 截断为 {generator.Remaining:N0}。");
+    options.Products = generator.Remaining;
+}
+
+Console.WriteLine($"开始导入 {options.Products:N0} 个商品…");
+
 var stopwatch = Stopwatch.StartNew();
 long variants = 0;
 long units = 0;

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Icon } from '../../shared/ui/Icon';
 import { formatDateTime, formatMoney } from '../../shared/utils/format';
-import { presentStatus } from './order-presentation';
+import { presentOrderStatus } from './order-presentation';
 import type { OrderListItem } from './types';
 
 function deliverySummary(order: OrderListItem): string {
@@ -34,7 +34,7 @@ export function OrderList({ orders, demoMode = false }: { orders: OrderListItem[
   return (
     <div className="order-list">
       {orders.map((order) => {
-        const status = presentStatus(order.fulfillmentStatus);
+        const status = presentOrderStatus(order);
         const detailPath = `/orders/${order.id}${suffix}`;
         return (
           <article className="order-row" key={order.id}>
@@ -61,6 +61,7 @@ export function OrderList({ orders, demoMode = false }: { orders: OrderListItem[
               <div className="order-amount">
                 <span>订单总额</span>
                 <strong>{formatMoney(order.amount, order.currency)}</strong>
+                {order.refundedAmount ? <small>已退款 {formatMoney(order.refundedAmount, order.currency)}</small> : null}
                 <div className="order-row__actions">
                   {order.fulfillmentStatus === 'PendingPayment' ? (
                     <Link className="button button--primary button--small" to={`/payment/${order.id}${suffix}`}>去支付</Link>

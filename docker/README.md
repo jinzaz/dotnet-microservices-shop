@@ -16,6 +16,7 @@ docker/
 │   ├── edge/        gateway.yaml  bff-web.yaml  bff-bm.yaml
 │   ├── identity/    identity.yaml user.yaml
 │   ├── commerce/    catalog.yaml  inventory.yaml basket.yaml order.yaml payment.yaml search.yaml
+│   │                catalog-seeder.yaml（造数工具，tools profile，只用 run --rm 跑一次）
 │   └── platform/    notification.yaml certificate.yaml
 ├── config/                      # 结构化配置覆盖，挂载为 /app/appsettings.<环境>.json
 │   ├── gateway/appsettings.json     # YARP 集群地址
@@ -84,6 +85,26 @@ docker compose logs -f msa-order
 
 首次运行要建库时把 `.env` 里的 `MSA_MIGRATE_ON_STARTUP` 设为 `true`。
 跟踪 `latest` 时把 `MSA_PULL_POLICY` 设为 `always`，每次 `up` 都会拉最新镜像；固定版本用默认的 `missing`。
+
+## 造数（CatalogSeeder）
+
+`catalog-seeder` 镜像是 `tools/MSA.CatalogSeeder`（参数与生成规则见 `docs/search-service.md`「造数」）。它是一次性任务：
+放在 compose 的 `tools` profile 里，`docker compose up -d` 不会启动它；用 `run --rm` 跑一次，结束后容器自动删除，不留容器。
+连接 PostgreSQL 与对象存储用的是 `.env` 里同一套 `INFRA_*`，容器加入 `dotnet-infra_backend` 网络。
+
+```bash
+cd docker
+docker compose pull msa-catalog-seeder                                   # MSA_PULL_POLICY=missing 时先拉新镜像
+docker compose run --rm msa-catalog-seeder --dry-run 20                  # 只打印样例，不连数据库
+docker compose run --rm msa-catalog-seeder                               # 导入（默认 50 万商品）
+docker compose run --rm msa-catalog-seeder --reset                       # 删掉上次导入的再重新导入
+docker compose run --rm msa-catalog-seeder --reset --products 0          # 只删除
+docker compose run --rm -e PEXELS_API_KEY=<KEY> msa-catalog-seeder --images pexels   # 用真实照片
+```
+
+- 不要用 `docker run --env-file .env`：`.env` 里带引号的口令和 `${MSA_DOMAIN}` 插值只有 compose 会处理。
+- 导入期间按 Ctrl+C 会中止；已提交的批次留在库里，下次用 `--reset` 清掉重来。
+- 镜像不设内存上限（compose 的 `mem_limit` 只给常驻服务）；2C4G 机器上可以加 `--parallel 2` 减少数据库压力。
 
 ## 服务与端点
 

@@ -127,7 +127,7 @@ internal sealed class GetAfterSalesQueryHandler(
             request.RejectionReason,
             // 渠道失败原因可能带技术细节，只给后台看；买家看到的是「退款失败，商家处理中」。
             customer ? null : request.RefundFailureReason,
-            options.Value.DeadlineFor(request.Status, request.Type, request.StatusChangedOnUtc),
+            options.Value.DeadlineFor(request.Status, request.Type, request.InTransitAtSubmission, request.StatusChangedOnUtc),
             customer
                 ? null
                 : new AfterSalesWarehouseDto(
@@ -201,6 +201,7 @@ internal sealed class ListAfterSalesQueryHandler(OrderDbContext db, IOptions<Aft
                 value.OrderNumber,
                 value.UserId,
                 value.Type,
+                value.InTransitAtSubmission,
                 value.Status,
                 value.RefundAmount,
                 value.Currency,
@@ -226,7 +227,7 @@ internal sealed class ListAfterSalesQueryHandler(OrderDbContext db, IOptions<Aft
                 row.ProductNames,
                 row.ReplacementStock,
                 row.ReturnDisposition,
-                options.Value.DeadlineFor(row.Status, row.Type, row.StatusChangedOnUtc),
+                options.Value.DeadlineFor(row.Status, row.Type, row.InTransitAtSubmission, row.StatusChangedOnUtc),
                 row.CreatedOnUtc,
                 row.UpdatedOnUtc))
             .ToArray();
