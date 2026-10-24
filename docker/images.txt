@@ -14,3 +14,4 @@ certificate-service   src/MSA.CertificateService/MSA.CertificateService.csproj
 search-service        src/MSA.SearchService/MSA.SearchService.csproj
 bff-web               src/BFFs/MSA.BFF.Web/MSA.BFF.Web.csproj
 bff-bm                src/BFFs/MSA.BFF.BM/MSA.BFF.BM.csproj
+catalog-seeder        tools/MSA.CatalogSeeder/MSA.CatalogSeeder.csproj

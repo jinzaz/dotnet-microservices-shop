@@ -688,3 +688,53 @@ dialog::backdrop {
   max-width: 520px;
   color: var(--color-muted);
 }
+
+/* ---- 测试站提示（所有页面顶部，可关闭） ---- */
+.test-site-notice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 48px;
+  position: relative;
+  background: var(--color-danger);
+  color: var(--color-white);
+  font-size: 14px;
+  font-weight: var(--weight-strong);
+  line-height: 1.4;
+  text-align: center;
+}
+
+.test-site-notice > svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.test-site-notice-close {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: background var(--transition-fast);
+}
+
+.test-site-notice-close:hover,
+.test-site-notice-close:focus-visible {
+  background: rgb(255 255 255 / 20%);
+}
+
+.test-site-notice-close svg {
+  width: 18px;
+  height: 18px;
+}
