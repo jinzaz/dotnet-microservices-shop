@@ -2,23 +2,25 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   ApiError,
+  captchaErrorMessage,
   loginWithPassword,
   loginWithSms,
   requestSmsLoginCode,
 } from '../auth-api';
 import { AuthLayout } from '../components/AuthLayout';
 import { Button } from '../components/Button';
+import { CaptchaField, useCaptcha } from '../components/CaptchaField';
+import { CountryCodeSelect, defaultCountryCode, toE164 } from '../components/CountryCodeSelect';
 import { FormField } from '../components/FormField';
 import { Icon } from '../components/Icon';
 import { storeUrl } from '../config';
 import { authRoute, getSafeReturnUrl } from '../return-url';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const phonePattern = /^\+[1-9][0-9]{7,14}$/;
 const codePattern = /^[0-9]{6}$/;
 
 type LoginMode = 'password' | 'sms';
-type LoginErrors = Partial<Record<'email' | 'password' | 'phoneNumber' | 'code' | 'form', string>>;
+type LoginErrors = Partial<Record<'email' | 'password' | 'phoneNumber' | 'captcha' | 'code' | 'form', string>>;
 
 function loginErrorMessage(error: unknown, mode: LoginMode): string {
   if (error instanceof ApiError && error.status === 401) {
@@ -38,6 +40,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState<LoginMode>('password');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [countryCode, setCountryCode] = useState(defaultCountryCode);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [code, setCode] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -47,6 +50,7 @@ export default function LoginPage() {
   const [resendAfter, setResendAfter] = useState(0);
   const [smsNotice, setSmsNotice] = useState('');
   const [errors, setErrors] = useState<LoginErrors>({});
+  const captcha = useCaptcha(mode === 'sms');
 
   useEffect(() => {
     if (resendAfter <= 0) return;
@@ -64,9 +68,13 @@ export default function LoginPage() {
   };
 
   const sendCode = async () => {
-    const normalizedPhone = phoneNumber.trim();
-    if (!phonePattern.test(normalizedPhone)) {
-      setErrors({ phoneNumber: '请输入 E.164 格式手机号，例如 +8613800138000。' });
+    const normalizedPhone = toE164(countryCode, phoneNumber);
+    if (!normalizedPhone) {
+      setErrors({ phoneNumber: '请输入有效的手机号。' });
+      return;
+    }
+    if (!captcha.captcha || !captcha.answer) {
+      setErrors({ captcha: '请先输入图形验证码的计算结果。' });
       return;
     }
 
@@ -74,29 +82,35 @@ export default function LoginPage() {
     setErrors({});
     setSmsNotice('');
     try {
-      const result = await requestSmsLoginCode(normalizedPhone);
+      const result = await requestSmsLoginCode(normalizedPhone, {
+        captchaId: captcha.captcha.captchaId,
+        captchaAnswer: captcha.answer,
+      });
       setResendAfter(result.retryAfterSeconds);
-      setSmsNotice(`若该手机号已绑定账户，验证码将在 ${Math.ceil(result.expiresInSeconds / 60)} 分钟内送达。`);
+      setSmsNotice(`验证码已发送，${Math.ceil(result.expiresInSeconds / 60)} 分钟内有效。`);
     } catch (error) {
-      setErrors({ form: error instanceof Error ? error.message : '验证码发送请求没有完成，请稍后重试。' });
+      const captchaError = captchaErrorMessage(error);
+      setErrors(captchaError
+        ? { captcha: captchaError }
+        : { form: error instanceof Error ? error.message : '验证码发送请求没有完成，请稍后重试。' });
     } finally {
       setSendingCode(false);
+      // 每张图形验证码只能用一次，不管成败都换一张。
+      void captcha.refresh();
     }
   };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const normalizedEmail = email.trim();
-    const normalizedPhone = phoneNumber.trim();
+    const normalizedPhone = toE164(countryCode, phoneNumber);
     const nextErrors: LoginErrors = {};
 
     if (mode === 'password') {
       if (!emailPattern.test(normalizedEmail)) nextErrors.email = '请输入有效的邮箱地址。';
       if (!password) nextErrors.password = '请输入密码。';
     } else {
-      if (!phonePattern.test(normalizedPhone)) {
-        nextErrors.phoneNumber = '请输入 E.164 格式手机号，例如 +8613800138000。';
-      }
+      if (!normalizedPhone) nextErrors.phoneNumber = '请输入有效的手机号。';
       if (!codePattern.test(code)) nextErrors.code = '请输入 6 位数字验证码。';
     }
 
@@ -111,7 +125,7 @@ export default function LoginPage() {
       if (mode === 'password') {
         await loginWithPassword({ email: normalizedEmail, password, rememberMe });
       } else {
-        await loginWithSms({ phoneNumber: normalizedPhone, code, rememberMe });
+        await loginWithSms({ phoneNumber: normalizedPhone!, code, rememberMe });
       }
       window.location.assign(returnUrl === '/' ? storeUrl : returnUrl);
     } catch (error) {
@@ -190,13 +204,14 @@ export default function LoginPage() {
               type="tel"
               value={phoneNumber}
               onChange={(event) => setPhoneNumber(event.target.value)}
-              placeholder="+8613800138000"
-              autoComplete="tel"
+              placeholder="13800138000"
+              autoComplete="tel-national"
               maxLength={16}
               required
-              leading={<Icon name="phone" />}
+              leading={<CountryCodeSelect value={countryCode} onChange={setCountryCode} />}
               error={errors.phoneNumber}
             />
+            <CaptchaField id="login-captcha" state={captcha} error={errors.captcha} disabled={sendingCode || submitting} />
             <FormField
               id="login-sms-code"
               label="短信验证码"
@@ -222,7 +237,7 @@ export default function LoginPage() {
               error={errors.code}
             />
             <p className="password-hint">
-              仅支持账户中已验证的手机号
+              未注册的手机号验证后将自动创建账户
               {import.meta.env.DEV ? '；开发环境固定验证码：123456' : ''}
             </p>
           </>

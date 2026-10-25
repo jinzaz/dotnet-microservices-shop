@@ -738,3 +738,34 @@ dialog::backdrop {
   width: 18px;
   height: 18px;
 }
+
+/* 手机号区号：原生 select 透明覆盖在 "+86 ▾" 上，收起时只占一个区号宽度。 */
+.country-code {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding-right: 12px;
+  border-right: 1px solid var(--color-border-strong);
+  color: var(--color-ink);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.country-code__caret {
+  color: var(--color-muted);
+  font-size: 10px;
+}
+
+.country-code select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.country-code select:disabled {
+  cursor: not-allowed;
+}

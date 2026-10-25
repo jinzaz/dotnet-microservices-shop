@@ -8,7 +8,7 @@ internal sealed class SmsVerificationMessage
 
     internal SmsVerificationMessage(
         Guid id,
-        string userId,
+        string? userId,
         string phoneNumber,
         SmsVerificationPurpose purpose,
         string templateKey,

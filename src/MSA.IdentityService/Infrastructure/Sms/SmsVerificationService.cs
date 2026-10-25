@@ -48,11 +48,11 @@ internal sealed class SmsVerificationService : ISmsVerificationService
             requiredUserId: null,
             cancellationToken);
 
-    public Task<string?> ConsumeLoginCodeAsync(
+    public async Task<bool> ConsumeLoginCodeAsync(
         string phoneNumber,
         string code,
         CancellationToken cancellationToken) =>
-        ConsumeCodeAsync(phoneNumber, code, SmsVerificationPurpose.Login, cancellationToken);
+        await ConsumeCodeAsync(phoneNumber, code, SmsVerificationPurpose.Login, cancellationToken) is not null;
 
     public Task RequestPasswordResetCodeAsync(string phoneNumber, CancellationToken cancellationToken) =>
         RequestCodeAsync(
@@ -62,11 +62,11 @@ internal sealed class SmsVerificationService : ISmsVerificationService
             requiredUserId: null,
             cancellationToken);
 
-    public Task<string?> ConsumePasswordResetCodeAsync(
+    public async Task<string?> ConsumePasswordResetCodeAsync(
         string phoneNumber,
         string code,
         CancellationToken cancellationToken) =>
-        ConsumeCodeAsync(phoneNumber, code, SmsVerificationPurpose.PasswordReset, cancellationToken);
+        (await ConsumeCodeAsync(phoneNumber, code, SmsVerificationPurpose.PasswordReset, cancellationToken))?.UserId;
 
     public Task RequestPhoneConfirmationCodeAsync(
         string userId,
@@ -79,11 +79,11 @@ internal sealed class SmsVerificationService : ISmsVerificationService
             userId,
             cancellationToken);
 
-    public Task<string?> ConsumePhoneConfirmationCodeAsync(
+    public async Task<string?> ConsumePhoneConfirmationCodeAsync(
         string phoneNumber,
         string code,
         CancellationToken cancellationToken) =>
-        ConsumeCodeAsync(phoneNumber, code, SmsVerificationPurpose.PhoneConfirmation, cancellationToken);
+        (await ConsumeCodeAsync(phoneNumber, code, SmsVerificationPurpose.PhoneConfirmation, cancellationToken))?.UserId;
 
     private async Task RequestCodeAsync(
         string phoneNumber,
@@ -106,8 +106,17 @@ internal sealed class SmsVerificationService : ISmsVerificationService
                     : user.Id == requiredUserId && !user.PhoneNumberConfirmed))
             .Select(user => user.Id)
             .FirstOrDefaultAsync(cancellationToken);
-        if (userId is null)
+        // 登录即注册：没绑定账户的号码也发登录码，验证通过后由 AuthController 建号。
+        if (userId is null && purpose != SmsVerificationPurpose.Login)
+        {
+            // 对外响应不变（防手机号枚举），只在服务端记录原因。
+            _logger.LogInformation(
+                "SMS {Purpose} code skipped for {Phone}: no active account with a matching {State} phone number.",
+                purpose,
+                MaskPhone(phone),
+                requiredUserId == null ? "confirmed" : "unconfirmed");
             return;
+        }
 
         var sentSince = now.AddHours(-1);
         var recentSendCount = await _db.SmsMessages.CountAsync(
@@ -116,7 +125,14 @@ internal sealed class SmsVerificationService : ISmsVerificationService
                 && message.CreatedOnUtc >= sentSince,
             cancellationToken);
         if (recentSendCount >= _options.MaxSendsPerHour)
+        {
+            _logger.LogInformation(
+                "SMS {Purpose} code skipped for {Phone}: hourly limit {Limit} reached.",
+                purpose,
+                MaskPhone(phone),
+                _options.MaxSendsPerHour);
             return;
+        }
 
         var activeMessages = await _db.SmsMessages
             .Where(message => message.PhoneNumber == phone
@@ -128,6 +144,11 @@ internal sealed class SmsVerificationService : ISmsVerificationService
         if (activeMessages.FirstOrDefault() is { } latest
             && latest.CreatedOnUtc > now.AddSeconds(-_options.ResendCooldownSeconds))
         {
+            _logger.LogInformation(
+                "SMS {Purpose} code skipped for {Phone}: still in the {Cooldown}s resend cooldown.",
+                purpose,
+                MaskPhone(phone),
+                _options.ResendCooldownSeconds);
             return;
         }
 
@@ -159,7 +180,8 @@ internal sealed class SmsVerificationService : ISmsVerificationService
         await DispatchAsync(message, code, cancellationToken);
     }
 
-    private async Task<string?> ConsumeCodeAsync(
+    /// <summary>核验并消费验证码，成功时返回那条短信记录（登录码的 UserId 可能为空：号码当时还没注册）。</summary>
+    private async Task<SmsVerificationMessage?> ConsumeCodeAsync(
         string phoneNumber,
         string code,
         SmsVerificationPurpose purpose,
@@ -178,7 +200,8 @@ internal sealed class SmsVerificationService : ISmsVerificationService
                 && candidate.Status == SmsMessageStatus.Sent)
             .OrderByDescending(candidate => candidate.CreatedOnUtc)
             .FirstOrDefaultAsync(cancellationToken);
-        if (message is null || message.ExpiresOnUtc <= now || message.UserId is null)
+        if (message is null || message.ExpiresOnUtc <= now
+            || message.UserId is null && purpose != SmsVerificationPurpose.Login)
             return null;
 
         if (!Matches(message, phone, normalizedCode))
@@ -192,7 +215,7 @@ internal sealed class SmsVerificationService : ISmsVerificationService
         message.Consume(now);
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return message.UserId;
+        return message;
     }
 
     private async Task DispatchAsync(
@@ -281,6 +304,9 @@ internal sealed class SmsVerificationService : ISmsVerificationService
     {
         return _db.AcquireTransactionLockAsync($"identity:sms:{phoneNumber}", cancellationToken);
     }
+
+    private static string MaskPhone(string phoneNumber) =>
+        phoneNumber.Length > 7 ? $"{phoneNumber[..^8]}****{phoneNumber[^4..]}" : "****";
 
     private static string BuildProtectedPayload(Guid messageId, string phoneNumber, string code) =>
         $"{messageId:N}:{phoneNumber}:{code}";

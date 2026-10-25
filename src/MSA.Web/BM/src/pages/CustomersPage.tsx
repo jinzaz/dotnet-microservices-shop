@@ -6,7 +6,7 @@ import { UserPicker } from '../pickers';
 import { useSession } from '../session';
 import { CopyButton, Empty, ErrorNotice, Field, formatDate, formatRelative, Icon, Loading, Modal, PageHeader, Pagination, SearchInput, SkeletonRows, Status, SubmitBar, useConfirm, usePage, useToast, useUrlState } from '../ui';
 
-type IdentityUser = { id: string; email: string; displayName: string; isActive: boolean; createdOnUtc: string };
+type IdentityUser = { id: string; email: string | null; displayName: string; isActive: boolean; createdOnUtc: string };
 type IdentityUserDetail = IdentityUser & { phoneNumber?: string; phoneNumberConfirmed: boolean; emailConfirmed: boolean; lastLoginOnUtc?: string; roles: string[] };
 type PointAccount = { userId: string; balance: number; lifetimeEarned: number; lifetimeSpent: number; createdOnUtc?: string; updatedOnUtc?: string };
 type PointEntry = { id: string; delta: number; balanceBefore: number; balanceAfter: number; source: string; reason: string; occurredOnUtc: string };
@@ -133,7 +133,7 @@ export default function CustomersPage() {
         </div>
         <dl className="detail-list">
           <div><dt>User ID</dt><dd className="mono">{detailQuery.data.id}<CopyButton value={detailQuery.data.id} label="复制 User ID" /></dd></div>
-          <div><dt>邮箱</dt><dd>{detailQuery.data.email} {detailQuery.data.emailConfirmed ? <Status>已验证</Status> : <small>未验证</small>}</dd></div>
+          <div><dt>邮箱</dt><dd>{detailQuery.data.email ?? '未绑定'} {detailQuery.data.email ? detailQuery.data.emailConfirmed ? <Status>已验证</Status> : <small>未验证</small> : null}</dd></div>
           <div><dt>手机号</dt><dd>{detailQuery.data.phoneNumber ?? '—'} {detailQuery.data.phoneNumber ? detailQuery.data.phoneNumberConfirmed ? <Status>已验证</Status> : <small>未验证</small> : null}</dd></div>
         </dl>
         <section><h3>Identity 角色</h3><div className="tag-list tag-list--actions">{detailQuery.data.roles.map((role) => <span key={role}>{role}{canEditUsers ? <button type="button" aria-label={`移除角色 ${role}`} onClick={() => void removeRole(detailQuery.data!, role)}><Icon name="close" /></button> : null}</span>)}{!detailQuery.data.roles.length ? <small>未分配角色</small> : null}{canEditUsers ? <button className="tag-add" type="button" onClick={() => setRoleUser(detailQuery.data!)}><Icon name="plus" />添加</button> : null}</div></section>
@@ -146,7 +146,7 @@ export default function CustomersPage() {
       </div> : null}
     </Modal>
 
-    <Modal open={roleUser !== null} title="添加 Identity 角色" description={roleUser ? roleUser.displayName || roleUser.email : undefined} onClose={() => setRoleUser(null)}>
+    <Modal open={roleUser !== null} title="添加 Identity 角色" description={roleUser ? roleUser.displayName || roleUser.email || undefined : undefined} onClose={() => setRoleUser(null)}>
       {roleUser ? <form className="modal-form" onSubmit={assignRole}>
         <fieldset className="choice-grid choice-grid--columns"><legend>选择角色</legend>{(rolesQuery.data ?? []).map((role, index) => <label key={role}><input type="radio" name="role" value={role} required defaultChecked={index === 0} /><span><strong>{role}</strong></span></label>)}</fieldset>
         {!rolesQuery.data?.length ? <p className="muted-copy">IdentityService 没有返回可分配角色。</p> : null}

@@ -21,6 +21,17 @@ export type SmsLoginCodeRequested = {
   retryAfterSeconds: number;
 };
 
+export type Captcha = {
+  captchaId: string;
+  image: string;
+  expiresInSeconds: number;
+};
+
+export type CaptchaAnswer = {
+  captchaId: string;
+  captchaAnswer: string;
+};
+
 export type SmsPasswordResetDetails = {
   phoneNumber: string;
   code: string;
@@ -139,10 +150,37 @@ export function loginWithPassword(credentials: PasswordLoginCredentials): Promis
   );
 }
 
-export function requestSmsLoginCode(phoneNumber: string): Promise<SmsLoginCodeRequested> {
+export async function fetchCaptcha(): Promise<Captcha> {
+  let response: Response;
+  try {
+    response = await fetch('/api/Auth/captcha', {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+  } catch {
+    throw new Error('图形验证码加载失败，点击重试。');
+  }
+
+  if (response.ok) return await response.json() as Captcha;
+  const problem = await readProblem(response);
+  throw new ApiError(
+    response.status === 429 ? problem?.detail ?? '刷新太频繁，请稍后再试。' : '图形验证码加载失败，点击重试。',
+    response.status,
+    problem,
+  );
+}
+
+/** 答错或过期时返回服务端的提示，否则 undefined。 */
+export function captchaErrorMessage(error: unknown): string | undefined {
+  const message = error instanceof ApiError ? error.problem?.errors?.CaptchaAnswer : undefined;
+  return Array.isArray(message) ? message[0] : message;
+}
+
+export function requestSmsLoginCode(phoneNumber: string, captcha: CaptchaAnswer): Promise<SmsLoginCodeRequested> {
   return post(
     '/api/Auth/login/sms/code',
-    { phoneNumber },
+    { phoneNumber, ...captcha },
     '验证码发送请求没有完成，请稍后重试。',
     '验证码发送请求没有完成，请稍后重试。',
   );
@@ -157,10 +195,10 @@ export function loginWithSms(credentials: SmsLoginCredentials): Promise<void> {
   );
 }
 
-export function requestPasswordResetCode(phoneNumber: string): Promise<SmsLoginCodeRequested> {
+export function requestPasswordResetCode(phoneNumber: string, captcha: CaptchaAnswer): Promise<SmsLoginCodeRequested> {
   return post(
     '/api/Auth/password/reset/code',
-    { phoneNumber },
+    { phoneNumber, ...captcha },
     '验证码发送请求没有完成，请稍后重试。',
     '验证码发送请求没有完成，请稍后重试。',
   );

@@ -1,6 +1,7 @@
 export type UserProfile = {
   id: string;
-  email: string;
+  /** 短信登录即注册的账户没有邮箱。 */
+  email: string | null;
   displayName: string;
   phoneNumber: string | null;
   phoneNumberConfirmed: boolean;

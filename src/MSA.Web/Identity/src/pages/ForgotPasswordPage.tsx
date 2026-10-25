@@ -1,24 +1,26 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { requestPasswordResetCode, resetPassword } from '../auth-api';
+import { captchaErrorMessage, requestPasswordResetCode, resetPassword } from '../auth-api';
 import { AuthLayout } from '../components/AuthLayout';
 import { Button } from '../components/Button';
+import { CaptchaField, useCaptcha } from '../components/CaptchaField';
+import { CountryCodeSelect, defaultCountryCode, toE164 } from '../components/CountryCodeSelect';
 import { FormField } from '../components/FormField';
 import { Icon } from '../components/Icon';
 import { authRoute, getSafeReturnUrl } from '../return-url';
 
-const phonePattern = /^\+[1-9][0-9]{7,14}$/;
 const codePattern = /^[0-9]{6}$/;
 const uppercasePattern = /[A-Z]/;
 const lowercasePattern = /[a-z]/;
 const digitPattern = /\d/;
 const symbolPattern = /[\p{P}\p{S}]/u;
 
-type ResetErrors = Partial<Record<'phoneNumber' | 'code' | 'password' | 'confirmPassword' | 'form', string>>;
+type ResetErrors = Partial<Record<'phoneNumber' | 'captcha' | 'code' | 'password' | 'confirmPassword' | 'form', string>>;
 
 export default function ForgotPasswordPage() {
   const { search } = useLocation();
   const returnUrl = getSafeReturnUrl(search);
+  const [countryCode, setCountryCode] = useState(defaultCountryCode);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
@@ -29,32 +31,45 @@ export default function ForgotPasswordPage() {
   const [complete, setComplete] = useState(false);
   const [notice, setNotice] = useState('');
   const [errors, setErrors] = useState<ResetErrors>({});
+  const captcha = useCaptcha(true);
 
   const sendCode = async () => {
-    const phone = phoneNumber.trim();
-    if (!phonePattern.test(phone)) {
-      setErrors({ phoneNumber: '请输入 E.164 格式手机号，例如 +8613800138000。' });
+    const phone = toE164(countryCode, phoneNumber);
+    if (!phone) {
+      setErrors({ phoneNumber: '请输入有效的手机号。' });
+      return;
+    }
+    if (!captcha.captcha || !captcha.answer) {
+      setErrors({ captcha: '请先输入图形验证码的计算结果。' });
       return;
     }
 
     setSendingCode(true);
     setErrors({});
     try {
-      const result = await requestPasswordResetCode(phone);
+      const result = await requestPasswordResetCode(phone, {
+        captchaId: captcha.captcha.captchaId,
+        captchaAnswer: captcha.answer,
+      });
       setCodeRequested(true);
       setNotice(`若该号码已绑定并验证，重置码将在 ${Math.ceil(result.expiresInSeconds / 60)} 分钟内送达。`);
     } catch (error) {
-      setErrors({ form: error instanceof Error ? error.message : '验证码发送请求没有完成。' });
+      const captchaError = captchaErrorMessage(error);
+      setErrors(captchaError
+        ? { captcha: captchaError }
+        : { form: error instanceof Error ? error.message : '验证码发送请求没有完成。' });
     } finally {
       setSendingCode(false);
+      // 每张图形验证码只能用一次，不管成败都换一张。
+      void captcha.refresh();
     }
   };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const phone = phoneNumber.trim();
+    const phone = toE164(countryCode, phoneNumber);
     const nextErrors: ResetErrors = {};
-    if (!phonePattern.test(phone)) nextErrors.phoneNumber = '请输入有效的 E.164 手机号。';
+    if (!phone) nextErrors.phoneNumber = '请输入有效的手机号。';
     if (!codePattern.test(code)) nextErrors.code = '请输入 6 位数字验证码。';
     if (
       password.length < 10
@@ -72,7 +87,7 @@ export default function ForgotPasswordPage() {
     setSubmitting(true);
     setErrors({});
     try {
-      await resetPassword({ phoneNumber: phone, code, newPassword: password });
+      await resetPassword({ phoneNumber: phone!, code, newPassword: password });
       setComplete(true);
     } catch (error) {
       setErrors({ form: error instanceof Error ? error.message : '密码重置没有完成。' });
@@ -103,14 +118,15 @@ export default function ForgotPasswordPage() {
           type="tel"
           value={phoneNumber}
           onChange={(event) => setPhoneNumber(event.target.value)}
-          placeholder="+8613800138000"
-          autoComplete="tel"
+          placeholder="13800138000"
+          autoComplete="tel-national"
           maxLength={16}
           required
-          leading={<Icon name="phone" />}
+          leading={<CountryCodeSelect value={countryCode} onChange={setCountryCode} disabled={sendingCode || submitting} />}
           trailing={<button className="sms-code-button" type="button" disabled={sendingCode || submitting} onClick={() => void sendCode()}>{sendingCode ? '发送中…' : codeRequested ? '重新发送' : '获取重置码'}</button>}
           error={errors.phoneNumber}
         />
+        <CaptchaField id="reset-captcha" state={captcha} error={errors.captcha} disabled={sendingCode || submitting} />
         {codeRequested ? <>
           <FormField
             id="reset-code"

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using MSA.IdentityService.Infrastructure.Captcha;
 using MSA.IdentityService.Infrastructure.Throttling;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
@@ -32,6 +33,7 @@ public sealed class AuthController(
     IAntiforgery antiforgery,
     ISmsVerificationService smsVerification,
     IdentityThrottle throttle,
+    CaptchaService captcha,
     IOptions<SmsOptions> smsOptions,
     IConfiguration configuration,
     ILogger<AuthController> logger,
@@ -49,6 +51,12 @@ public sealed class AuthController(
         var tokenSet = antiforgery.GetAndStoreTokens(HttpContext);
         return Ok(new AntiforgeryTokenResponse(tokenSet.RequestToken!));
     }
+
+    [AllowAnonymous]
+    [HttpGet("captcha")]
+    [Throttle(ThrottlePolicy.Captcha)]
+    [ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
+    public async Task<ActionResult<CaptchaResponse>> GetCaptcha() => Ok(await captcha.CreateAsync());
 
     [AllowAnonymous]
     [HttpPost("register")]
@@ -148,6 +156,9 @@ public sealed class AuthController(
         RequestSmsLoginCodeRequest request,
         CancellationToken cancellationToken)
     {
+        if (!await captcha.VerifyAsync(request.CaptchaId, request.CaptchaAnswer))
+            return InvalidCaptcha();
+
         await smsVerification.RequestLoginCodeAsync(request.PhoneNumber, cancellationToken);
         return Accepted(new SmsLoginCodeRequestedResponse(
             smsOptions.Value.CodeLifetimeSeconds,
@@ -162,13 +173,15 @@ public sealed class AuthController(
         SmsLoginRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = await smsVerification.ConsumeLoginCodeAsync(
-            request.PhoneNumber,
-            request.Code,
-            cancellationToken);
-        var user = userId is null ? null : await users.FindByIdAsync(userId);
-        if (user is null || !user.IsActive || !user.PhoneNumberConfirmed
-            || !string.Equals(user.PhoneNumber, request.PhoneNumber.Trim(), StringComparison.Ordinal)
+        if (!await smsVerification.ConsumeLoginCodeAsync(request.PhoneNumber, request.Code, cancellationToken))
+            return InvalidLogin();
+
+        // 登录当前持有这个已验证号码的账户；没有就注册一个（登录即注册）。
+        var phone = request.PhoneNumber.Trim();
+        var user = await FindPhoneOwnerAsync(phone, cancellationToken)
+            ?? await RegisterByPhoneAsync(phone, cancellationToken)
+            ?? await FindPhoneOwnerAsync(phone, cancellationToken);
+        if (user is null || !user.IsActive
             || !await signIn.CanSignInAsync(user) || await users.IsLockedOutAsync(user))
         {
             return InvalidLogin();
@@ -187,6 +200,9 @@ public sealed class AuthController(
         RequestSmsLoginCodeRequest request,
         CancellationToken cancellationToken)
     {
+        if (!await captcha.VerifyAsync(request.CaptchaId, request.CaptchaAnswer))
+            return InvalidCaptcha();
+
         await smsVerification.RequestPasswordResetCodeAsync(request.PhoneNumber, cancellationToken);
         return Accepted(new SmsLoginCodeRequestedResponse(
             smsOptions.Value.CodeLifetimeSeconds,
@@ -451,6 +467,53 @@ public sealed class AuthController(
         return NoContent();
     }
 
+    private Task<ApplicationUser?> FindPhoneOwnerAsync(string phone, CancellationToken cancellationToken) =>
+        users.Users.FirstOrDefaultAsync(
+            user => user.PhoneNumber == phone && user.PhoneNumberConfirmed,
+            cancellationToken);
+
+    /// <summary>
+    /// 短信验证码已经证明持有这个号码，直接建一个手机号已验证、没有邮箱和密码的账户；之后可在资料里补邮箱，用找回密码设密码。
+    /// 同一号码并发登录时 PhoneNumberIndex（已验证号码唯一）会拦下后一次插入，返回 null 让调用方重新查一次。
+    /// </summary>
+    private async Task<ApplicationUser?> RegisterByPhoneAsync(string phone, CancellationToken cancellationToken)
+    {
+        var user = new ApplicationUser
+        {
+            UserName = $"sms_{Guid.NewGuid():N}",
+            PhoneNumber = phone,
+            PhoneNumberConfirmed = true,
+            DisplayName = $"用户{phone[^4..]}",
+            LockoutEnabled = true,
+            CreatedOnUtc = timeProvider.GetUtcNow()
+        };
+
+        try
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            var result = await users.CreateAsync(user);
+            if (result.Succeeded)
+                result = await users.AddToRoleAsync(user, "customer");
+            if (!result.Succeeded)
+            {
+                logger.LogError(
+                    "SMS sign-up failed: {Errors}",
+                    string.Join("; ", result.Errors.Select(error => error.Code)));
+                return null;
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            logger.LogInformation("User {UserId} signed up with an SMS code.", user.Id);
+            return user;
+        }
+        catch (DbUpdateException exception)
+        {
+            db.ChangeTracker.Clear();
+            logger.LogInformation(exception, "SMS sign-up lost a race; using the account created concurrently.");
+            return null;
+        }
+    }
+
     private async Task<IActionResult> CompleteLogin(
         ApplicationUser user,
         bool rememberMe,
@@ -551,6 +614,12 @@ public sealed class AuthController(
             [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = description
         }),
         OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+
+    private ActionResult InvalidCaptcha() => ValidationProblem(new ValidationProblemDetails(
+        new Dictionary<string, string[]>
+        {
+            ["CaptchaAnswer"] = ["图形验证码错误或已过期，请重新输入。"]
+        }));
 
     private ObjectResult InvalidLogin() => Problem(
         statusCode: StatusCodes.Status401Unauthorized,

@@ -17,6 +17,8 @@ public enum ThrottlePolicy
     Registration,
     /// <summary>发短信，按客户端 IP（同一手机号的冷却与小时上限在 SmsVerificationService 里）。</summary>
     SmsDispatch,
+    /// <summary>获取图形验证码，按客户端 IP（每张验证码在 Redis 占一个键，防止被刷爆）。</summary>
+    Captcha,
     /// <summary>密码登录失败，按"客户端 IP + 账号"：同一 IP 对同一账号连错到上限后暂停，别的 IP 不受影响。</summary>
     LoginFailures
 }
@@ -30,6 +32,7 @@ public sealed class ThrottleOptions
     public ThrottleRule Registration { get; init; } = new() { PermitLimit = 10, WindowSeconds = 3600 };
     public ThrottleRule SmsDispatch { get; init; } = new() { PermitLimit = 5, WindowSeconds = 600 };
     public ThrottleRule LoginFailures { get; init; } = new() { PermitLimit = 5, WindowSeconds = 900 };
+    public ThrottleRule Captcha { get; init; } = new() { PermitLimit = 30, WindowSeconds = 60 };
 
     internal ThrottleRule For(ThrottlePolicy policy) => policy switch
     {
@@ -37,6 +40,7 @@ public sealed class ThrottleOptions
         ThrottlePolicy.Registration => Registration,
         ThrottlePolicy.SmsDispatch => SmsDispatch,
         ThrottlePolicy.LoginFailures => LoginFailures,
+        ThrottlePolicy.Captcha => Captcha,
         _ => throw new ArgumentOutOfRangeException(nameof(policy))
     };
 }

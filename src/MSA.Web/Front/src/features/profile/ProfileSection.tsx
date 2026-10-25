@@ -75,7 +75,7 @@ export function ProfileSection({
       </div>
       <dl className="profile-list">
         <div><dt>姓名</dt><dd>{profile.displayName}</dd></div>
-        <div><dt>邮箱</dt><dd>{profile.email}</dd></div>
+        <div><dt>邮箱</dt><dd>{profile.email ?? '未绑定'}</dd></div>
         <div>
           <dt>手机号</dt>
           <dd>
