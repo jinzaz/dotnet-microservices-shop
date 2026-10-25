@@ -1,4 +1,6 @@
 using MSA.Certificates;
+using MSA.IdentityService.Infrastructure;
+using MSA.IdentityService.Infrastructure.Captcha;
 using MSA.IdentityService.Infrastructure.Throttling;
 using MSA.Redis;
 using Microsoft.AspNetCore.WebUtilities;
@@ -21,6 +23,7 @@ internal static class ServiceCollection
                 "Throttling rules need a positive PermitLimit and WindowSeconds.")
             .ValidateOnStart();
         services.AddSingleton<IdentityThrottle>();
+        services.AddSingleton<CaptchaService>();
         return services;
     }
 
@@ -47,10 +50,12 @@ internal static class ServiceCollection
             options.Password.RequireLowercase = true;
             options.Password.RequireUppercase = true;
             options.Password.RequireNonAlphanumeric = true;
-            options.User.RequireUniqueEmail = true;
+            // 短信登录即注册的账户没有邮箱；RequireUniqueEmail 会同时要求邮箱必填，所以改由 OptionalUniqueEmailValidator 只查唯一。
+            options.User.RequireUniqueEmail = false;
             // 密码错误不锁账号（别人知道邮箱就能反复把它锁住），改为按"IP + 账号"计数，见 AuthController.PasswordLogin。
             options.SignIn.RequireConfirmedEmail = false;
         })
+        .AddUserValidator<OptionalUniqueEmailValidator>()
         .AddEntityFrameworkStores<ApplicationDbContext>()
         .AddDefaultTokenProviders();
 

@@ -72,6 +72,8 @@ src/MSA.Web/dev.bat            # 商城 :5173 / 登录页 :5174 / 后台 :5175
 - 新增 API scope 需要三处都到位：Identity 启动种子、`docker/config/identity/appsettings.json` 里客户端的权限（部署机挂载的这份）、用户重新登录。
 - 请求体加密只在浏览器 ⇄ BFF 这一段（ECDH P-256 + HKDF + AES-256-GCM），BFF 到网关是内网明文。`UseBffBodyEncryption()` 前后各做一次路由匹配，否则 BFF 自己的 JSON 端点会返回 415。SSE、大文件端点标 `[SkipBodyEncryption]`。
 - BM 后台权限由 BFF.BM 自己的 PBAC 管，不看 Identity 的 `admin` 角色。新增后台接口要在 BFF.BM 加 PBAC 路由迁移。`Pbac:BootstrapAdminUserIds` 只放行权限管理，用于首次部署给自己建成员。
+- 短信验证码**登录即注册**：未注册的号码验证通过后自动建号（无邮箱、无密码），所以邮箱可空——`RequireUniqueEmail` 关掉，改由 `OptionalUniqueEmailValidator` 只查唯一，不要再打开它（会强制邮箱必填）。短信验证码由 Identity 自己生成和核验，阿里云只负责发送，不接 `CheckSmsVerifyCode`。
+- 手机号**换绑**：绑定一个已属于其他账户的号码时照常发码，`ConfirmPhoneNumber` 验证通过后把号码从原账户移过来；原账户没有邮箱也没有密码就一并停用。不做跨服务的账户合并，原账户的订单等数据留在原 Id 上。
 - 证书：`MSA.CertificateService` 独占写 CertificateDb，私钥按使用方 KEK 加密；Identity 和 BFF 直接只读库（避免和 Identity 签发令牌形成循环依赖）。证书库里没有当前证书时回退到 env 里的 pfx。迁移现有部署时**导入原 pfx，不要生成新证书**，否则已签发令牌全部失效。
 
 ## 配置
@@ -91,6 +93,6 @@ src/MSA.Web/dev.bat            # 商城 :5173 / 登录页 :5174 / 后台 :5175
 ## 已知未做（截至 2026-10-22）
 
 - 商城还不能按秒杀价下单：购物车和结算没有传 `offerId`，目前只有秒杀角标。
-- 注册、发短信没有人机验证；`RequireConfirmedEmail = false`。
+- 注册没有人机验证（发短信前有本地算术图形验证码，只是减速带）；`RequireConfirmedEmail = false`。
 - 促销暂停后到真正停止生效，有一段 Outbox 投递延迟（秒级），下单时不实时确认促销状态。
 - 没有引入 GraphQL：BFF 本身就是聚合层，需要聚合时按页面加 REST 聚合端点（参考 `OrderOverviewEndpoints`）。

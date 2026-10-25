@@ -15,8 +15,10 @@ namespace MSA.IdentityService.Controllers;
 public sealed class UsersController(
     UserManager<ApplicationUser> users,
     RoleManager<IdentityRole> roles,
+    ApplicationDbContext db,
     ISmsVerificationService smsVerification,
-    IOptions<SmsOptions> smsOptions) : ControllerBase
+    IOptions<SmsOptions> smsOptions,
+    ILogger<UsersController> logger) : ControllerBase
 {
     [HttpGet("me")]
     public async Task<IActionResult> Me()
@@ -73,17 +75,7 @@ public sealed class UsersController(
                 [nameof(user.PhoneNumber)] = ["请先保存一个尚未验证的手机号。"]
             }));
         }
-        if (await users.Users.AnyAsync(
-                candidate => candidate.Id != user.Id
-                    && candidate.PhoneNumber == user.PhoneNumber
-                    && candidate.PhoneNumberConfirmed,
-                cancellationToken))
-        {
-            return ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]>
-            {
-                [nameof(user.PhoneNumber)] = ["该手机号已绑定其他账户。"]
-            }));
-        }
+        // 号码已绑定其他账户也照常发码：验证通过即换绑，见 ConfirmPhoneNumber。
 
         await smsVerification.RequestPhoneConfirmationCodeAsync(
             user.Id,
@@ -118,9 +110,51 @@ public sealed class UsersController(
                 detail: "验证码无效或已过期。");
         }
 
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var previousOwner = await users.Users.FirstOrDefaultAsync(
+            candidate => candidate.Id != user.Id
+                && candidate.PhoneNumber == user.PhoneNumber
+                && candidate.PhoneNumberConfirmed,
+            cancellationToken);
+        if (previousOwner is not null)
+        {
+            var released = await ReleasePhoneNumberAsync(previousOwner);
+            if (!released.Succeeded)
+                return BadRequest(released.Errors);
+        }
+
         user.PhoneNumberConfirmed = true;
         var result = await users.UpdateAsync(user);
-        return result.Succeeded ? NoContent() : BadRequest(result.Errors);
+        if (!result.Succeeded)
+            return BadRequest(result.Errors);
+
+        await transaction.CommitAsync(cancellationToken);
+        if (previousOwner is not null)
+        {
+            logger.LogInformation(
+                "Phone number moved from user {PreviousUserId} to {UserId}; previous account active: {IsActive}.",
+                previousOwner.Id,
+                user.Id,
+                previousOwner.IsActive);
+        }
+        return NoContent();
+    }
+
+    /// <summary>
+    /// 换绑：短信验证已证明当前用户持有这个号码，把它从原账户移走（先清原账户，已验证号码有唯一索引）。
+    /// 原账户没有邮箱也没有密码时只能靠这个号码短信登录，移走后就是进不去的空壳，按后台停用的方式一并停用。
+    /// 原账户的订单、地址等业务数据不迁移，仍挂在原账户 Id 上。
+    /// </summary>
+    private async Task<IdentityResult> ReleasePhoneNumberAsync(ApplicationUser previousOwner)
+    {
+        previousOwner.PhoneNumber = null;
+        previousOwner.PhoneNumberConfirmed = false;
+        if (string.IsNullOrEmpty(previousOwner.Email) && !await users.HasPasswordAsync(previousOwner))
+        {
+            previousOwner.IsActive = false;
+            await users.UpdateSecurityStampAsync(previousOwner);
+        }
+        return await users.UpdateAsync(previousOwner);
     }
 
     [Authorize(Policy = "auth.admin.read")]

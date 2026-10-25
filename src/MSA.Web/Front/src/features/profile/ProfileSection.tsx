@@ -75,7 +75,7 @@ export function ProfileSection({
       </div>
       <dl className="profile-list">
         <div><dt>姓名</dt><dd>{profile.displayName}</dd></div>
-        <div><dt>邮箱</dt><dd>{profile.email}</dd></div>
+        <div><dt>邮箱</dt><dd>{profile.email ?? '未绑定'}</dd></div>
         <div>
           <dt>手机号</dt>
           <dd>
@@ -92,7 +92,9 @@ export function ProfileSection({
               <button className="outline-action outline-action--accent" type="submit" disabled={pending}>确认</button>
               <button className="outline-action" type="button" disabled={pending} onClick={() => void requestCode()}>重发</button>
             </form> : <button className="outline-action outline-action--accent" type="button" disabled={pending} onClick={() => void requestCode()}>{pending ? '发送中…' : '发送验证码'}</button>}
-            {message ? <small className="phone-confirmation__message">{message}</small> : null}
+            {message
+              ? <small className="phone-confirmation__message">{message}</small>
+              : <small className="phone-confirmation__hint">若该号码已绑定其他账户，验证后会换绑到当前账户；原账户的订单等数据不会迁移。</small>}
             {error ? <small className="phone-confirmation__error" role="alert">{error}</small> : null}
           </dd>
         </div> : null}

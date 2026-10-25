@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using MSA.IdentityService.Application.Sms;
 using MSA.IdentityService.Infrastructure.Sms;
 
@@ -30,6 +31,21 @@ internal static class SmsServiceCollectionExtensions
                 || options.DevelopmentCode.Length == 6 && options.DevelopmentCode.All(char.IsAsciiDigit),
                 "Sms:DevelopmentCode must contain exactly six digits in Development.")
             .ValidateOnStart();
+
+        services.AddOptions<AliyunSmsOptions>()
+            .Bind(configuration.GetSection(AliyunSmsOptions.SectionName))
+            .Validate<IOptions<SmsOptions>>((aliyun, sms) =>
+                    environment.IsDevelopment()
+                    || !string.Equals(sms.Value.Provider.Trim(), AliyunSmsSender.Name, StringComparison.OrdinalIgnoreCase)
+                    || !string.IsNullOrWhiteSpace(aliyun.SignName)
+                    && new[] { sms.Value.LoginTemplate, sms.Value.PasswordResetTemplate, sms.Value.PhoneConfirmationTemplate }
+                        .All(key => !string.IsNullOrWhiteSpace(aliyun.Templates.GetValueOrDefault(key)))
+                    && AliyunSmsSender.IsConfigured,
+                $"Sms:Provider=aliyun requires Sms:Aliyun:SignName, a Sms:Aliyun:Templates code for every template, "
+                + $"and {AliyunSmsSender.KeyIdVariable} / {AliyunSmsSender.SecretVariable}.")
+            .ValidateOnStart();
+        services.AddHttpClient<ISmsSender, AliyunSmsSender>(client =>
+            client.BaseAddress = new Uri("https://dypnsapi.aliyuncs.com/"));
 
         services.AddScoped<ISmsVerificationService, SmsVerificationService>();
         return services;

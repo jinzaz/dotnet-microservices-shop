@@ -537,6 +537,17 @@ figure {
   line-height: 1.6;
 }
 
+.password-hint button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--lime);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
 .login-form__options {
   display: flex;
   align-items: center;
@@ -1187,4 +1198,67 @@ figure {
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
   }
+}
+
+/* 手机号区号：原生 select 透明覆盖在 "+86 ▾" 上，收起时只占一个区号宽度。 */
+.country-code {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding-right: 10px;
+  border-right: 1px solid var(--iron);
+  color: var(--bone);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.country-code__caret {
+  color: var(--ash);
+  font-size: 10px;
+}
+
+.country-code select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.country-code select:disabled {
+  cursor: not-allowed;
+}
+
+.country-code option {
+  background: var(--graphite);
+  color: var(--chalk);
+}
+
+/* 图形验证码：放在输入框右侧，点击换一张。 */
+.captcha-image {
+  display: grid;
+  width: 125px;
+  height: 40px;
+  place-items: center;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--onyx);
+  color: var(--ash);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.captcha-image img {
+  display: block;
+  width: 125px;
+  height: 40px;
+}
+
+.captcha-image:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }

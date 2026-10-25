@@ -38,7 +38,7 @@ export function AccountSidebar({
       <div className="account-identity">
         <span className="account-avatar">{initials(profile.displayName)}</span>
         <strong>你好，{profile.displayName}</strong>
-        <span>{profile.email}</span>
+        <span>{profile.email ?? profile.phoneNumber}</span>
       </div>
       <nav aria-label="账户导航">
         {sections.map((section) => (

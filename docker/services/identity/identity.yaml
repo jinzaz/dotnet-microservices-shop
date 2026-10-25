@@ -27,6 +27,9 @@ services:
       MSA_CERT_KEK_IDENTITY: "${MSA_CERT_KEK_IDENTITY}"
       MSA_OPENIDDICT_CERT_PATH: /certs/openiddict.pfx
       MSA_OPENIDDICT_CERT_PASSWORD: "${MSA_IDENTITY_OPENIDDICT_CERT_PASSWORD}"
+      # 阿里云短信认证（Sms:Provider=aliyun 时必填，签名和模板在 config/identity/appsettings.json 的 Sms 节）。
+      MSA_SMS_ALIYUN_ACCESS_KEY_ID: "${MSA_SMS_ALIYUN_ACCESS_KEY_ID:-}"
+      MSA_SMS_ALIYUN_ACCESS_KEY_SECRET: "${MSA_SMS_ALIYUN_ACCESS_KEY_SECRET:-}"
     volumes:
       - ../../certs/identity-openiddict.pfx:/certs/openiddict.pfx:ro
       - ../../config/identity/appsettings.json:/app/appsettings.${ASPNETCORE_ENVIRONMENT:-Production}.json:ro

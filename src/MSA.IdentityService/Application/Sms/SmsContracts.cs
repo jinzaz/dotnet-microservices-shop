@@ -33,8 +33,10 @@ public static class SmsTemplateNames
 
 public interface ISmsVerificationService
 {
+    /// <summary>未注册的号码也会发码（登录即注册）。</summary>
     Task RequestLoginCodeAsync(string phoneNumber, CancellationToken cancellationToken);
-    Task<string?> ConsumeLoginCodeAsync(
+    /// <summary>只回答验证码对不对；登录哪个账户由调用方按"当前持有这个已验证号码的账户"决定。</summary>
+    Task<bool> ConsumeLoginCodeAsync(
         string phoneNumber,
         string code,
         CancellationToken cancellationToken);
@@ -83,10 +85,14 @@ internal static class PhoneNumberFormat
     }
 }
 
-/// <summary>请求发送短信登录验证码。</summary>
+/// <summary>请求发送短信验证码（登录、找回密码），需要先答对图形验证码。</summary>
 public sealed record RequestSmsLoginCodeRequest(
     [Required, StringLength(16), RegularExpression(PhoneNumberFormat.E164Pattern, ErrorMessage = PhoneNumberFormat.E164Error)]
-    string PhoneNumber);
+    string PhoneNumber,
+    [Required, StringLength(32, MinimumLength = 32)]
+    string CaptchaId,
+    [Required, RegularExpression(@"^[0-9]{1,3}$", ErrorMessage = "请输入图形验证码的计算结果。")]
+    string CaptchaAnswer);
 
 /// <summary>短信验证码发送请求的通用响应，不透露手机号是否已绑定账户。</summary>
 public sealed record SmsLoginCodeRequestedResponse(int ExpiresInSeconds, int RetryAfterSeconds);

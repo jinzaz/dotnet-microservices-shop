@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { getErrorMessage } from '../../shared/api/api-error';
 import { Button } from '../../shared/ui/Button';
+import { CountryCodeSelect, splitE164, toE164 } from '../../shared/ui/CountryCodeSelect';
 import { FormField } from '../../shared/ui/FormField';
 import { Icon } from '../../shared/ui/Icon';
 import type { UserProfile } from './types';
-
-const phonePattern = /^\+[1-9][0-9]{7,14}$/;
 
 type ProfileEditorDialogProps = {
   open: boolean;
@@ -17,7 +16,8 @@ type ProfileEditorDialogProps = {
 export function ProfileEditorDialog({ open, profile, onClose, onSave }: ProfileEditorDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [displayName, setDisplayName] = useState(profile.displayName);
-  const [phoneNumber, setPhoneNumber] = useState(profile.phoneNumber ?? '');
+  const [countryCode, setCountryCode] = useState(() => splitE164(profile.phoneNumber)[0]);
+  const [phoneNumber, setPhoneNumber] = useState(() => splitE164(profile.phoneNumber)[1]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -26,7 +26,9 @@ export function ProfileEditorDialog({ open, profile, onClose, onSave }: ProfileE
     if (!dialog) return;
     if (open && !dialog.open) {
       setDisplayName(profile.displayName);
-      setPhoneNumber(profile.phoneNumber ?? '');
+      const [code, national] = splitE164(profile.phoneNumber);
+      setCountryCode(code);
+      setPhoneNumber(national);
       setError('');
       dialog.showModal();
     } else if (!open && dialog.open) {
@@ -40,9 +42,9 @@ export function ProfileEditorDialog({ open, profile, onClose, onSave }: ProfileE
       setError('请输入姓名。');
       return;
     }
-    const normalizedPhoneNumber = phoneNumber.trim();
-    if (normalizedPhoneNumber && !phonePattern.test(normalizedPhoneNumber)) {
-      setError('手机号需使用 E.164 格式，例如 +8613800138000。');
+    const normalizedPhoneNumber = phoneNumber.trim() ? toE164(countryCode, phoneNumber) : '';
+    if (normalizedPhoneNumber === null) {
+      setError('请输入有效的手机号。');
       return;
     }
 
@@ -75,16 +77,17 @@ export function ProfileEditorDialog({ open, profile, onClose, onSave }: ProfileE
           maxLength={100}
           required
         />
-        <FormField id="profile-email" label="邮箱" value={profile.email} disabled />
+        <FormField id="profile-email" label="邮箱" value={profile.email ?? ''} placeholder="未绑定" disabled />
         <FormField
           id="profile-phone"
           label="手机号"
           type="tel"
           value={phoneNumber}
           onChange={(event) => setPhoneNumber(event.target.value)}
-          placeholder="+8613800138000"
+          placeholder="13800138000"
           maxLength={16}
-          autoComplete="tel"
+          autoComplete="tel-national"
+          leading={<CountryCodeSelect value={countryCode} onChange={setCountryCode} disabled={saving} />}
         />
         {error ? <p className="form-message form-message--error" role="alert">{error}</p> : null}
         <div className="dialog-actions">
