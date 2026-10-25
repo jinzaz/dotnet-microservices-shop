@@ -237,7 +237,9 @@ export default function LoginPage() {
               error={errors.code}
             />
             <p className="password-hint">
-              未注册的手机号验证后将自动创建账户
+              未注册的手机号验证后将自动创建账户。已有邮箱账户？请先
+              <button type="button" onClick={() => switchMode('password')}>用邮箱登录</button>
+              ，在个人资料中绑定手机号
               {import.meta.env.DEV ? '；开发环境固定验证码：123456' : ''}
             </p>
           </>

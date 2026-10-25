@@ -537,6 +537,17 @@ figure {
   line-height: 1.6;
 }
 
+.password-hint button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--lime);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
 .login-form__options {
   display: flex;
   align-items: center;
