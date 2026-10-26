@@ -18,7 +18,11 @@ import { Icon } from '../shared/ui/Icon';
 import { formatDateTime, formatMoney } from '../shared/utils/format';
 
 function normalizeChannel(value: string | null | undefined): PaymentChannel {
-  return value?.toLowerCase() === 'wechatpay' ? 'WeChatPay' : 'Alipay';
+  switch (value?.toLowerCase()) {
+    case 'wechatpay': return 'WeChatPay';
+    case 'balance': return 'Balance';
+    default: return 'Alipay';
+  }
 }
 
 function initialDemoStatus(search: string): PaymentStatus {
@@ -47,12 +51,15 @@ function isWaitingForPayment(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
 }
 
-function paymentStatusCopy(status: PaymentStatus | undefined) {
+function paymentStatusCopy(status: PaymentStatus | undefined, channel: PaymentChannel) {
+  if (channel === 'Balance' && status === 'Failed') {
+    return { title: '余额不足', detail: '账户余额不足以支付本订单，订单将自动取消，请重新下单并选择其他支付方式。' };
+  }
   switch (status) {
     case 'Expired': return { title: '支付二维码已失效', detail: '本次支付已超过有效期，请返回订单页查看订单状态。' };
     case 'Failed': return { title: '支付未完成', detail: '支付服务没有完成本次收款，你可以刷新状态或返回订单页。' };
     case 'Closed': return { title: '支付已关闭', detail: '本次支付已关闭，请返回订单页查看后续操作。' };
-    case 'Refunding': return { title: '退款处理中', detail: '款项正在按原支付渠道退回，请稍后在订单页查看。' };
+    case 'Refunding': return { title: '退款处理中', detail: channel === 'Balance' ? '款项正在退回账户余额，请稍后在订单页查看。' : '款项正在按原支付渠道退回，请稍后在订单页查看。' };
     case 'Refunded': return { title: '款项已退回', detail: '本次支付已经完成退款，详情可在订单页查看。' };
     case 'Cancelling': return { title: '支付正在关闭', detail: '系统正在关闭本次支付，请稍后刷新状态。' };
     default: return null;
@@ -116,7 +123,7 @@ export default function PaymentPage() {
   const expiredByClock = countdown.seconds === 0 && payment?.status === 'Pending';
   const terminal = order?.fulfillmentStatus === 'Cancelled'
     ? { title: '订单已取消', detail: order.cancellationReason ?? '该订单已关闭，无需继续支付。' }
-    : paymentStatusCopy(expiredByClock ? 'Expired' : payment?.status);
+    : paymentStatusCopy(expiredByClock ? 'Expired' : payment?.status, activeChannel);
   const ordersPath = `/orders${demoMode ? '?demo=1' : ''}`;
   const detailPath = demoMode ? ordersPath : `/orders/${orderId}`;
 
@@ -227,6 +234,19 @@ export default function PaymentPage() {
               <span><Icon name="alert-circle" /></span>
               <h2>{terminal.title}</h2>
               <p>{terminal.detail}</p>
+              <div>
+                <Button type="button" loading={checking} onClick={() => void refreshPayment()}>刷新支付状态</Button>
+                <Link className="button button--secondary button--regular" to={detailPath}>查看订单详情</Link>
+              </div>
+            </section>
+            <PaymentOrderSummary order={order} succeeded={false} detailPath={detailPath} />
+          </div>
+        ) : activeChannel === 'Balance' ? (
+          <div className="payment-layout">
+            <section className="payment-terminal-panel">
+              <span className="page-spinner" />
+              <h2>正在从账户余额扣款</h2>
+              <p>库存确认后会自动扣款，{formatMoney(order.amount, order.currency)} 将从余额中支付，页面会自动更新。</p>
               <div>
                 <Button type="button" loading={checking} onClick={() => void refreshPayment()}>刷新支付状态</Button>
                 <Link className="button button--secondary button--regular" to={detailPath}>查看订单详情</Link>

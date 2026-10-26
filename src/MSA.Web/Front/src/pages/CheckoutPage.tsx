@@ -10,7 +10,7 @@ import { PriceBreakdown, PromotionOpportunities } from '../features/pricing/Pric
 import { couponReasonText, couponRejectionOf, useOrderQuote } from '../features/pricing/quote-api';
 import { benefitValue, conditionText, describePromotion } from '../features/promotions/describe';
 import { demoAccountSnapshot } from '../features/profile/demo-account';
-import { listAddresses } from '../features/profile/profile-api';
+import { getBalance, listAddresses } from '../features/profile/profile-api';
 import type { UserAddress } from '../features/profile/types';
 import { ApiError, getErrorMessage } from '../shared/api/api-error';
 import { isDemoMode } from '../shared/config/api';
@@ -33,6 +33,7 @@ const demoCheckoutLine: CartLine = {
 const paymentMethods: ReadonlyArray<{ value: PaymentMethod; label: string; detail: string }> = [
   { value: 'Alipay', label: '支付宝', detail: '推荐' },
   { value: 'WeChatPay', label: '微信支付', detail: '快捷支付' },
+  { value: 'Balance', label: '余额支付', detail: '账户余额' },
 ];
 
 function fullAddress(address: UserAddress): string {
@@ -74,6 +75,13 @@ export default function CheckoutPage() {
     enabled: !demoMode,
     staleTime: 30_000,
   });
+  const balanceQuery = useQuery({
+    queryKey: ['payment', 'balance'],
+    queryFn: getBalance,
+    enabled: !demoMode,
+    staleTime: 0,
+  });
+  const balance = demoMode ? demoAccountSnapshot.balance.balance : balanceQuery.data?.balance;
   const walletCoupons = usableCoupons(demoMode ? demoCoupons : walletQuery.data);
   const orderableLines = basket.lines.filter((line) => line.isAvailable !== false);
   const quote = useOrderQuote({
@@ -103,12 +111,15 @@ export default function CheckoutPage() {
   const effectiveAddressId = selectedAddressId || defaultAddressId;
   const selectedAddress = addresses.find((address) => address.id === effectiveAddressId);
   const unavailable = lines.filter((line) => line.isAvailable === false);
+  // 只是体验上的提前拦截；余额够不够以支付服务扣款时为准，不足会自动取消订单。
+  const balanceShort = balance === undefined || (quote.data !== undefined && balance < quote.data.total);
 
   const submit = async () => {
     if (!selectedAddress) return setSubmitError('请选择收货地址。');
     if (!lines.length) return setSubmitError('购物袋中还没有商品。');
     if (unavailable.length) return setSubmitError('购物袋中有暂不可售的商品，请返回购物袋移除。');
     if (!acceptedTerms) return setSubmitError('请先阅读并同意用户服务协议与隐私政策。');
+    if (paymentMethod === 'Balance' && balanceShort) return setSubmitError('账户余额不足，请选择其他支付方式。');
 
     setSubmitting(true);
     setSubmitError('');
@@ -204,12 +215,17 @@ export default function CheckoutPage() {
             <section className="checkout-section">
               <div className="checkout-section__title"><span>3</span><h2>支付方式</h2></div>
               <div className="payment-choices">
-                {paymentMethods.map((method) => (
-                  <label key={method.value} className={paymentMethod === method.value ? 'is-selected' : undefined}>
-                    <input type="radio" name="payment" value={method.value} checked={paymentMethod === method.value} onChange={() => setPaymentMethod(method.value)} />
-                    <span className="selection-dot" /><Icon name="credit-card" /><strong>{method.label}</strong><small>{method.detail}</small>
-                  </label>
-                ))}
+                {paymentMethods.map((method) => {
+                  const disabled = method.value === 'Balance' && balanceShort;
+                  const detail = method.value === 'Balance' && balance !== undefined ? `可用 ${formatMoney(balance)}` : method.detail;
+                  const className = [paymentMethod === method.value ? 'is-selected' : '', disabled ? 'is-disabled' : ''].filter(Boolean).join(' ');
+                  return (
+                    <label key={method.value} className={className || undefined}>
+                      <input type="radio" name="payment" value={method.value} checked={paymentMethod === method.value} disabled={disabled} onChange={() => setPaymentMethod(method.value)} />
+                      <span className="selection-dot" /><Icon name="credit-card" /><strong>{method.label}</strong><small>{detail}</small>
+                    </label>
+                  );
+                })}
               </div>
             </section>
 

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using MSA.PaymentCore;
 using MSA.PaymentService.Application;
 using MSA.PaymentService.Domain;
+using System.Security.Claims;
 
 namespace MSA.PaymentService.Endpoints;
 
@@ -56,6 +57,69 @@ internal static class PaymentAdminEndpoints
             .WithName("GetAdminPaymentSummary")
             .WithSummary("Summarize payment counts and amounts by status for the operations dashboard");
 
+        read.MapGet("/balances/{userId}", async (
+            string userId,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            TypedResults.Ok(await sender.Send(new GetBalanceQuery(userId.Trim()), cancellationToken)))
+            .WithName("GetAdminBalance");
+
+        read.MapGet("/balances/{userId}/entries", async (
+            string userId,
+            ISender sender,
+            CancellationToken cancellationToken,
+            int skip = 0,
+            int take = 50) =>
+            TypedResults.Ok(await sender.Send(new ListBalanceEntriesQuery(userId.Trim(), skip, take), cancellationToken)))
+            .WithName("ListAdminBalanceEntries");
+
+        endpoints.MapPost("/payment/admin/balances/{userId}/adjustments", async Task<Results<Ok<BalanceEntryDto>, Created<BalanceEntryDto>, ValidationProblem, Conflict<string>>> (
+            string userId,
+            AdjustBalanceRequest request,
+            ClaimsPrincipal user,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(userId)
+                || request.Delta is 0 or < -1_000_000m or > 1_000_000m
+                || string.IsNullOrWhiteSpace(request.BusinessKey) || request.BusinessKey.Length > 128
+                || string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Length > 500)
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    [nameof(request)] = ["调整金额须在 ±1,000,000 之间且非零；幂等键（≤128）与原因（≤500）必填。"]
+                });
+            }
+
+            try
+            {
+                var result = await sender.Send(new AdjustBalanceCommand(
+                    userId.Trim(),
+                    request.Delta,
+                    request.BusinessKey,
+                    request.Reason,
+                    user.FindFirstValue("sub") ?? throw new UnauthorizedAccessException()), cancellationToken);
+                return result.IsReplay
+                    ? TypedResults.Ok(result.Entry)
+                    : TypedResults.Created($"/api/payment/admin/balances/{userId.Trim()}/entries", result.Entry);
+            }
+            catch (BalanceRuleException exception)
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    [nameof(request.Delta)] = [exception.Message]
+                });
+            }
+            catch (BalanceIdempotencyConflictException exception)
+            {
+                return TypedResults.Conflict(exception.Message);
+            }
+        })
+        .RequireAuthorization("payment.admin.write")
+        .WithName("AdjustAdminBalance");
+
         return endpoints;
     }
 }
+
+public sealed record AdjustBalanceRequest(decimal Delta, string BusinessKey, string Reason);

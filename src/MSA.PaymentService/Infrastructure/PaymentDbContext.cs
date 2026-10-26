@@ -17,6 +17,8 @@ public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options,
     internal DbSet<PaymentStatusHistory> PaymentStatusHistory => Set<PaymentStatusHistory>();
     internal DbSet<PaymentRefund> PaymentRefunds => Set<PaymentRefund>();
     internal DbSet<PaymentCancellationIntent> PaymentCancellationIntents => Set<PaymentCancellationIntent>();
+    internal DbSet<BalanceAccount> BalanceAccounts => Set<BalanceAccount>();
+    internal DbSet<BalanceEntry> BalanceEntries => Set<BalanceEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -76,6 +78,15 @@ public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options,
         CancellationToken cancellationToken) =>
         PaymentRefunds
             .Where(refund => refund.RefundRequestId == refundRequestId)
+            .ForUpdate()
+            .AsTracking()
+            .SingleOrDefaultAsync(cancellationToken);
+
+    internal Task<BalanceAccount?> LockBalanceAccountAsync(
+        string userId,
+        CancellationToken cancellationToken) =>
+        BalanceAccounts
+            .Where(account => account.Id == userId)
             .ForUpdate()
             .AsTracking()
             .SingleOrDefaultAsync(cancellationToken);

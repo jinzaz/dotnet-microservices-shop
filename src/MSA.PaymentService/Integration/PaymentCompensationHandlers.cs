@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using MSA.Contracts;
 using MSA.EventBus.Abstractions;
 using MSA.EventBusOutbox;
+using MSA.PaymentCore;
+using MSA.PaymentService.Application;
 using MSA.PaymentService.Domain;
 using MSA.PaymentService.Infrastructure;
 using System.Text.Json;
@@ -80,6 +82,23 @@ internal sealed class CancelPaymentRequestedHandler(
             }
 
             var previousStatus = payment.Status;
+            if (payment.Channel == PaymentChannel.Balance)
+            {
+                // 余额支付没有外部交易要关闭，未扣款的支付单直接关单。
+                payment.RequestCancellation(integrationEvent.Reason);
+                payment.MarkCancelled(integrationEvent.Reason, now);
+                db.PaymentStatusHistory.Add(PaymentStatusHistory.Record(
+                    payment.Id,
+                    previousStatus,
+                    payment.Status,
+                    "BalancePaymentCancelled",
+                    now,
+                    integrationEvent.Reason));
+                PublishCancelled(payment, now);
+                await db.CommitTransactionAsync(transaction, cancellationToken);
+                return;
+            }
+
             if (payment.RequestCancellation(integrationEvent.Reason))
             {
                 db.PaymentStatusHistory.Add(PaymentStatusHistory.Record(
@@ -146,6 +165,7 @@ internal sealed class CancelPaymentRequestedHandler(
 internal sealed class RefundPaymentRequestedHandler(
     PaymentDbContext db,
     IOutboxStore outbox,
+    BalanceLedger ledger,
     TimeProvider clock)
     : IIntegrationEventHandler<RefundPaymentRequestedIntegrationEvent>
 {
@@ -212,11 +232,6 @@ internal sealed class RefundPaymentRequestedHandler(
                 throw new InvalidOperationException("Another refund is already in progress.");
 
             db.PaymentRefunds.Add(refund);
-            db.ProviderOperations.Add(PaymentProviderOperation.RefundPayment(
-                payment.Id,
-                refund.Id,
-                refund.MerchantRefundNo,
-                now));
             db.PaymentStatusHistory.Add(PaymentStatusHistory.Record(
                 payment.Id,
                 previousStatus,
@@ -224,6 +239,40 @@ internal sealed class RefundPaymentRequestedHandler(
                 "PaymentRefundRequested",
                 now,
                 integrationEvent.Reason));
+            if (payment.Channel == PaymentChannel.Balance)
+            {
+                // 余额支付原路退回余额：入账、退款单成功、PaymentRefunded 同一事务提交，不经过渠道调度器。
+                var entry = await ledger.CreditRefundAsync(
+                    payment,
+                    refund,
+                    integrationEvent.AfterSalesRequestNumber,
+                    now,
+                    cancellationToken);
+                refund.MarkSucceeded(entry.Id.ToString("N"), now);
+                payment.CompleteRefund(refund.Amount);
+                db.PaymentStatusHistory.Add(PaymentStatusHistory.Record(
+                    payment.Id,
+                    PaymentStatus.Refunding,
+                    payment.Status,
+                    "BalanceRefunded",
+                    now,
+                    $"Refund {refund.Id} credited to balance."));
+                Publish(new PaymentRefundedIntegrationEvent
+                {
+                    OrderId = payment.OrderId,
+                    PaymentId = payment.Id,
+                    RefundId = refund.Id,
+                    RefundRequestId = refund.RefundRequestId
+                }, now);
+            }
+            else
+            {
+                db.ProviderOperations.Add(PaymentProviderOperation.RefundPayment(
+                    payment.Id,
+                    refund.Id,
+                    refund.MerchantRefundNo,
+                    now));
+            }
             await db.CommitTransactionAsync(transaction, cancellationToken);
         }
         catch

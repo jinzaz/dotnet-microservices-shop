@@ -14,7 +14,7 @@ internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
             table.HasCheckConstraint("CK_orders_amounts", "\"SubtotalAmount\" > 0 AND \"DiscountAmount\" >= 0 AND \"Amount\" > 0 AND \"Amount\" = \"SubtotalAmount\" - \"DiscountAmount\"");
             table.HasCheckConstraint("CK_orders_payment_due", "\"PaymentDueOnUtc\" > \"CreatedOnUtc\"");
             table.HasCheckConstraint("CK_orders_currency", CurrencyCode(nameof(Order.Currency)));
-            table.HasCheckConstraint("CK_orders_payment_method", "\"PaymentMethod\" IN ('Alipay', 'WeChatPay', 'Unknown')");
+            table.HasCheckConstraint("CK_orders_payment_method", "\"PaymentMethod\" IN ('Alipay', 'WeChatPay', 'Balance', 'Unknown')");
             table.HasCheckConstraint("CK_orders_snapshot_hashes", $"{Sha256Hex(nameof(Order.RequestFingerprint))} AND {Sha256Hex(nameof(Order.PricingSnapshotHash))}");
             table.HasCheckConstraint("CK_orders_confirmed_fields", $"\"Status\" <> {(int)OrderStatus.Confirmed} OR (\"ReservationId\" IS NOT NULL AND \"PaymentId\" IS NOT NULL AND \"ConfirmedOnUtc\" IS NOT NULL)");
             table.HasCheckConstraint("CK_orders_cancelled_fields", $"\"Status\" <> {(int)OrderStatus.Cancelled} OR (\"CancellationReason\" IS NOT NULL AND \"CancelledOnUtc\" IS NOT NULL)");

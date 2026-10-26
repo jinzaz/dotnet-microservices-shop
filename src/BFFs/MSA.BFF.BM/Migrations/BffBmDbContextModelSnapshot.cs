@@ -742,6 +742,38 @@ namespace MSA.BFF.BM.Migrations
                             Code = "order.after-sales.delete",
                             DisplayName = "售后-删除",
                             Module = "order.after-sales"
+                        },
+                        new
+                        {
+                            Id = new Guid("294185c7-3129-d2ab-bd9d-4493f5c8a57d"),
+                            Action = "Query",
+                            Code = "payment.balances.query",
+                            DisplayName = "账户余额-查询",
+                            Module = "payment.balances"
+                        },
+                        new
+                        {
+                            Id = new Guid("b8a51627-7bee-d583-3a27-b422aa02cd36"),
+                            Action = "Create",
+                            Code = "payment.balances.create",
+                            DisplayName = "账户余额-创建",
+                            Module = "payment.balances"
+                        },
+                        new
+                        {
+                            Id = new Guid("ae280351-374f-f757-b81d-eae84ad3eee3"),
+                            Action = "Edit",
+                            Code = "payment.balances.edit",
+                            DisplayName = "账户余额-编辑",
+                            Module = "payment.balances"
+                        },
+                        new
+                        {
+                            Id = new Guid("fcaa9cf7-526f-2a13-b85a-e4f09e54337c"),
+                            Action = "Delete",
+                            Code = "payment.balances.delete",
+                            DisplayName = "账户余额-删除",
+                            Module = "payment.balances"
                         });
                 });
 
@@ -1173,6 +1205,26 @@ namespace MSA.BFF.BM.Migrations
                         {
                             PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
                             PermissionId = new Guid("af7fdc4c-c21c-785e-2b0a-b15828e38a42")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("294185c7-3129-d2ab-bd9d-4493f5c8a57d")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("b8a51627-7bee-d583-3a27-b422aa02cd36")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("ae280351-374f-f757-b81d-eae84ad3eee3")
+                        },
+                        new
+                        {
+                            PolicyId = new Guid("47e4a07f-dfc9-ca60-fcdc-88d3e3beb654"),
+                            PermissionId = new Guid("fcaa9cf7-526f-2a13-b85a-e4f09e54337c")
                         });
                 });
 
@@ -2447,6 +2499,30 @@ namespace MSA.BFF.BM.Migrations
                             Order = 150,
                             PathTemplate = "/api/order/admin/after-sales/{id}/reserve-stock",
                             PermissionId = new Guid("1ee4b4d4-64ec-9890-bf41-cf9661b77a0e")
+                        },
+                        new
+                        {
+                            Id = new Guid("abb19e02-1641-fe47-7250-d650cfcca285"),
+                            HttpMethod = "GET",
+                            Order = 151,
+                            PathTemplate = "/api/payment/admin/balances/{userId}",
+                            PermissionId = new Guid("294185c7-3129-d2ab-bd9d-4493f5c8a57d")
+                        },
+                        new
+                        {
+                            Id = new Guid("43b5a85a-b6e1-f19b-faba-050da12697c5"),
+                            HttpMethod = "GET",
+                            Order = 152,
+                            PathTemplate = "/api/payment/admin/balances/{userId}/entries",
+                            PermissionId = new Guid("294185c7-3129-d2ab-bd9d-4493f5c8a57d")
+                        },
+                        new
+                        {
+                            Id = new Guid("5b76abee-e1d2-c55a-d823-2b4ca8a7d042"),
+                            HttpMethod = "POST",
+                            Order = 153,
+                            PathTemplate = "/api/payment/admin/balances/{userId}/adjustments",
+                            PermissionId = new Guid("ae280351-374f-f757-b81d-eae84ad3eee3")
                         });
                 });
 

@@ -1,4 +1,4 @@
-export type PaymentChannel = 'Alipay' | 'WeChatPay';
+export type PaymentChannel = 'Alipay' | 'WeChatPay' | 'Balance';
 
 export type PaymentStatus =
   | 'Pending'

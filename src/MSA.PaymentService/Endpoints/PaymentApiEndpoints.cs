@@ -63,6 +63,26 @@ internal static class PaymentApiEndpoints
         .RequireAuthorization("payment-api")
         .WithName("SyncPaymentByOrder");
 
+        endpoints.MapGet("/payment/balance", async (
+            ClaimsPrincipal user,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+            TypedResults.Ok(await sender.Send(
+                new GetBalanceQuery(user.FindFirstValue("sub") ?? string.Empty), cancellationToken)))
+        .RequireAuthorization("payment-api")
+        .WithName("GetMyBalance");
+
+        endpoints.MapGet("/payment/balance/entries", async (
+            ClaimsPrincipal user,
+            ISender sender,
+            CancellationToken cancellationToken,
+            int skip = 0,
+            int take = 50) =>
+            TypedResults.Ok(await sender.Send(
+                new ListBalanceEntriesQuery(user.FindFirstValue("sub") ?? string.Empty, skip, take), cancellationToken)))
+        .RequireAuthorization("payment-api")
+        .WithName("ListMyBalanceEntries");
+
         return endpoints;
     }
 }

@@ -83,6 +83,120 @@ namespace MSA.PaymentService.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MSA.PaymentService.Domain.BalanceAccount", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("余额所属用户标识");
+
+                    b.Property<decimal>("Balance")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("当前可用余额（CNY），不能为负");
+
+                    b.Property<DateTimeOffset>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("UpdatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasComment("余额账户乐观并发版本号");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("payment_balance_accounts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_payment_balance_accounts_balance", "\"Balance\" >= 0");
+
+                            t.HasCheckConstraint("CK_payment_balance_accounts_version", "\"Version\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("MSA.PaymentService.Domain.BalanceEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AfterSalesRequestNumber")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasComment("关联售后单号");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("余额变动金额，扣减为负");
+
+                    b.Property<decimal>("BalanceAfter")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasComment("本次变动后的余额");
+
+                    b.Property<string>("BusinessKey")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasComment("记账幂等键");
+
+                    b.Property<DateTimeOffset>("OccurredOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OperatorId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("后台调整的操作人标识");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasComment("关联订单标识");
+
+                    b.Property<Guid?>("PaymentId")
+                        .HasColumnType("uuid")
+                        .HasComment("关联支付单标识");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasComment("变动原因");
+
+                    b.Property<Guid?>("RefundId")
+                        .HasColumnType("uuid")
+                        .HasComment("关联退款单标识");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer")
+                        .HasComment("流水类型：后台调整、支付扣款或退款入账");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasComment("余额所属用户标识");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "BusinessKey")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "OccurredOnUtc");
+
+                    b.ToTable("payment_balance_entries", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_payment_balance_entries_Type_Enum", "\"Type\" BETWEEN 0 AND 2");
+
+                            t.HasCheckConstraint("CK_payment_balance_entries_amount", "\"Amount\" <> 0");
+
+                            t.HasCheckConstraint("CK_payment_balance_entries_balance_after", "\"BalanceAfter\" >= 0");
+
+                            t.HasCheckConstraint("CK_payment_balance_entries_direction", "(\"Type\" <> 1 OR \"Amount\" < 0) AND (\"Type\" <> 2 OR \"Amount\" > 0)");
+                        });
+                });
+
             modelBuilder.Entity("MSA.PaymentService.Domain.Payment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -187,7 +301,7 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.ToTable("payment_payments", null, t =>
                         {
-                            t.HasCheckConstraint("CK_payment_payments_Channel_Enum", "\"Channel\" IN (0, 1)");
+                            t.HasCheckConstraint("CK_payment_payments_Channel_Enum", "\"Channel\" BETWEEN 0 AND 2");
 
                             t.HasCheckConstraint("CK_payment_payments_Status_Enum", "\"Status\" BETWEEN 0 AND 7");
 
@@ -322,7 +436,7 @@ namespace MSA.PaymentService.Infrastructure.Migrations
 
                     b.ToTable("payment_notifications", null, t =>
                         {
-                            t.HasCheckConstraint("CK_payment_notifications_Channel_Enum", "\"Channel\" IN (0, 1)");
+                            t.HasCheckConstraint("CK_payment_notifications_Channel_Enum", "\"Channel\" BETWEEN 0 AND 2");
 
                             t.HasCheckConstraint("CK_payment_notifications_Status_Enum", "\"Status\" BETWEEN 0 AND 2");
 
@@ -665,6 +779,15 @@ namespace MSA.PaymentService.Infrastructure.Migrations
                         {
                             t.HasCheckConstraint("CK_payment_saga_states_Status_Enum", "\"Status\" BETWEEN 0 AND 4");
                         });
+                });
+
+            modelBuilder.Entity("MSA.PaymentService.Domain.BalanceEntry", b =>
+                {
+                    b.HasOne("MSA.PaymentService.Domain.BalanceAccount", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("MSA.PaymentService.Domain.PaymentNotificationRecord", b =>

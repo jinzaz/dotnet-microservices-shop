@@ -242,3 +242,55 @@ internal sealed class PaymentCancellationIntentConfiguration
         entity.Property(value => value.Reason).HasMaxLength(2000).HasComment("请求关闭支付单的业务原因");
     }
 }
+
+internal sealed class BalanceAccountConfiguration : IEntityTypeConfiguration<BalanceAccount>
+{
+    public void Configure(EntityTypeBuilder<BalanceAccount> entity)
+    {
+        entity.ToTable("payment_balance_accounts", table =>
+        {
+            table.HasCheckConstraint("CK_payment_balance_accounts_balance", "\"Balance\" >= 0");
+            table.HasCheckConstraint("CK_payment_balance_accounts_version", "\"Version\" >= 0");
+        });
+
+        entity.HasKey(value => value.Id);
+        entity.Property(value => value.Id).HasMaxLength(200).HasComment("余额所属用户标识");
+        entity.Property(value => value.Balance).HasPrecision(18, 2).HasComment("当前可用余额（CNY），不能为负");
+        entity.Property(value => value.Version).IsConcurrencyToken().HasComment("余额账户乐观并发版本号");
+    }
+}
+
+internal sealed class BalanceEntryConfiguration : IEntityTypeConfiguration<BalanceEntry>
+{
+    public void Configure(EntityTypeBuilder<BalanceEntry> entity)
+    {
+        entity.ToTable("payment_balance_entries", table =>
+        {
+            table.HasCheckConstraint("CK_payment_balance_entries_amount", "\"Amount\" <> 0");
+            table.HasCheckConstraint("CK_payment_balance_entries_balance_after", "\"BalanceAfter\" >= 0");
+            table.HasCheckConstraint(
+                "CK_payment_balance_entries_direction",
+                $"(\"Type\" <> {(int)BalanceEntryType.Payment} OR \"Amount\" < 0) AND (\"Type\" <> {(int)BalanceEntryType.Refund} OR \"Amount\" > 0)");
+        });
+
+        entity.HasKey(value => value.Id);
+        entity.HasOne<BalanceAccount>()
+            .WithMany()
+            .HasForeignKey(value => value.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        // 扣款、退款、后台调整的幂等闸门：同一支付单 / 退款单 / 调整键只能记一次账。
+        entity.HasIndex(value => new { value.UserId, value.BusinessKey }).IsUnique();
+        entity.HasIndex(value => new { value.UserId, value.OccurredOnUtc });
+        entity.Property(value => value.UserId).HasMaxLength(200).HasComment("余额所属用户标识");
+        entity.Property(value => value.Type).HasComment("流水类型：后台调整、支付扣款或退款入账");
+        entity.Property(value => value.Amount).HasPrecision(18, 2).HasComment("余额变动金额，扣减为负");
+        entity.Property(value => value.BalanceAfter).HasPrecision(18, 2).HasComment("本次变动后的余额");
+        entity.Property(value => value.BusinessKey).HasMaxLength(160).HasComment("记账幂等键");
+        entity.Property(value => value.OrderId).HasComment("关联订单标识");
+        entity.Property(value => value.PaymentId).HasComment("关联支付单标识");
+        entity.Property(value => value.RefundId).HasComment("关联退款单标识");
+        entity.Property(value => value.AfterSalesRequestNumber).HasMaxLength(64).HasComment("关联售后单号");
+        entity.Property(value => value.Reason).HasMaxLength(500).HasComment("变动原因");
+        entity.Property(value => value.OperatorId).HasMaxLength(200).HasComment("后台调整的操作人标识");
+    }
+}

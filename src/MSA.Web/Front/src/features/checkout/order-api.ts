@@ -1,7 +1,7 @@
 import { apiRequest } from '../../shared/api/http';
 import { serviceRoutes } from '../../shared/config/api';
 
-export type PaymentMethod = 'Alipay' | 'WeChatPay';
+export type PaymentMethod = 'Alipay' | 'WeChatPay' | 'Balance';
 
 export type ShippingAddressInput = {
   addressId: string | null;
