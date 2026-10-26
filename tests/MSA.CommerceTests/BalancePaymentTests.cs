@@ -137,6 +137,43 @@ public sealed class BalancePaymentTests
             ledger.AdjustAsync(Buyer, 20m, "grant-1", "充值", "operator", Now, TestContext.CancellationToken));
     }
 
+    [TestMethod]
+    public async Task WelcomeGrant_OpensTheAccountAndIsPaidOnlyOnce()
+    {
+        await using var db = NewDb();
+        var ledger = new BalanceLedger(db);
+
+        var first = await ledger.GrantWelcomeAsync(Buyer, 9999m, Now, TestContext.CancellationToken);
+        await db.SaveChangesAsync(TestContext.CancellationToken);
+        var replay = await ledger.GrantWelcomeAsync(Buyer, 9999m, Now.AddMinutes(1), TestContext.CancellationToken);
+        await db.SaveChangesAsync(TestContext.CancellationToken);
+
+        Assert.AreEqual(first.Id, replay.Id, "注册事件重投不会再发一次。");
+        Assert.AreEqual(9999m, (await db.BalanceAccounts.SingleAsync(TestContext.CancellationToken)).Balance);
+        Assert.AreEqual(BalanceEntry.WelcomeKey, first.BusinessKey);
+    }
+
+    [TestMethod]
+    public async Task WelcomeGrant_CanBeSpentOnTheFirstOrder()
+    {
+        await using var db = NewDb();
+        var ledger = new BalanceLedger(db);
+        await ledger.GrantWelcomeAsync(Buyer, 9999m, Now, TestContext.CancellationToken);
+        await db.SaveChangesAsync(TestContext.CancellationToken);
+
+        var debit = await ledger.TryDebitAsync(NewPayment(db, 299m), Now, TestContext.CancellationToken);
+
+        Assert.AreEqual(9700m, debit!.BalanceAfter);
+    }
+
+    [TestMethod]
+    public void WelcomeOptions_RejectNonPositiveOrFractionalCentAmounts()
+    {
+        Assert.IsTrue(new BalanceWelcomeOptions().IsValid(), "默认 9999 有效。");
+        Assert.IsFalse(new BalanceWelcomeOptions { Amount = 0m }.IsValid());
+        Assert.IsFalse(new BalanceWelcomeOptions { Amount = 1.005m }.IsValid());
+    }
+
     private async Task TopUp(BalanceLedger ledger, PaymentDbContext db, decimal amount, string key = "top-up")
     {
         await ledger.AdjustAsync(Buyer, amount, key, "充值", "operator", Now, TestContext.CancellationToken);

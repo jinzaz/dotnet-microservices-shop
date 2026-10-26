@@ -30,6 +30,7 @@ src/MSA.Web/dev.bat            # 商城 :5173 / 登录页 :5174 / 后台 :5175
 
 - **支付成功即确认订单**（`Confirm` + 发 `CommitInventory`、`OrderConfirmed`）；`InventoryCommitted` 只是让 Saga 结束，超时会重发 `CommitInventory`。不要再写成"收到 InventoryCommitted 才确认"。
 - **账户余额在支付服务**（`PaymentChannel.Balance`，`payment_balance_*` 表），不在用户服务：处理 `PaymentRequested` 时同一事务内锁账户行扣款 + 支付单成功 + `PaymentSucceeded`，余额不足直接 `PaymentFailed`；退款在 `RefundPaymentRequested` 处理器里直接入账回余额，不经渠道调度器。流水 `(UserId, BusinessKey)` 唯一是记账幂等闸门。
+- **Identity 只接了 Outbox**（`identity_outbox_messages`）：`ApplicationDbContext` 必须继承 `IdentityDbContext`，不能继承 `MessagingDbContext`，所以实现 `IOutboxStore` 并复用 `OutboxMessageConfiguration` 与 `ClaimPendingOutboxAsync`；只发不收，没有 Inbox，也不在 BM「消息运维」页里。注册（密码 / 短信）在建号事务里写 `UserRegistered`，支付服务据此按 `MSA_BALANCE_WELCOME_*` 发新用户余额。新订阅方要先部署（队列绑定后才收得到）。
 - **下单前的库存 gRPC 预检只查不占**，作用是体验；防超卖的正确性在库存服务处理 `OrderSubmitted` 时按 SKU 加 `pg_advisory_xact_lock` 后预占。预检失败（库存服务不可用）放行。
 - **gRPC 只用于需要实时结果的读**：目录确认最终价、库存可售预检、支付实时状态、券权威状态、收货地址归属、支付前反查订单金额。每个调用都要有明确降级。**跨服务的写和状态流转只走事件 + Saga**，不要改成同步调用。新调用方：Identity 加 `MSA_Svc_*` client_credentials 应用 → `AddMsaServiceAuthentication` + `AddMsaGrpcClient<T>`。
 - 消息消费失败：`{队列}.retry`（TTL 回流，默认 5 次 / 10 秒）→ 用尽进 DLQ，BM「消息运维」页可重放。**对不上当前状态的过期回执记 warning 后 Ack，不要抛异常**，否则会卡死在 DLQ。

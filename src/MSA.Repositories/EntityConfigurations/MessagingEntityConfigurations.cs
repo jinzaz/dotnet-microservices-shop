@@ -6,7 +6,8 @@ using MSA.Saga;
 
 namespace MSA.Repositories.EntityConfigurations;
 
-internal sealed class OutboxMessageConfiguration(string tablePrefix)
+/// <summary>公开给不继承 MessagingDbContext 的上下文（Identity）复用，保证各服务 Outbox 表结构一致。</summary>
+public sealed class OutboxMessageConfiguration(string tablePrefix)
     : IEntityTypeConfiguration<OutboxMessage>
 {
     public void Configure(EntityTypeBuilder<OutboxMessage> entity)

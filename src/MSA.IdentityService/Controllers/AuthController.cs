@@ -11,6 +11,8 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using MSA.IdentityService.Application.Sms;
+using MSA.Contracts;
+using MSA.EventBusOutbox;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
 using System.Security.Claims;
@@ -96,6 +98,7 @@ public sealed class AuthController(
         if (!result.Succeeded)
             return IdentityValidationProblem(result);
 
+        await PublishRegisteredAsync(user, "Password", cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return NoContent();
     }
@@ -502,6 +505,7 @@ public sealed class AuthController(
                 return null;
             }
 
+            await PublishRegisteredAsync(user, "Sms", cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             logger.LogInformation("User {UserId} signed up with an SMS code.", user.Id);
             return user;
@@ -512,6 +516,18 @@ public sealed class AuthController(
             logger.LogInformation(exception, "SMS sign-up lost a race; using the account created concurrently.");
             return null;
         }
+    }
+
+    /// <summary>注册事件写进 Outbox，与建号同一事务提交：建号回滚就没有事件，建号成功事件一定会发出。</summary>
+    private Task PublishRegisteredAsync(ApplicationUser user, string method, CancellationToken cancellationToken)
+    {
+        ((IOutboxStore)db).AddIntegrationEvent(new UserRegisteredIntegrationEvent
+        {
+            UserId = user.Id,
+            Method = method,
+            RegisteredOnUtc = user.CreatedOnUtc
+        });
+        return db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task<IActionResult> CompleteLogin(

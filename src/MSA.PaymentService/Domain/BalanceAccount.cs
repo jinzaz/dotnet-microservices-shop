@@ -56,6 +56,7 @@ public sealed class BalanceEntry : Entity<Guid>
     public string? OperatorId { get; private set; }
     public DateTimeOffset OccurredOnUtc { get; private set; }
 
+    public const string WelcomeKey = "WELCOME";
     public static string PaymentKey(Guid paymentId) => $"PAYMENT:{paymentId:N}".ToUpperInvariant();
     public static string RefundKey(Guid refundId) => $"REFUND:{refundId:N}".ToUpperInvariant();
     public static string AdjustmentKey(string businessKey)

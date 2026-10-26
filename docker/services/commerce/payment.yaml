@@ -17,6 +17,9 @@ services:
       Kestrel__Endpoints__Grpc__Url: "http://+:8081"
       Kestrel__Endpoints__Grpc__Protocols: Http2
       PaymentEndpoints__NotifyBaseUrl: "${MSA_PAYMENT_NOTIFY_BASE_URL}"
+      # 新用户注册赠送余额（MsaEnvironment 映射到 Balance:Welcome:*），默认关闭。
+      MSA_BALANCE_WELCOME_ENABLED: "${MSA_BALANCE_WELCOME_ENABLED:-false}"
+      MSA_BALANCE_WELCOME_AMOUNT: "${MSA_BALANCE_WELCOME_AMOUNT:-9999}"
       MSA_SERVICE_AUTHORITY: "${MSA_SERVICE_AUTHORITY}"
       MSA_CLIENT_SECRET_MSA_SVC_PAYMENT: "${MSA_CLIENT_SECRET_MSA_SVC_PAYMENT}"
     volumes:

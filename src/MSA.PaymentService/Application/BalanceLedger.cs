@@ -74,6 +74,31 @@ internal sealed class BalanceLedger(PaymentDbContext db)
         return entry;
     }
 
+    /// <summary>新用户注册赠送；同一用户只发一次，注册事件重投返回已记的那条流水。</summary>
+    public async Task<BalanceEntry> GrantWelcomeAsync(
+        string userId,
+        decimal amount,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var account = await LockOrOpenAsync(userId, now, cancellationToken);
+        var existing = await FindAsync(account.Id, BalanceEntry.WelcomeKey, cancellationToken);
+        if (existing is not null)
+            return existing;
+
+        var balanceAfter = account.Change(amount, now);
+        var entry = BalanceEntry.Record(
+            account,
+            BalanceEntryType.Adjustment,
+            amount,
+            balanceAfter,
+            BalanceEntry.WelcomeKey,
+            "新用户注册赠送",
+            now);
+        db.BalanceEntries.Add(entry);
+        return entry;
+    }
+
     public async Task<(BalanceEntry Entry, bool IsReplay)> AdjustAsync(
         string userId,
         decimal delta,
@@ -130,6 +155,15 @@ internal sealed class BalanceLedger(PaymentDbContext db)
         db.BalanceEntries
             .AsTracking()
             .SingleOrDefaultAsync(entry => entry.UserId == userId && entry.BusinessKey == key, cancellationToken);
+}
+
+/// <summary>新用户注册赠送余额，绑定 Balance:Welcome；Docker 由 MSA_BALANCE_WELCOME_* 注入，默认关闭。</summary>
+public sealed class BalanceWelcomeOptions
+{
+    public bool Enabled { get; set; }
+    public decimal Amount { get; set; } = 9999m;
+
+    public bool IsValid() => Amount > 0 && Amount <= 1_000_000m && decimal.Round(Amount, 2) == Amount;
 }
 
 public sealed record BalanceDto(decimal Balance, string Currency, DateTimeOffset? UpdatedOnUtc);
