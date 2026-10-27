@@ -20,7 +20,7 @@ public sealed class CreateOrderCommandValidator : AbstractValidator<CreateOrderC
                 .Must(id => !id.HasValue || id.Value != Guid.Empty)
                 .WithMessage("OfferId cannot be an empty GUID.");
         });
-        RuleFor(command => command.PaymentMethod).Must(value => value is "Alipay" or "WeChatPay");
+        RuleFor(command => command.PaymentMethod).Must(value => value is "Alipay" or "WeChatPay" or "Balance");
         RuleFor(command => command.ShippingAddress)
             .NotNull()
             .SetValidator(new ShippingAddressInputValidator());

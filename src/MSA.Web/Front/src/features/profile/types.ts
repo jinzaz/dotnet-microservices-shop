@@ -58,9 +58,32 @@ export type LoyaltyPointEntry = {
   occurredOnUtc: string;
 };
 
+export type BalanceAccount = {
+  balance: number;
+  currency: string;
+  updatedOnUtc: string | null;
+};
+
+export type BalanceEntryType = 'Adjustment' | 'Payment' | 'Refund';
+
+export type BalanceEntry = {
+  id: string;
+  type: BalanceEntryType;
+  amount: number;
+  balanceAfter: number;
+  orderId: string | null;
+  refundId: string | null;
+  afterSalesRequestNumber: string | null;
+  reason: string;
+  operatorId: string | null;
+  occurredOnUtc: string;
+};
+
 export type AccountSnapshot = {
   profile: UserProfile;
   addresses: UserAddress[];
   points: LoyaltyPointAccount;
   pointEntries: LoyaltyPointEntry[];
+  balance: BalanceAccount;
+  balanceEntries: BalanceEntry[];
 };

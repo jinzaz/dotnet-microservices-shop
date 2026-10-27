@@ -25,7 +25,7 @@ const nav: NavEntry[] = [
   { path: '/after-sales', label: '售后', icon: 'refresh', modules: ['order.after-sales'] },
   { path: '/catalog', label: '商品目录', icon: 'catalog', modules: ['catalog.categories', 'catalog.products', 'catalog.promotions', 'catalog.coupons'] },
   { path: '/inventory', label: '库存', icon: 'inventory', modules: ['inventory.stock', 'inventory.allocations'] },
-  { path: '/customers', label: '用户', icon: 'user', modules: ['identity.users', 'user.loyalty-points'] },
+  { path: '/customers', label: '用户', icon: 'user', modules: ['identity.users', 'user.loyalty-points', 'payment.balances'] },
   { path: '/payments', label: '支付', icon: 'payment', modules: ['payment.transactions'] },
   { path: '/notifications', label: '通知', icon: 'notification', modules: ['notification.messages'] },
   { path: '/messaging', label: '消息运维', icon: 'activity', modules: ['system.messaging'] },

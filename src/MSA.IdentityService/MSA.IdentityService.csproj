@@ -41,6 +41,9 @@
 	  <ProjectReference Include="..\MSA.Infrastrucute\MSA.Infrastrucute.csproj" />
 	  <ProjectReference Include="..\MSA.Certificates\MSA.Certificates.csproj" />
 	  <ProjectReference Include="..\MSA.Redis\MSA.Redis.csproj" />
+	  <ProjectReference Include="..\MSA.Contracts\MSA.Contracts.csproj" />
+	  <ProjectReference Include="..\MSA.EventBusRabbitMQ\MSA.EventBusRabbitMQ.csproj" />
+	  <ProjectReference Include="..\MSA.Repositories\MSA.Repositories.csproj" />
 	</ItemGroup>
 
 </Project>

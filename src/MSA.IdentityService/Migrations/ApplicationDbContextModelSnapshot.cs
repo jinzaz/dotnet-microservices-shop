@@ -22,6 +22,68 @@ namespace MSA.IdentityService.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("MSA.EventBusOutbox.OutboxMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasComment("集成事件的契约类型名称");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasComment("最近一次发布失败原因");
+
+                    b.Property<Guid?>("LockId")
+                        .HasColumnType("uuid")
+                        .HasComment("当前发布任务的租约标识");
+
+                    b.Property<DateTimeOffset?>("LockedUntilUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("发布租约到期的 UTC 时间");
+
+                    b.Property<DateTimeOffset>("NextAttemptOnUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasComment("下一次允许尝试发布的 UTC 时间");
+
+                    b.Property<DateTimeOffset>("OccurredOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasComment("待发布事件的 JSON 载荷");
+
+                    b.Property<DateTimeOffset?>("ProcessedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("RetryCount")
+                        .HasColumnType("integer")
+                        .HasComment("累计发布重试次数");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasComment("消息发布状态");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasComment("乐观并发版本号");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "NextAttemptOnUtc", "LockedUntilUtc");
+
+                    b.ToTable("identity_outbox_messages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_identity_outbox_messages_Status_Enum", "\"Status\" BETWEEN 0 AND 3");
+                        });
+                });
+
             modelBuilder.Entity("MSA.IdentityService.ApplicationUser", b =>
                 {
                     b.Property<string>("Id")

@@ -5,6 +5,7 @@ import { useAuth } from '../app/auth/AuthProvider';
 import { AccountSidebar, type AccountSection } from '../features/profile/AccountSidebar';
 import { AddressDrawer } from '../features/profile/AddressDrawer';
 import { AddressesSection } from '../features/profile/AddressesSection';
+import { BalanceLedger } from '../features/profile/BalanceLedger';
 import { ChangePasswordDialog } from '../features/profile/ChangePasswordDialog';
 import { demoAccountSnapshot } from '../features/profile/demo-account';
 import { PointsLedger } from '../features/profile/PointsLedger';
@@ -264,6 +265,7 @@ export default function AccountPage() {
             onDelete={(address) => void removeAddress(address)}
             onSetDefault={(address) => void makeDefault(address)}
           />
+          <BalanceLedger balance={snapshot.balance} entries={snapshot.balanceEntries} />
           <PointsLedger entries={snapshot.pointEntries} />
         </div>
       </div>

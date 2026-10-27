@@ -49,7 +49,8 @@ internal sealed class AfterSalesDomainEventHandlers(IOutboxStore outbox)
             PaymentId = notification.PaymentId,
             Amount = notification.Amount,
             Currency = notification.Currency,
-            Reason = $"After-sales {notification.RequestNumber}"
+            Reason = $"After-sales {notification.RequestNumber}",
+            AfterSalesRequestNumber = notification.RequestNumber
         });
         return Task.CompletedTask;
     }

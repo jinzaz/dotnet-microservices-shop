@@ -115,6 +115,8 @@ public sealed class RefundPaymentRequestedIntegrationEvent : IntegrationEvent
     public required decimal Amount { get; init; }
     public required string Currency { get; init; }
     public required string Reason { get; init; }
+    /// <summary>售后退款时的售后单号；订单取消补偿为 null。只用于余额流水关联。</summary>
+    public string? AfterSalesRequestNumber { get; init; }
 }
 
 public sealed class PaymentRefundedIntegrationEvent : IntegrationEvent

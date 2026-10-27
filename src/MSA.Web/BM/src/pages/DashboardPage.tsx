@@ -8,7 +8,7 @@ const modules: Array<{ bases: string[]; label: string; path: string; icon: IconN
   { bases: ['order.fulfillment'], label: '订单履约', path: '/orders', icon: 'order', note: '发货与签收状态推进' },
   { bases: ['catalog.categories', 'catalog.products', 'catalog.promotions', 'catalog.coupons'], label: '商品目录', path: '/catalog', icon: 'catalog', note: '商品、分类、促销与券' },
   { bases: ['inventory.stock', 'inventory.allocations'], label: '库存运营', path: '/inventory', icon: 'inventory', note: '库存流水与活动配额' },
-  { bases: ['identity.users', 'user.loyalty-points'], label: '用户运营', path: '/customers', icon: 'user', note: '账号状态与会员积分' },
+  { bases: ['identity.users', 'user.loyalty-points', 'payment.balances'], label: '用户运营', path: '/customers', icon: 'user', note: '账号状态、会员积分与账户余额' },
   { bases: ['payment.transactions'], label: '支付交易', path: '/payments', icon: 'payment', note: '按订单追踪支付状态' },
   { bases: ['notification.messages'], label: '消息通知', path: '/notifications', icon: 'notification', note: '用户触达记录审阅' },
   { bases: ['system.authorization'], label: '权限治理', path: '/access', icon: 'shield', note: '用户、角色与策略' },

@@ -128,47 +128,14 @@ public abstract class MessagingDbContext(
 
     void IOutboxStore.Add(OutboxMessage message) => OutboxMessages.Add(message);
 
-    /// <summary>
-    /// SKIP LOCKED 让多个发布实例分摊待发消息，租约则让崩溃实例的消息在超时后被别人接管。
-    /// </summary>
-    async Task<IReadOnlyList<OutboxMessage>> IOutboxStore.ClaimPendingAsync(
+    Task<IReadOnlyList<OutboxMessage>> IOutboxStore.ClaimPendingAsync(
         Guid lockId,
         int batchSize,
         int maxRetries,
         DateTimeOffset now,
         TimeSpan duration,
-        CancellationToken cancellationToken)
-    {
-        var owned = !HasActiveTransaction;
-        var transaction = owned ? await Database.BeginTransactionAsync(cancellationToken) : null;
-        try
-        {
-            var rows = await OutboxMessages
-                .Where(message =>
-                    message.RetryCount < maxRetries
-                    && message.NextAttemptOnUtc <= now
-                    && (message.Status == OutboxStatus.Pending
-                        || message.Status == OutboxStatus.Processing && message.LockedUntilUtc < now))
-                .OrderBy(message => message.OccurredOnUtc)
-                .ThenBy(message => message.Id)
-                .Take(batchSize)
-                .ForUpdateSkipLocked()
-                .ToListAsync(cancellationToken);
-
-            foreach (var row in rows)
-                row.Claim(lockId, now.Add(duration));
-
-            await base.SaveChangesAsync(cancellationToken);
-            if (transaction is not null)
-                await transaction.CommitAsync(cancellationToken);
-            return rows;
-        }
-        finally
-        {
-            if (transaction is not null)
-                await transaction.DisposeAsync();
-        }
-    }
+        CancellationToken cancellationToken) =>
+        this.ClaimPendingOutboxAsync(lockId, batchSize, maxRetries, now, duration, cancellationToken);
 
     Task IOutboxStore.SaveChangesAsync(CancellationToken ct) => base.SaveChangesAsync(ct);
     void ISagaStore.Add(SagaState state) => SagaStates.Add(state);

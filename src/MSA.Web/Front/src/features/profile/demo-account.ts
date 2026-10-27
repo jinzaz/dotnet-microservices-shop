@@ -51,6 +51,12 @@ export const demoAccountSnapshot: AccountSnapshot = {
     createdOnUtc: '2025-06-18T08:30:00Z',
     updatedOnUtc: '2026-09-02T05:12:00Z',
   },
+  balance: { balance: 356.8, currency: 'CNY', updatedOnUtc: '2026-09-03T02:10:00Z' },
+  balanceEntries: [
+    { id: 'b1', type: 'Refund', amount: 59.9, balanceAfter: 356.8, orderId: 'demo-order-1', refundId: 'demo-refund-1', afterSalesRequestNumber: 'AS20260903001', reason: 'After-sales AS20260903001', operatorId: null, occurredOnUtc: '2026-09-03T02:10:00Z' },
+    { id: 'b2', type: 'Payment', amount: -203.1, balanceAfter: 296.9, orderId: 'demo-order-1', refundId: null, afterSalesRequestNumber: null, reason: '订单支付', operatorId: null, occurredOnUtc: '2026-09-01T09:30:00Z' },
+    { id: 'b3', type: 'Adjustment', amount: 500, balanceAfter: 500, orderId: null, refundId: null, afterSalesRequestNumber: null, reason: '活动奖励', operatorId: 'operator', occurredOnUtc: '2026-08-28T06:00:00Z' },
+  ],
   pointEntries: [
     { id: 'p1', delta: 120, balanceBefore: 1160, balanceAfter: 1280, source: '下单购物', reason: '订单完成奖励', occurredOnUtc: '2026-09-02T05:12:00Z' },
     { id: 'p2', delta: 20, balanceBefore: 1140, balanceAfter: 1160, source: '评价奖励', reason: '完成商品评价', occurredOnUtc: '2026-08-18T02:15:00Z' },

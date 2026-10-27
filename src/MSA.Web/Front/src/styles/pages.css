@@ -954,6 +954,11 @@
   color: var(--color-ink-soft);
 }
 
+.balance-amount {
+  font-size: 22px;
+  font-weight: 600;
+}
+
 .points-positive {
   color: var(--color-accent) !important;
 }
@@ -1901,6 +1906,8 @@ label.is-selected .selection-dot,
   margin-left: 51px;
 }
 
+.payment-choices label.is-disabled { opacity: 0.45; cursor: not-allowed; }
+
 .payment-choices label {
   display: grid;
   grid-template-columns: 18px 22px auto 1fr;
@@ -2199,6 +2206,7 @@ label.is-selected .selection-dot,
 
 .payment-provider-mark--alipay { background: #1677ff; }
 .payment-provider-mark--wechatpay { border-radius: 50%; background: #18ad3c; font-size: 20px; }
+.payment-provider-mark--balance { background: var(--color-ink); }
 
 .payment-scan-layout {
   display: grid;

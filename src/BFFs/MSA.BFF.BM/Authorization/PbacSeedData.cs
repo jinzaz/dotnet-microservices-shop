@@ -28,7 +28,8 @@ internal static class PbacSeedData
         ("system.certificate-keys", "证书私钥"),
         ("system.search", "搜索索引"),
         ("catalog.brands", "商品品牌"),
-        ("order.after-sales", "售后")
+        ("order.after-sales", "售后"),
+        ("payment.balances", "账户余额")
     ];
 
     internal static readonly BmRole[] SystemAdministratorRole =
@@ -180,7 +181,8 @@ internal static class PbacSeedData
             .. CertificateRoutes(),
             .. SearchRoutes(),
             .. BrandRoutes(),
-            .. AfterSalesRoutes()
+            .. AfterSalesRoutes(),
+            .. BalanceRoutes()
         ];
 
         return definitions
@@ -271,6 +273,14 @@ internal static class PbacSeedData
         ("order.after-sales.edit", HttpMethods.Post, "/api/order/admin/after-sales/{id}/complete"),
         ("order.after-sales.edit", HttpMethods.Post, "/api/order/admin/after-sales/{id}/dispose-return"),
         ("order.after-sales.edit", HttpMethods.Post, "/api/order/admin/after-sales/{id}/reserve-stock")
+    ];
+
+    /// <summary>账户余额在支付服务；后台加减余额归 payment.balances.edit。</summary>
+    private static (string Permission, string Method, string Path)[] BalanceRoutes() =>
+    [
+        ("payment.balances.query", HttpMethods.Get, "/api/payment/admin/balances/{userId}"),
+        ("payment.balances.query", HttpMethods.Get, "/api/payment/admin/balances/{userId}/entries"),
+        ("payment.balances.edit", HttpMethods.Post, "/api/payment/admin/balances/{userId}/adjustments")
     ];
 
     private static Guid StableGuid(string value)

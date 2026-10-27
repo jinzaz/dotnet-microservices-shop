@@ -3,6 +3,8 @@ import { serviceRoutes } from '../../shared/config/api';
 import type {
   AccountSnapshot,
   AddressInput,
+  BalanceAccount,
+  BalanceEntry,
   LoyaltyPointAccount,
   LoyaltyPointEntry,
   UserAddress,
@@ -29,15 +31,22 @@ export function getPoints(): Promise<LoyaltyPointAccount> {
   return apiRequest<LoyaltyPointAccount>(`${userBase}/points`);
 }
 
+/** 账户余额在支付服务，结算页也用它判断余额是否够付。 */
+export function getBalance(): Promise<BalanceAccount> {
+  return apiRequest<BalanceAccount>(`${serviceRoutes.payment}/balance`);
+}
+
 export async function getAccountSnapshot(): Promise<AccountSnapshot> {
-  const [profile, addresses, points, pointEntries] = await Promise.all([
+  const [profile, addresses, points, pointEntries, balance, balanceEntries] = await Promise.all([
     getProfile(),
     listAddresses(),
     getPoints(),
     apiRequest<LoyaltyPointEntry[]>(`${userBase}/points/entries?skip=0&take=5`),
+    getBalance(),
+    apiRequest<BalanceEntry[]>(`${serviceRoutes.payment}/balance/entries?skip=0&take=10`),
   ]);
 
-  return { profile, addresses, points, pointEntries };
+  return { profile, addresses, points, pointEntries, balance, balanceEntries };
 }
 
 export function updateProfile(displayName: string, phoneNumber: string | null): Promise<void> {

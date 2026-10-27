@@ -61,6 +61,11 @@ builder.Services.AddScoped<IPaymentGateway, WeChatPayGateway>();
 builder.Services.AddScoped<IPaymentNotificationVerifier, WeChatPayNotificationVerifier>();
 builder.Services.AddScoped<PaymentGatewayResolver>();
 builder.Services.AddScoped<PaymentProviderOperationStore>();
+builder.Services.AddScoped<BalanceLedger>();
+builder.Services.AddOptions<BalanceWelcomeOptions>()
+    .Bind(builder.Configuration.GetSection("Balance:Welcome"))
+    .Validate(options => options.IsValid(), "Balance:Welcome:Amount must be a positive amount with at most two decimals.")
+    .ValidateOnStart();
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 builder.Services.AddMsaGrpcServer(builder.Environment.IsDevelopment());
 // 建单收款前向订单核对金额与定价快照：事件是可信的，但可能已经过期。

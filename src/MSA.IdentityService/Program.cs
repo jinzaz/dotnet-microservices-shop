@@ -6,6 +6,9 @@ using Microsoft.EntityFrameworkCore;
 using MSA.Infrastrucute.Extensions;
 using Quartz;
 using Microsoft.AspNetCore.HttpOverrides;
+using MSA.EventBus.DependencyInjection;
+using MSA.EventBusOutbox.Extensions;
+using MSA.EventBusRabbitMQ;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddMsaServiceDefaults();
@@ -49,6 +52,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 builder.Services.AddSingleton(TimeProvider.System);
+// 注册成功经 Outbox 发布 UserRegistered；Identity 只发不收，队列只是事件总线启动时的必填项。
+builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
+builder.Services.AddOutbox<ApplicationDbContext>();
 
 builder.Services.AddHostedService<IdentitySeedHostedService>();
 builder.Services.AddMsaApiAuthorization(

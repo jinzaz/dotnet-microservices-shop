@@ -4,6 +4,7 @@ using MSA.Contracts;
 using MSA.EventBus.Abstractions;
 using MSA.EventBusOutbox;
 using MSA.PaymentCore;
+using MSA.PaymentService.Application;
 using MSA.PaymentService.Application.Realtime;
 using MSA.PaymentService.Domain;
 using MSA.PaymentService.Infrastructure;
@@ -16,6 +17,7 @@ internal sealed class PaymentRequestedHandler(
     IOutboxStore outbox,
     TimeProvider clock,
     OrderPaymentPrecheck precheck,
+    BalanceLedger ledger,
     IOptions<PaymentProcessingOptions> configured)
     : IIntegrationEventHandler<PaymentRequestedIntegrationEvent>
 {
@@ -121,6 +123,10 @@ internal sealed class PaymentRequestedHandler(
                         reason));
                     PublishFailed(payment, reason, now);
                 }
+                else if (channel == PaymentChannel.Balance)
+                {
+                    await PayWithBalanceAsync(payment, now, cancellationToken);
+                }
                 else
                 {
                     db.ProviderOperations.Add(PaymentProviderOperation.CreatePayment(
@@ -146,6 +152,7 @@ internal sealed class PaymentRequestedHandler(
                         && operation.Type == PaymentProviderOperationType.CreateNativePayment,
                     cancellationToken);
                 if (!operationExists
+                    && payment.Channel != PaymentChannel.Balance
                     && payment.Status == PaymentStatus.Pending
                     && payment.PaymentUrl is null)
                 {
@@ -163,6 +170,55 @@ internal sealed class PaymentRequestedHandler(
             await db.RollbackTransactionAsync(cancellationToken);
             throw;
         }
+    }
+
+    /// <summary>
+    /// 余额支付不经过外部渠道：扣款、支付单成功和 PaymentSucceeded 在同一个本地事务里提交，
+    /// 订单侧照常按「支付成功即确认」处理。余额不足直接判失败，由订单 Saga 取消订单并释放库存。
+    /// </summary>
+    private async Task PayWithBalanceAsync(Payment payment, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var previousStatus = payment.Status;
+        var entry = payment.Currency == BalanceAccount.Currency
+            ? await ledger.TryDebitAsync(payment, now, cancellationToken)
+            : null;
+        if (entry is null)
+        {
+            const string reason = "Insufficient account balance.";
+            payment.Fail(reason);
+            db.PaymentStatusHistory.Add(PaymentStatusHistory.Record(
+                payment.Id,
+                previousStatus,
+                payment.Status,
+                "BalanceInsufficient",
+                now,
+                reason));
+            PublishFailed(payment, reason, now);
+            return;
+        }
+
+        var transactionId = entry.Id.ToString("N");
+        payment.MarkPaid(transactionId, now);
+        db.PaymentStatusHistory.Add(PaymentStatusHistory.Record(
+            payment.Id,
+            previousStatus,
+            payment.Status,
+            "BalancePaymentSucceeded",
+            now));
+        var succeeded = new PaymentSucceededIntegrationEvent
+        {
+            OrderId = payment.OrderId,
+            PaymentId = payment.Id,
+            ProviderTransactionId = transactionId,
+            CapturedAmount = payment.Amount,
+            Currency = payment.Currency,
+            PricingSnapshotId = payment.PricingSnapshotId,
+            PricingSnapshotHash = payment.PricingSnapshotHash
+        };
+        outbox.Add(OutboxMessage.Create(
+            succeeded.GetType().AssemblyQualifiedName!,
+            JsonSerializer.Serialize(succeeded, succeeded.GetType()),
+            now));
     }
 
     private void PublishFailed(Payment payment, string reason, DateTimeOffset now)

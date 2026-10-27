@@ -20,6 +20,7 @@ namespace MSA.Common;
 /// <item>INFRA_ELASTICSEARCH_URL / API_KEY / USER / PASSWORD / CA_CERT → Elasticsearch:*</item>
 /// <item>MSA_SERVICE_AUTHORITY → ServiceAuthentication:Authority</item>
 /// <item>MSA_OTLP_ENDPOINT → OpenTelemetry:OtlpEndpoint</item>
+/// <item>MSA_BALANCE_WELCOME_ENABLED / AMOUNT → Balance:Welcome:*（支付服务的新用户注册赠送余额）</item>
 /// <item>MSA_GRPC_&lt;名称大写&gt;_ADDRESS → GrpcClients:&lt;名称&gt;:Address（按被调用的服务命名，例如 MSA_GRPC_CATALOG_ADDRESS）</item>
 /// </list>
 /// 只合并服务自己声明过的部分：没有 Redis 连接串的服务不会被塞进 Redis 配置。
@@ -78,6 +79,12 @@ public static class MsaEnvironment
             Map(values, env, "MSA_SERVICE_AUTHORITY", "ServiceAuthentication:Authority");
 
         Map(values, env, "MSA_OTLP_ENDPOINT", "OpenTelemetry:OtlpEndpoint");
+
+        if (current.GetSection("Balance").Exists())
+        {
+            Map(values, env, "MSA_BALANCE_WELCOME_ENABLED", "Balance:Welcome:Enabled");
+            Map(values, env, "MSA_BALANCE_WELCOME_AMOUNT", "Balance:Welcome:Amount");
+        }
 
         foreach (var client in current.GetSection("GrpcClients").GetChildren())
             Map(values, env, $"MSA_GRPC_{client.Key.ToUpperInvariant()}_ADDRESS", $"{client.Path}:Address");

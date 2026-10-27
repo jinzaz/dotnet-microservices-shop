@@ -4,12 +4,16 @@ import { Link } from 'react-router-dom';
 import { api, idempotencyKey, query } from '../api';
 import { UserPicker } from '../pickers';
 import { useSession } from '../session';
-import { CopyButton, Empty, ErrorNotice, Field, formatDate, formatRelative, Icon, Loading, Modal, PageHeader, Pagination, SearchInput, SkeletonRows, Status, SubmitBar, useConfirm, usePage, useToast, useUrlState } from '../ui';
+import { CopyButton, Empty, ErrorNotice, Field, formatDate, formatMoney, formatRelative, Icon, Loading, Modal, PageHeader, Pagination, SearchInput, SkeletonRows, Status, SubmitBar, useConfirm, usePage, useToast, useUrlState } from '../ui';
 
 type IdentityUser = { id: string; email: string | null; displayName: string; isActive: boolean; createdOnUtc: string };
 type IdentityUserDetail = IdentityUser & { phoneNumber?: string; phoneNumberConfirmed: boolean; emailConfirmed: boolean; lastLoginOnUtc?: string; roles: string[] };
 type PointAccount = { userId: string; balance: number; lifetimeEarned: number; lifetimeSpent: number; createdOnUtc?: string; updatedOnUtc?: string };
 type PointEntry = { id: string; delta: number; balanceBefore: number; balanceAfter: number; source: string; reason: string; occurredOnUtc: string };
+type BalanceAccount = { balance: number; currency: string; updatedOnUtc: string | null };
+type BalanceEntry = { id: string; type: 'Adjustment' | 'Payment' | 'Refund'; amount: number; balanceAfter: number; orderId: string | null; refundId: string | null; afterSalesRequestNumber: string | null; reason: string; operatorId: string | null; occurredOnUtc: string };
+
+const balanceTypeLabels: Record<BalanceEntry['type'], string> = { Adjustment: '后台调整', Payment: '订单支付', Refund: '退款退回' };
 
 const PAGE_SIZE = 25;
 const ENTRY_PAGE_SIZE = 20;
@@ -19,13 +23,16 @@ export default function CustomersPage() {
   const client = useQueryClient();
   const toast = useToast();
   const confirm = useConfirm();
-  const [tab, setTab] = useUrlState('tab', can('identity.users.query') ? 'accounts' : 'points');
+  const [tab, setTab] = useUrlState('tab', can('identity.users.query') ? 'accounts' : can('user.loyalty-points.query') ? 'points' : 'balance');
   const [search, setSearch] = useUrlState('q');
   const [selectedUserId, setSelectedUserId] = useUrlState('user', '', { resetPage: false });
   const [pointsUserId, setPointsUserId] = useUrlState('points');
   const [page, setPage] = usePage();
   const [roleUser, setRoleUser] = useState<IdentityUser | null>(null);
   const [adjustOpen, setAdjustOpen] = useState(false);
+  const [balanceUserId, setBalanceUserId] = useUrlState('balanceUser');
+  const [balanceAdjustOpen, setBalanceAdjustOpen] = useState(false);
+  const [balanceEntryPage, setBalanceEntryPage] = useState(1);
   const canEditUsers = can('identity.users.edit');
 
   const usersQuery = useQuery({
@@ -43,6 +50,18 @@ export default function CustomersPage() {
     queryFn: () => api<PointEntry[]>(`/api/user/admin/points/${encodeURIComponent(pointsUserId)}/entries?${query({ skip: (entryPage - 1) * ENTRY_PAGE_SIZE, take: ENTRY_PAGE_SIZE + 1 })}`),
     enabled: Boolean(pointsUserId) && can('user.loyalty-points.query'),
     placeholderData: keepPreviousData,
+  });
+
+  const balanceQuery = useQuery({ queryKey: ['balance', 'account', balanceUserId], queryFn: () => api<BalanceAccount>(`/api/payment/admin/balances/${encodeURIComponent(balanceUserId)}`), enabled: Boolean(balanceUserId) && can('payment.balances.query') });
+  const balanceEntriesQuery = useQuery({
+    queryKey: ['balance', 'entries', balanceUserId, balanceEntryPage],
+    queryFn: () => api<BalanceEntry[]>(`/api/payment/admin/balances/${encodeURIComponent(balanceUserId)}/entries?${query({ skip: (balanceEntryPage - 1) * ENTRY_PAGE_SIZE, take: ENTRY_PAGE_SIZE + 1 })}`),
+    enabled: Boolean(balanceUserId) && can('payment.balances.query'),
+    placeholderData: keepPreviousData,
+  });
+  const balanceMutation = useMutation({
+    mutationFn: (body: { delta: number; businessKey: string; reason: string }) => api<BalanceEntry>(`/api/payment/admin/balances/${encodeURIComponent(balanceUserId)}/adjustments`, { method: 'POST', body }),
+    onSuccess: (entry) => { toast.success(`余额已${entry.amount >= 0 ? '增加' : '扣减'} ${formatMoney(Math.abs(entry.amount))}，当前余额 ${formatMoney(entry.balanceAfter)}`); setBalanceAdjustOpen(false); setBalanceEntryPage(1); void client.invalidateQueries({ queryKey: ['balance'] }); },
   });
 
   const userMutation = useMutation({
@@ -84,7 +103,15 @@ export default function CustomersPage() {
     setPointsUserId(userId);
   };
 
+  const openBalance = (userId: string) => {
+    setSelectedUserId('');
+    setBalanceEntryPage(1);
+    setTab('balance');
+    setBalanceUserId(userId);
+  };
+
   const users = usersQuery.data?.slice(0, PAGE_SIZE) ?? [];
+  const balanceEntries = balanceEntriesQuery.data?.slice(0, ENTRY_PAGE_SIZE) ?? [];
   const entries = entriesQuery.data?.slice(0, ENTRY_PAGE_SIZE) ?? [];
 
   return <div className="page">
@@ -92,6 +119,7 @@ export default function CustomersPage() {
     <div className="catalog-toolbar"><div className="tabs" role="tablist">
       {can('identity.users.query') ? <button type="button" role="tab" aria-selected={tab === 'accounts'} onClick={() => setTab('accounts')}>Identity 账号</button> : null}
       {can('user.loyalty-points.query') ? <button type="button" role="tab" aria-selected={tab === 'points'} onClick={() => setTab('points')}>会员积分</button> : null}
+      {can('payment.balances.query') ? <button type="button" role="tab" aria-selected={tab === 'balance'} onClick={() => setTab('balance')}>账户余额</button> : null}
     </div></div>
 
     {tab === 'accounts' ? <section className="panel table-panel">
@@ -110,7 +138,18 @@ export default function CustomersPage() {
             </div></td>
           </tr>)}</tbody></table></div> : <Empty title="暂无账号数据" detail={search ? '没有匹配的用户，换个关键词试试。' : 'IdentityService 没有返回用户。'} />}
       <Pagination page={page} pageSize={PAGE_SIZE} hasMore={(usersQuery.data?.length ?? 0) > PAGE_SIZE} onChange={setPage} busy={usersQuery.isFetching} />
-    </section> : <>
+    </section> : tab === 'balance' ? <>
+      <section className="lookup-bar panel"><div className="lookup-bar__picker"><Field label="查询用户余额" hint={can('payment.balances.query') ? '搜索并选中用户后自动查询' : '需要 payment.balances.query 权限'}><UserPicker value={balanceUserId ? [balanceUserId] : []} onChange={(ids) => { setBalanceEntryPage(1); setBalanceUserId(ids[0] ?? ''); }} canSearch={can('identity.users.query')} single /></Field></div>{can('payment.balances.edit') && balanceQuery.data ? <button className="button button--accent" type="button" onClick={() => { balanceMutation.reset(); setBalanceAdjustOpen(true); }}><Icon name="plus" />余额调整</button> : <span>PAYMENT SERVICE</span>}</section>
+      {balanceQuery.isError ? <ErrorNotice error={balanceQuery.error} /> : null}
+      {balanceQuery.data ? <section className="points-overview points-overview--compact"><article><span>当前余额</span><strong>{formatMoney(balanceQuery.data.balance, balanceQuery.data.currency)}</strong><small>AVAILABLE BALANCE</small></article><article><span>最近更新</span><strong className="points-overview__date">{balanceQuery.data.updatedOnUtc ? formatDate(balanceQuery.data.updatedOnUtc) : '尚未开户'}</strong><small>LAST UPDATED</small></article></section> : null}
+      <section className="panel table-panel"><div className="section-heading"><div><p className="eyebrow">BALANCE LEDGER</p><h2>余额流水</h2></div><span>{balanceUserId ? `用户 ${balanceUserId.slice(0, 8)}…` : ''}</span></div>
+        {!balanceUserId ? <Empty title="等待用户查询" detail="搜索并选择用户，或从 Identity 账号详情中点击「查看余额」。" />
+          : balanceEntriesQuery.isPending ? <SkeletonRows rows={5} />
+            : balanceEntries.length ? <div className="data-table"><table><thead><tr><th>发生时间</th><th>类型</th><th>变化</th><th>变化后</th><th>关联</th><th>原因</th><th>操作人</th></tr></thead><tbody>{balanceEntries.map((entry) => <tr key={entry.id}><td title={formatDate(entry.occurredOnUtc)}>{formatRelative(entry.occurredOnUtc)}<small>{formatDate(entry.occurredOnUtc)}</small></td><td><span className="tag">{balanceTypeLabels[entry.type] ?? entry.type}</span></td><td className={entry.amount >= 0 ? 'number-good' : 'number-bad'}><strong>{entry.amount > 0 ? '+' : ''}{formatMoney(entry.amount)}</strong></td><td>{formatMoney(entry.balanceAfter)}</td><td className="mono">{entry.afterSalesRequestNumber ? `售后 ${entry.afterSalesRequestNumber}` : entry.orderId ? `订单 ${entry.orderId.slice(0, 8)}…` : '—'}</td><td className="cell-wrap">{entry.reason}</td><td className="mono">{entry.operatorId ? `${entry.operatorId.slice(0, 8)}…` : '—'}</td></tr>)}</tbody></table></div>
+              : <Empty title="暂无余额流水" detail="该用户还没有余额变动。" />}
+        <Pagination page={balanceEntryPage} pageSize={ENTRY_PAGE_SIZE} hasMore={(balanceEntriesQuery.data?.length ?? 0) > ENTRY_PAGE_SIZE} onChange={setBalanceEntryPage} busy={balanceEntriesQuery.isFetching} />
+      </section>
+    </> : <>
       <section className="lookup-bar panel"><div className="lookup-bar__picker"><Field label="查询用户积分" hint={can('user.loyalty-points.query') ? '搜索并选中用户后自动查询' : '需要 user.loyalty-points.query 权限'}><UserPicker value={pointsUserId ? [pointsUserId] : []} onChange={lookup} canSearch={can('identity.users.query')} single /></Field></div>{can('user.loyalty-points.edit') && pointsQuery.data ? <button className="button button--accent" type="button" onClick={() => { pointsMutation.reset(); setAdjustOpen(true); }}><Icon name="plus" />积分调整</button> : <span>USER SERVICE</span>}</section>
       {pointsQuery.isError ? <ErrorNotice error={pointsQuery.error} /> : null}
       {pointsQuery.data ? <section className="points-overview"><article><span>当前余额</span><strong>{pointsQuery.data.balance.toLocaleString('zh-CN')}</strong><small>AVAILABLE POINTS</small></article><article><span>累计获得</span><strong>{pointsQuery.data.lifetimeEarned.toLocaleString('zh-CN')}</strong><small>LIFETIME EARNED</small></article><article><span>累计消耗</span><strong>{pointsQuery.data.lifetimeSpent.toLocaleString('zh-CN')}</strong><small>LIFETIME SPENT</small></article><article><span>最近更新</span><strong className="points-overview__date">{formatDate(pointsQuery.data.updatedOnUtc)}</strong><small>LAST UPDATED</small></article></section> : null}
@@ -139,6 +178,7 @@ export default function CustomersPage() {
         <section><h3>Identity 角色</h3><div className="tag-list tag-list--actions">{detailQuery.data.roles.map((role) => <span key={role}>{role}{canEditUsers ? <button type="button" aria-label={`移除角色 ${role}`} onClick={() => void removeRole(detailQuery.data!, role)}><Icon name="close" /></button> : null}</span>)}{!detailQuery.data.roles.length ? <small>未分配角色</small> : null}{canEditUsers ? <button className="tag-add" type="button" onClick={() => setRoleUser(detailQuery.data!)}><Icon name="plus" />添加</button> : null}</div></section>
         <div className="detail-actions">
           {can('user.loyalty-points.query') ? <button className="button button--quiet" type="button" onClick={() => openPoints(detailQuery.data!.id)}><Icon name="key" />查看积分</button> : null}
+          {can('payment.balances.query') ? <button className="button button--quiet" type="button" onClick={() => openBalance(detailQuery.data!.id)}><Icon name="key" />查看余额</button> : null}
           {can('order.fulfillment.query') ? <Link className="button button--quiet" to={`/orders?user=${encodeURIComponent(detailQuery.data.id)}`}><Icon name="order" />查看订单</Link> : null}
           {can('notification.messages.create') ? <Link className="button button--quiet" to={`/notifications?compose=${encodeURIComponent(detailQuery.data.id)}`}><Icon name="notification" />发送通知</Link> : null}
           {canEditUsers ? <button className={`button ${detailQuery.data.isActive ? 'button--danger' : 'button--dark'}`} type="button" onClick={() => void toggleActivation(detailQuery.data!)}>{detailQuery.data.isActive ? '停用账号' : '启用账号'}</button> : null}
@@ -157,6 +197,10 @@ export default function CustomersPage() {
     <Modal open={adjustOpen} title="调整会员积分" description={pointsQuery.data ? `当前余额 ${pointsQuery.data.balance.toLocaleString('zh-CN')}` : undefined} onClose={() => setAdjustOpen(false)}>
       <PointsAdjustForm balance={pointsQuery.data?.balance ?? 0} busy={pointsMutation.isPending} error={pointsMutation.error} onCancel={() => setAdjustOpen(false)} onSubmit={(body) => pointsMutation.mutate(body)} />
     </Modal>
+
+    <Modal open={balanceAdjustOpen} title="调整账户余额" description={balanceQuery.data ? `当前余额 ${formatMoney(balanceQuery.data.balance)}` : undefined} onClose={() => setBalanceAdjustOpen(false)}>
+      <BalanceAdjustForm balance={balanceQuery.data?.balance ?? 0} busy={balanceMutation.isPending} error={balanceMutation.error} onCancel={() => setBalanceAdjustOpen(false)} onSubmit={(body) => balanceMutation.mutate(body)} />
+    </Modal>
   </div>;
 }
 
@@ -174,6 +218,24 @@ function PointsAdjustForm({ balance, busy, error, onSubmit, onCancel }: { balanc
     {delta ? <div className={`balance-preview${next < 0 ? ' is-invalid' : ''}`}><span><small>当前余额</small><strong>{balance.toLocaleString('zh-CN')}</strong></span><Icon name="arrow" /><span><small>调整后余额</small><strong>{next.toLocaleString('zh-CN')}</strong></span></div> : null}
     <Field label="来源"><select name="source" defaultValue="BM_MANUAL"><option value="BM_MANUAL">BM_MANUAL · 人工调整</option><option value="BM_COMPENSATION">BM_COMPENSATION · 售后补偿</option><option value="BM_CAMPAIGN">BM_CAMPAIGN · 活动奖励</option><option value="BM_CORRECTION">BM_CORRECTION · 差错更正</option></select></Field>
     <Field label="调整原因" hint="将记录在积分流水中，用户可见"><textarea name="reason" required maxLength={500} rows={3} /></Field>
+    <p className="muted-copy">业务幂等键 <span className="mono">{businessKey}</span> 保证重复提交不会重复入账。</p>
+    {error ? <ErrorNotice error={error} /> : null}
+    <SubmitBar busy={busy} onCancel={onCancel} />
+  </form>;
+}
+
+function BalanceAdjustForm({ balance, busy, error, onSubmit, onCancel }: { balance: number; busy: boolean; error: unknown; onSubmit: (body: { delta: number; businessKey: string; reason: string }) => void; onCancel: () => void }) {
+  const [delta, setDelta] = useState('');
+  const [businessKey] = useState(idempotencyKey);
+  const next = Math.round((balance + (Number(delta) || 0)) * 100) / 100;
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onSubmit({ delta: Number(delta), businessKey, reason: String(new FormData(event.currentTarget).get('reason') ?? '').trim() });
+  };
+  return <form className="modal-form" onSubmit={submit}>
+    <Field label="金额变化（元）" hint="正数增加，负数扣减；余额不能扣成负数"><input type="number" required min={-balance} max={1_000_000} step="0.01" value={delta} onChange={(event) => setDelta(event.target.value)} autoFocus /></Field>
+    {delta ? <div className={`balance-preview${next < 0 ? ' is-invalid' : ''}`}><span><small>当前余额</small><strong>{formatMoney(balance)}</strong></span><Icon name="arrow" /><span><small>调整后余额</small><strong>{formatMoney(next)}</strong></span></div> : null}
+    <Field label="调整原因" hint="将记录在余额流水中，用户可见"><textarea name="reason" required maxLength={500} rows={3} /></Field>
     <p className="muted-copy">业务幂等键 <span className="mono">{businessKey}</span> 保证重复提交不会重复入账。</p>
     {error ? <ErrorNotice error={error} /> : null}
     <SubmitBar busy={busy} onCancel={onCancel} />

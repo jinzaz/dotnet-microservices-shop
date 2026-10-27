@@ -1,6 +1,7 @@
 namespace MSA.PaymentCore;
 
-public enum PaymentChannel { Alipay, WeChatPay }
+/// <summary>Balance 是支付服务自有的账户余额，不经过外部渠道，扣款和退款都在支付服务本地事务里完成。</summary>
+public enum PaymentChannel { Alipay = 0, WeChatPay = 1, Balance = 2 }
 public sealed record CreatePaymentRequest(string MerchantTradeNo, decimal Amount, string Currency, string Subject, string NotifyUrl, DateTimeOffset ExpiresOnUtc, string? ReturnUrl = null);
 public sealed record CreatePaymentResult(string MerchantTradeNo, string PaymentUrl, PaymentChannel Channel);
 public interface IPaymentGateway { PaymentChannel Channel { get; } Task<CreatePaymentResult> CreateNativePaymentAsync(CreatePaymentRequest request, CancellationToken cancellationToken); }
