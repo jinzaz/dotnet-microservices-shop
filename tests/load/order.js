@@ -1,5 +1,8 @@
 // 下单压测：走 BFF（会话 Cookie + X-XSRF-TOKEN，明文 JSON、不带 X-Msa-Ekey，所以不含请求体加密的开销）。
 // 用 SCENARIO 选场景：order（默认，阶梯加压）、flash（秒杀，每个用户同时抢一次）、idempotency（同一个 Idempotency-Key 并发提交）。
+// order 场景默认先预热：每个用户 GET 一次自己的订单列表，让 BFF 把过期的令牌刷新掉（access token 只有 15 分钟，
+// prepare.mjs 登录 2000 人要十几分钟，不预热的话压测开头会撞上集中刷新）。下单阶段在预热窗口结束后才开始，
+// 阈值和结束汇总里的状态码计数只统计下单阶段。-e WARMUP=0 跳过预热。
 //
 //   k6 run -e SHOP_URL=https://shop.example.com -e SKUS=SKU-A,SKU-B order.js
 //   k6 run -e SHOP_URL=... -e SCENARIO=flash -e FLASH_SKU=SKU-FLASH order.js
@@ -19,9 +22,13 @@ if (!shop) throw new Error('缺少 -e SHOP_URL=...');
 if (scenario === 'flash' ? !__ENV.FLASH_SKU : skus.length === 0) throw new Error('缺少 -e SKUS=... 或 -e FLASH_SKU=...');
 
 // 下单接口按用户限流：突发 5 次，之后每秒 2 次。order 场景轮流使用用户，速率超过「用户数 × 2」就会出现 429。
+const warmup = scenario === 'order' && __ENV.WARMUP !== '0';
+const warmupDuration = __ENV.WARMUP_DURATION ?? '3m';
+
 const scenarios = {
   order: {
     executor: 'ramping-arrival-rate',
+    startTime: warmup ? warmupDuration : '0s',
     startRate: 10,
     timeUnit: '1s',
     preAllocatedVUs: Number(__ENV.VUS ?? 200),
@@ -47,15 +54,27 @@ const scenarios = {
   },
 };
 
+// 每个用户一次，并发不高：认证中心刷新令牌要算签名、写库，压得太快它自己会排队。
+const warmupScenario = {
+  executor: 'shared-iterations',
+  exec: 'warmupSession',
+  vus: Number(__ENV.WARMUP_VUS ?? 20),
+  iterations: sessions.length,
+  maxDuration: warmupDuration,
+};
+
 export const options = {
-  scenarios: { [scenario]: scenarios[scenario] },
+  scenarios: { [scenario]: scenarios[scenario], ...(warmup ? { warmup: warmupScenario } : {}) },
   insecureSkipTLSVerify: __ENV.INSECURE === '1',
+  // 阈值都按场景过滤，预热的 GET 不混进下单的成功率、延迟和状态码计数。
   thresholds: {
-    checks: ['rate>0.99'],
-    'http_req_duration{expected_response:true}': ['p(95)<500', 'p(99)<1000'],
+    [`checks{scenario:${scenario}}`]: ['rate>0.99'],
+    [`http_req_duration{scenario:${scenario},expected_response:true}`]: ['p(95)<500', 'p(99)<1000'],
     // 不是真正的阈值（永远通过），只为让结束汇总按状态码列出请求数；status 0 是超时或连接错误。
     ...Object.fromEntries([0, 202, 400, 409, 429, 500, 502, 503, 504]
-      .map(status => [`http_reqs{status:${status}}`, ['count>=0']])),
+      .map(status => [`http_reqs{scenario:${scenario},status:${status}}`, ['count>=0']])),
+    // 预热失败多半是会话过期（BFF 返回 401），要重新跑 prepare.mjs。
+    ...(warmup ? { 'checks{scenario:warmup}': ['rate>0.99'] } : {}),
   },
 };
 
@@ -80,11 +99,26 @@ export function setup() {
   return { idempotencyKey: uuidv4() };
 }
 
-function placeOrder(session, items, idempotencyKey) {
-  // replace: true 覆盖 VU 自带 Cookie 容器里的同名 Cookie：BFF 续期会话时会回写 Cookie，
-  // 而 order 场景里同一个 VU 会轮流扮演不同用户。
-  const cookies = Object.fromEntries(
+// replace: true 覆盖 VU 自带 Cookie 容器里的同名 Cookie：BFF 续期会话时会回写 Cookie，
+// 而同一个 VU 会轮流扮演不同用户。
+function sessionCookies(session) {
+  return Object.fromEntries(
     Object.entries(session.cookies).map(([name, value]) => [name, { value, replace: true }]));
+}
+
+export function warmupSession() {
+  const session = sessions[exec.scenario.iterationInTest];
+  const res = http.get(`${shop}/api/order/orders?take=1`, {
+    cookies: sessionCookies(session),
+    // 全局的预期状态码是下单的 202，这里单独指定，否则预热的 200 会被算成失败请求。
+    responseCallback: http.expectedStatuses(200),
+    tags: { name: 'GET /api/order/orders (warmup)' },
+  });
+  check(res, { '预热 200': r => r.status === 200 });
+}
+
+function placeOrder(session, items, idempotencyKey) {
+  const cookies = sessionCookies(session);
 
   return http.post(`${shop}/api/order/orders`, JSON.stringify({ items, paymentMethod: 'Balance', shippingAddress: address }), {
     cookies,
