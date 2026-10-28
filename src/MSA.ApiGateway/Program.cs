@@ -17,6 +17,8 @@ builder.AddMsaServiceDefaults();
 // Rate limiting (token bucket)
 builder.Services.AddRateLimiter(options =>
 {
+    // 默认是 503，客户端会当成服务故障；限流应当明确返回 429。
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.AddPolicy("Global", httpContext =>
         RateLimitPartition.GetTokenBucketLimiter(
             httpContext.User.FindFirst("sub")?.Value ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
@@ -77,9 +79,11 @@ app.UseForwardedHeaders();
 // UseMsaServiceDefaults 里的 HTTPS 重定向开关要在转发头处理之后调，否则它看到的还是没纠正过的 scheme。
 app.UseMsaServiceDefaults();
 
-app.UseRateLimiter();
-
+// 先认证再限流：限流按 sub 分区，认证之前 User 是空的，会退回按 IP 分区——而请求都来自 BFF 容器，
+// 全站就共用了一个桶。
 app.UseAuthentication();
+
+app.UseRateLimiter();
 
 app.MapReverseProxy().RequireRateLimiting("Global");
 
