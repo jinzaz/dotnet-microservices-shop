@@ -24,6 +24,7 @@ services:
       Database__MigrateOnStartup: ${MSA_MIGRATE_ON_STARTUP:-false}
       # 链路、指标、日志统一发往这个 OTLP（gRPC）端点（与 msa.env 同名，应用里合并进 OpenTelemetry:OtlpEndpoint）。
       MSA_OTLP_ENDPOINT: ${MSA_OTLP_ENDPOINT}
+      Logging__LogLevel__Microsoft.EntityFrameworkCore: Warning
 
   # 用到 PostgreSQL / Redis / RabbitMQ 与 gRPC 下游的服务（除网关外的全部）。变量名与本地开发的 msa.env 相同，
   # 应用启动时由 MSA.Common.MsaEnvironment 合并进各自的连接串、RabbitMQ 与 GrpcClients 配置（库名、Redis 库号、队列名在镜像的 appsettings.json 里）。
