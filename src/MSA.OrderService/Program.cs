@@ -11,7 +11,6 @@ using MSA.OrderService.Application.Realtime;
 using MSA.OrderService.Grpc;
 using MSA.OrderService.Infrastructure.Grpc;
 using MSA.Repositories.Persistence;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using MSA.Contracts;
@@ -31,9 +30,8 @@ using MSA.OrderService.Infrastructure;
 using MSA.OrderService.Integration;
 using MSA.OrderService.Middleware;
 using MSA.Saga.Extensions;
-using System.Security.Claims;
+using Npgsql;
 using System.Text.Json.Serialization;
-using System.Threading.RateLimiting;
 using OpenIddict.Validation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -72,6 +70,11 @@ builder.Services.AddOptions<OrderCheckoutOptions>()
     .Bind(builder.Configuration.GetSection(OrderCheckoutOptions.SectionName))
     .Validate(options => options.PaymentWindow >= TimeSpan.FromMinutes(1), "PaymentWindow must be at least one minute.")
     .Validate(options => options.PaymentWindow <= TimeSpan.FromHours(24), "PaymentWindow cannot exceed 24 hours.")
+    // 没配并发上限时取连接池上限的 60%（池 40 → 24，默认池 15 → 9），剩下的给 Outbox 发布器、消息消费者和查询接口。
+    .PostConfigure(options => options.MaxConcurrentSubmissions ??=
+        Math.Max(1, new NpgsqlConnectionStringBuilder(connectionString).MaxPoolSize * 3 / 5))
+    .Validate(options => options.MaxConcurrentSubmissions >= 1, "MaxConcurrentSubmissions must be at least one.")
+    .Validate(options => options.SubmissionQueueLimit >= 0, "SubmissionQueueLimit cannot be negative.")
     .ValidateOnStart();
 
 // 售后凭证在私有桶：订单服务自己签发直传 / 读取地址，凭对象键校验申请人归属。
@@ -91,24 +94,7 @@ builder.Services.AddMediatR(configuration =>
 builder.Services.AddValidatorsFromAssemblyContaining<CreateOrderCommand>();
 builder.Services.AddMsaApplicationPipeline();
 
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddPolicy("OrderSubmission", httpContext =>
-        RateLimitPartition.GetTokenBucketLimiter(
-            httpContext.User.FindFirstValue("sub")
-                ?? httpContext.Connection.RemoteIpAddress?.ToString()
-                ?? "anonymous",
-            _ => new TokenBucketRateLimiterOptions
-            {
-                TokenLimit = 5,
-                TokensPerPeriod = 2,
-                ReplenishmentPeriod = TimeSpan.FromSeconds(1),
-                AutoReplenishment = true,
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                QueueLimit = 0
-            }));
-});
+builder.Services.AddOrderSubmissionRateLimiting();
 
 builder.Services.AddRabbitMQEventBus(builder.Configuration.GetSection(RabbitMQOptions.SectionName));
 // 服务间实时调用：机器身份走 OpenIddict client_credentials，scope 沿用现有的 catalog / inventory / payment。

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Grpc.Core;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
 using MSA.Contracts;
@@ -197,6 +198,27 @@ public sealed class CheckoutFlowTests
     }
 
     [TestMethod]
+    public async Task Checkout_ReplaysTheSameOrderForTheSameKeyAndRejectsADifferentRequest()
+    {
+        await using var world = await World.CreateAsync(TestContext.CancellationToken);
+        var orderId = await world.Checkout(1, TestContext.CancellationToken, idempotencyKey: "same-key");
+        var callsForFirstCheckout = world.RemoteCalls;
+
+        // 重试同一个请求：目录这时候问不到也不要紧，已经成的单直接返回，不再走远程确认。
+        world.CatalogOnline = false;
+        var replayed = await world.Checkout(1, TestContext.CancellationToken, idempotencyKey: "same-key");
+        // 同一个幂等键换了数量：是另一个请求，不能悄悄返回旧单。
+        var conflict = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => world.Checkout(2, TestContext.CancellationToken, idempotencyKey: "same-key"));
+
+        Assert.AreEqual(orderId, replayed);
+        Assert.AreEqual(callsForFirstCheckout, world.RemoteCalls, "幂等命中不该再发远程调用。");
+        Assert.Contains("already bound to a different order request", conflict.Message);
+        Assert.AreEqual(1, await world.Order.Orders.CountAsync(TestContext.CancellationToken));
+        Assert.AreEqual(1, await world.Order.SagaStates.CountAsync(TestContext.CancellationToken));
+    }
+
+    [TestMethod]
     public async Task Basket_ShowsTheCatalogPriceAndMarksAnUnpublishedItemUnavailable()
     {
         // 购物车快照停在 120，目录已经降到 88：结算页要显示 88，否则用户到下单那一步会看到价格变了。
@@ -285,6 +307,7 @@ public sealed class CheckoutFlowTests
         public OrderCheckoutOptions Options { get; } = new();
         public bool CatalogOnline { get; set; } = true;
         public bool PaymentOnline { get; set; } = true;
+        public int RemoteCalls { get; set; }
 
         public static async Task<World> CreateAsync(
             CancellationToken cancellationToken,
@@ -300,7 +323,13 @@ public sealed class CheckoutFlowTests
                 Payments = new PaymentInfra.PaymentDbContext(InMemory<PaymentInfra.PaymentDbContext>(), Mock.Of<IMediator>()),
                 Users = new UserInfra.UserDbContext(InMemory<UserInfra.UserDbContext>(), Mock.Of<IMediator>()),
                 Baskets = new BasketInfra.BasketDbContext(InMemory<BasketInfra.BasketDbContext>(), Mock.Of<IMediator>()),
-                Order = new OrderDbContext(InMemory<OrderDbContext>(), Mock.Of<IMediator>())
+                // 下单处理器自己开事务；InMemory 不支持事务，放行成空事务，CurrentTransaction 照样反映"在不在事务里"。
+                Order = new OrderDbContext(
+                    new DbContextOptionsBuilder<OrderDbContext>()
+                        .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                        .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+                        .Options,
+                    Mock.Of<IMediator>())
             };
 
             var product = new CatalogDomain.Product(
@@ -329,17 +358,20 @@ public sealed class CheckoutFlowTests
             Guid? offerId = null,
             string? couponCode = null,
             Guid? addressId = null,
-            string recipientName = "收货人") =>
-            new CreateOrderCommandHandler(
+            string recipientName = "收货人",
+            string? idempotencyKey = null)
+        {
+            var probe = new TransactionProbe(this, CatalogPrices, InventoryChecks, CatalogCoupons, UserAddresses);
+            return new CreateOrderCommandHandler(
                     Order,
                     new OrderRepository(Order),
-                    Mock.Of<IOrderSubmissionLock>(),
+                    probe,
                     Pricing,
                     new PostgresCouponRedemptionStore(Order),
-                    CatalogPrices,
-                    InventoryChecks,
-                    CatalogCoupons,
-                    UserAddresses,
+                    probe,
+                    probe,
+                    probe,
+                    probe,
                     Order,
                     Order,
                     Microsoft.Extensions.Options.Options.Create(Options),
@@ -347,13 +379,14 @@ public sealed class CheckoutFlowTests
                 .Handle(
                     new CreateOrderCommand(
                         Buyer,
-                        $"idem-{++_checkouts}",
+                        idempotencyKey ?? $"idem-{++_checkouts}",
                         [new CreateOrderItem(Sku, quantity, offerId)],
                         "Alipay",
                         new ShippingAddressInput(
                             addressId, recipientName, "13800000000", "CN", "广东省", "深圳市", "南山区", "科技园 1 号", null, null),
                         couponCode is null ? null : [couponCode]),
                     cancellationToken);
+        }
 
         public Task<OrderDto?> GetOrder(Guid orderId, CancellationToken cancellationToken) =>
             new GetOrderQueryHandler(Order, PaymentStatus)
@@ -542,6 +575,57 @@ public sealed class CheckoutFlowTests
         {
             foreach (var db in new DbContext[] { Catalog, Inventory, Payments, Users, Baskets, Order })
                 await db.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// 下单的远程调用必须在事务外：事务一开就占住连接直到提交，gRPC 慢一点连接池就被下单请求耗光。
+    /// 加咨询锁那一步反过来必须在事务里（pg_advisory_xact_lock 随事务释放）。
+    /// </summary>
+    private sealed class TransactionProbe(
+        World world,
+        ICatalogPriceAuthority prices,
+        IInventoryAvailabilityGateway inventory,
+        ICouponAuthority coupons,
+        IUserAddressAuthority addresses)
+        : ICatalogPriceAuthority, IInventoryAvailabilityGateway, ICouponAuthority, IUserAddressAuthority, IOrderSubmissionLock
+    {
+        public Task<PriceConfirmation?> ConfirmAsync(IReadOnlyCollection<string> skus, CancellationToken cancellationToken)
+        {
+            Remote("价格确认");
+            return prices.ConfirmAsync(skus, cancellationToken);
+        }
+
+        public Task<AvailabilityCheck?> CheckAsync(
+            IReadOnlyList<AvailabilityRequestLine> lines, string userId, CancellationToken cancellationToken)
+        {
+            Remote("库存预检");
+            return inventory.CheckAsync(lines, userId, cancellationToken);
+        }
+
+        public Task<CouponConfirmation?> ConfirmAsync(
+            IReadOnlyCollection<Guid> couponIds, string userId, CancellationToken cancellationToken)
+        {
+            Remote("券确认");
+            return coupons.ConfirmAsync(couponIds, userId, cancellationToken);
+        }
+
+        public Task<AddressLookup?> GetAsync(string userId, Guid addressId, CancellationToken cancellationToken)
+        {
+            Remote("地址解析");
+            return addresses.GetAsync(userId, addressId, cancellationToken);
+        }
+
+        public Task AcquireAsync(IEnumerable<string> resourceKeys, CancellationToken cancellationToken)
+        {
+            Assert.IsNotNull(world.Order.CurrentTransaction, "下单咨询锁必须在事务里加。");
+            return Task.CompletedTask;
+        }
+
+        private void Remote(string call)
+        {
+            Assert.IsNull(world.Order.CurrentTransaction, $"{call}发生在事务里，会占着连接等 gRPC。");
+            world.RemoteCalls++;
         }
     }
 
