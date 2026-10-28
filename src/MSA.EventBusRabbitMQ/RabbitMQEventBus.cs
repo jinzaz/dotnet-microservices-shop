@@ -64,8 +64,10 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
     {
         if (!_persistentConnection.IsConnected) await _persistentConnection.TryConnectAsync(cancellationToken);
 
+        // 每次发布用独立 channel，并发发布互不干扰，各自等 broker 确认（publisherConfirmationTracking）。
+        // 发布只需要主交换机；队列、重试和死信拓扑在 StartAsync 里声明一次，不必每条消息多走一串 AMQP 往返。
         await using var channel = await _persistentConnection.CreateChannelAsync(cancellationToken);
-        await DeclareTopologyAsync(channel, cancellationToken);
+        await channel.ExchangeDeclareAsync(_options.ExchangeName, _options.ExchangeType, durable: true, cancellationToken: cancellationToken);
 
         var routingKey = @event.EventType;
         var body = SerializeMessage(@event);

@@ -133,6 +133,10 @@ builder.Services.AddSaga<OrderDbContext>();
 builder.Services.AddIntegrationEventHandlersFromAssemblyContaining<CreateOrderCommand>();
 builder.Services.AddScoped<OrderCancellationWorkflow>();
 builder.Services.AddScoped<ISagaTimeoutHandler, OrderSagaTimeoutHandler>();
+builder.Services.AddOptions<OrderSagaOptions>()
+    .Bind(builder.Configuration.GetSection(OrderSagaOptions.SectionName))
+    .Validate(OrderSagaOptions.IsValid, "OrderSaga redelivery delays must be positive and the error threshold at least one.")
+    .ValidateOnStart();
 
 
 // 如果注入了 AddControllers() , 则必须手动指定认证方案，否则会出现 409 Conflict 错误。因为 AddControllers() 会覆盖默认的认证方案。

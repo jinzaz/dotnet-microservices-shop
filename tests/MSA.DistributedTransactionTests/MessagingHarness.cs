@@ -83,6 +83,11 @@ public sealed class FakeEventBus : IEventBus
 
     public void FailNextPublishes(int count) => _failuresLeft = count;
 
+    /// <summary>满足条件的事件第一次发布时失败，之后成功；用于并发发布时只让指定的几条失败。</summary>
+    public Func<IntegrationEvent, bool>? FailOnceWhen { get; set; }
+
+    private readonly HashSet<Guid> _failedOnce = [];
+
     public Task PublishAsync(IntegrationEvent @event, CancellationToken cancellationToken = default)
     {
         lock (_gate)
@@ -92,6 +97,8 @@ public sealed class FakeEventBus : IEventBus
                 _failuresLeft--;
                 return Task.FromException(new InvalidOperationException("Broker unreachable."));
             }
+            if (FailOnceWhen?.Invoke(@event) == true && _failedOnce.Add(@event.Id))
+                return Task.FromException(new InvalidOperationException("Broker nacked the message."));
 
             Published.Add(@event);
             return Task.CompletedTask;
