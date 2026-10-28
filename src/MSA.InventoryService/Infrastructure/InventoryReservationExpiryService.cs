@@ -11,7 +11,8 @@ namespace MSA.InventoryService.Infrastructure;
 
 /// <summary>
 /// 预占过期兜底：订单侧的取消消息可能永远到不了（进了死信队列、或订单服务长时间不可用），
-/// 没有这个清理，库存会被永久锁死。过期时间本来就取自订单的支付截止时间，因此到点仍未提交即可释放。
+/// 没有这个清理，库存会被永久锁死。过期时间取订单的支付截止时间再加宽限期（<see cref="InventoryReservationOptions.ExpiryGracePeriod"/>），
+/// 到点仍未提交说明订单已不可能再确认，即可释放；宽限期是给积压后晚到的提交库存消息留的余量。
 /// </summary>
 internal sealed class InventoryReservationExpiryService(
     IServiceScopeFactory scopes,
