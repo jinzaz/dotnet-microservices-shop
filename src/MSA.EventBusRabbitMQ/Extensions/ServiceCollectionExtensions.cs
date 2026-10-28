@@ -25,6 +25,8 @@ public static class ServiceCollectionExtensions
                 "RabbitMQ:QueueName is required and must be unique per service; a shared queue makes services steal each other's events.")
             .Validate(options => options.MaxDeliveryAttempts >= 2,
                 "RabbitMQ:MaxDeliveryAttempts must be at least 2; dead letters are routed by QueueName, which a message only carries after one pass through the retry queue.")
+            .Validate(options => options.ConsumerDispatchConcurrency >= 1 && options.PrefetchCount >= options.ConsumerDispatchConcurrency,
+                "RabbitMQ:ConsumerDispatchConcurrency must be at least 1 and not exceed RabbitMQ:PrefetchCount; otherwise the extra workers never receive a message.")
             .ValidateOnStart();
 
         services.AddSingleton<IConnectionFactory>(sp =>
@@ -37,7 +39,8 @@ public static class ServiceCollectionExtensions
                 UserName = options.UserName,
                 Password = options.Password,
                 VirtualHost = options.VirtualHost,
-                AutomaticRecoveryEnabled = true
+                AutomaticRecoveryEnabled = true,
+                ConsumerDispatchConcurrency = options.ConsumerDispatchConcurrency
             };
         });
 

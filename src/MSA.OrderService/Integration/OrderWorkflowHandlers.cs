@@ -577,6 +577,37 @@ internal sealed class InventoryCommittedHandler(
     }
 }
 
+internal sealed class InventoryCommitRejectedHandler(
+    OrderDbContext db,
+    IOutboxStore outbox,
+    ISagaStore sagas,
+    TimeProvider clock,
+    ILogger<InventoryCommitRejectedHandler> logger)
+    : OrderEventHandler<InventoryCommitRejectedIntegrationEvent>(db, outbox, "ordering.inventory-commit-rejected.v1")
+{
+    protected override async Task HandleCoreAsync(
+        InventoryCommitRejectedIntegrationEvent integrationEvent,
+        CancellationToken cancellationToken)
+    {
+        var order = await OrderRowLock.LockAsync(Db, integrationEvent.OrderId, cancellationToken);
+        var saga = await sagas.FindAsync(order.Id, cancellationToken);
+        if (order.ReservationId != integrationEvent.ReservationId
+            || saga is not { Status: SagaStatus.Running, State: OrderFulfillmentSagaData.AwaitingInventoryCommit })
+        {
+            logger.LogWarning(
+                "Ignoring stale inventory commit rejection for order {OrderId}: reservation {Acknowledged} (current {Current}), saga {SagaStatus}/{SagaState}.",
+                order.Id, integrationEvent.ReservationId, order.ReservationId, saga?.Status, saga?.State);
+            return;
+        }
+        // 订单已付款确认、库存却没扣成：停止重发 CommitInventory，转人工退款或补货。
+        // 运维接口 /order/admin/messaging/sagas/stalled 可以查到。
+        saga.Fail($"Inventory commit rejected, manual refund or restock required: {integrationEvent.Reason}", clock.GetUtcNow());
+        logger.LogError(
+            "Inventory commit for paid order {OrderId} (reservation {ReservationId}) was rejected and needs manual refund or restock: {Reason}",
+            order.Id, integrationEvent.ReservationId, integrationEvent.Reason);
+    }
+}
+
 internal sealed class PaymentFailedHandler(
     OrderDbContext db,
     IOutboxStore outbox,

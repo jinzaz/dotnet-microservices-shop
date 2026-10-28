@@ -26,8 +26,14 @@ public class RabbitMQOptions
     /// <summary>发布失败时的重试次数</summary>
     public int RetryCount { get; set; } = 5;
 
-    /// <summary>消费端预取数量，控制并发处理消息数</summary>
+    /// <summary>消费端预取数量（已投递未确认的上限），必须不小于 <see cref="ConsumerDispatchConcurrency"/></summary>
     public ushort PrefetchCount { get; set; } = 10;
+
+    /// <summary>
+    /// 同时处理的消息数，默认 1（串行）。每条消息有独立的 DI scope 和 DbContext，
+    /// 调大前要确认本服务的处理器之间靠数据库锁互斥，且不依赖消息之间的先后顺序。
+    /// </summary>
+    public ushort ConsumerDispatchConcurrency { get; set; } = 1;
 
     public bool DurableQueue { get; set; } = true;
 
