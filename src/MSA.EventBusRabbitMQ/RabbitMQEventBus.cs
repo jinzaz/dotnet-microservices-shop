@@ -22,7 +22,7 @@ namespace MSA.EventBusRabbitMQ;
 /// 基于 RabbitMQ 的 IEventBus 实现。
 /// - 发布：声明 Exchange/死信队列后 BasicPublish，routing key = 事件类型名
 /// - 订阅：为每个订阅事件类型将 QueueName 绑定到 routing key，并启动一个共享的消费者
-/// - 失败处理：处理异常时 Nack(requeue:false)，消息进入死信队列，避免无限重试阻塞队列
+/// - 失败处理：先经重试队列延迟重投，用尽后 Nack(requeue:false)，消息按 QueueName 进入本服务的死信队列
 /// </summary>
 public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
 {
@@ -159,10 +159,15 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
     {
         await channel.ExchangeDeclareAsync(_options.ExchangeName, _options.ExchangeType, durable: true, cancellationToken: cancellationToken);
 
-        // 死信拓扑：处理失败的消息最终落到这里，可接入告警或人工重放工具
+        // 死信拓扑：主队列 → 共用的 fanout DLX → direct 路由交换机 → 按 QueueName 进本服务的死信队列。
+        // 早期版本把死信队列直接绑在 fanout 上，任何服务的死信都会复制进所有死信队列，这里解除旧绑定。
+        // 先绑新再解旧：中间窗口里最多重复一条死信，而不是丢一条。
         await channel.ExchangeDeclareAsync(_options.DeadLetterExchange, "fanout", durable: true, cancellationToken: cancellationToken);
+        await channel.ExchangeDeclareAsync(_options.DeadLetterRoutingExchange, "direct", durable: true, cancellationToken: cancellationToken);
+        await channel.ExchangeBindAsync(_options.DeadLetterRoutingExchange, _options.DeadLetterExchange, routingKey: "", cancellationToken: cancellationToken);
         await channel.QueueDeclareAsync(_options.DeadLetterQueue, durable: true, exclusive: false, autoDelete: false, cancellationToken: cancellationToken);
-        await channel.QueueBindAsync(_options.DeadLetterQueue, _options.DeadLetterExchange, routingKey: "", cancellationToken: cancellationToken);
+        await channel.QueueBindAsync(_options.DeadLetterQueue, _options.DeadLetterRoutingExchange, routingKey: _options.QueueName, cancellationToken: cancellationToken);
+        await channel.QueueUnbindAsync(_options.DeadLetterQueue, _options.DeadLetterExchange, routingKey: "", cancellationToken: cancellationToken);
 
         var queueArgs = new Dictionary<string, object?>
         {

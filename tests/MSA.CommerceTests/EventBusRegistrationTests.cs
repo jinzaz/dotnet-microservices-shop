@@ -32,6 +32,21 @@ public sealed class EventBusRegistrationTests
     }
 
     [TestMethod]
+    public void AddRabbitMQEventBus_SingleDeliveryAttempt_FailsValidation()
+    {
+        // Dead letters are routed by QueueName, which a message only carries after one pass through the retry queue.
+        using var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["RabbitMQ:HostName"] = "rabbit.local",
+            ["RabbitMQ:QueueName"] = "msa.basket",
+            ["RabbitMQ:MaxDeliveryAttempts"] = "1",
+        });
+
+        Assert.ThrowsExactly<OptionsValidationException>(() =>
+            provider.GetRequiredService<IOptions<RabbitMQOptions>>().Value);
+    }
+
+    [TestMethod]
     public void AddRabbitMQEventBus_MissingQueueName_FailsValidation()
     {
         using var provider = BuildProvider(new Dictionary<string, string?> { ["RabbitMQ:HostName"] = "rabbit.local" });

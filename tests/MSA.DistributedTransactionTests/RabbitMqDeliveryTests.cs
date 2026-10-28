@@ -65,8 +65,9 @@ public sealed class RabbitMqDeliveryTests
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(60);
 
     private string _queue = null!;
+    private string _otherQueue = null!;
     private string _exchange = null!;
-    private ServiceProvider? _provider;
+    private readonly List<ServiceProvider> _providers = [];
 
     [TestInitialize]
     public void Initialize()
@@ -77,20 +78,22 @@ public sealed class RabbitMqDeliveryTests
             Assert.Inconclusive("RabbitMQ 当前不可达，跳过 broker 集成测试。");
         var run = Guid.NewGuid().ToString("N")[..8];
         _queue = $"{TestEnvironment.QueuePrefix}.dtx.{run}";
+        _otherQueue = $"{_queue}.other";
         _exchange = $"{TestEnvironment.QueuePrefix}.dtx.events.{run}";
     }
 
     [TestCleanup]
     public async Task CleanupAsync()
     {
-        if (_provider is null)
+        if (_providers.Count == 0)
             return;
-        var hosted = _provider.GetServices<IHostedService>().ToArray();
-        foreach (var service in hosted)
+        foreach (var provider in _providers)
+        foreach (var service in provider.GetServices<IHostedService>())
             await service.StopAsync(CancellationToken.None);
         await DeleteTopologyAsync();
-        await _provider.DisposeAsync();
-        _provider = null;
+        foreach (var provider in _providers)
+            await provider.DisposeAsync();
+        _providers.Clear();
     }
 
     /// <summary>消费失败的消息进入重试队列，TTL 到期后回到主队列并被成功处理，而不是一次失败就进死信。</summary>
@@ -134,8 +137,39 @@ public sealed class RabbitMqDeliveryTests
         await WaitUntilAsync(async () => await QueueDepthAsync($"{_queue}.dlq") == 0, "重放后的死信队列应当清空");
     }
 
-    private async Task<ServiceProvider> StartBusAsync(int maxDeliveryAttempts, TimeSpan retryDelay)
+    /// <summary>
+    /// 两个服务共用死信交换机时，一个服务的死信只进自己的死信队列。
+    /// 先按旧版本拓扑把两个死信队列都直接绑在 fanout 上，确认新版本启动时会解除旧绑定。
+    /// </summary>
+    [TestMethod]
+    public async Task ADeadLetterOnlyLandsInTheFailingServicesQueue()
     {
+        await DeclareLegacyDeadLetterTopologyAsync(_queue, _otherQueue);
+        RetryProbeHandler.Arm(int.MaxValue);
+        var provider = await StartBusAsync(maxDeliveryAttempts: 2, retryDelay: TimeSpan.FromSeconds(1));
+        await StartBusAsync(maxDeliveryAttempts: 2, retryDelay: TimeSpan.FromSeconds(1), queue: _otherQueue, subscribe: false);
+
+        await PublishAsync(provider, "isolated");
+
+        await WaitUntilAsync(async () => await QueueDepthAsync($"{_queue}.dlq") == 1, "消息应当进入失败服务自己的死信队列");
+        Assert.AreEqual(0u, await QueueDepthAsync($"{_otherQueue}.dlq"), "其他服务的死信队列不应收到副本。");
+    }
+
+    private async Task DeclareLegacyDeadLetterTopologyAsync(params string[] queues)
+    {
+        await using var connection = await ConnectAsync();
+        await using var channel = await connection.CreateChannelAsync();
+        await channel.ExchangeDeclareAsync($"{_exchange}.dlx", "fanout", durable: true);
+        foreach (var queue in queues)
+        {
+            await channel.QueueDeclareAsync($"{queue}.dlq", durable: true, exclusive: false, autoDelete: false);
+            await channel.QueueBindAsync($"{queue}.dlq", $"{_exchange}.dlx", routingKey: "");
+        }
+    }
+
+    private async Task<ServiceProvider> StartBusAsync(int maxDeliveryAttempts, TimeSpan retryDelay, string? queue = null, bool subscribe = true)
+    {
+        queue ??= _queue;
         var broker = TestEnvironment.RabbitMq!.Value;
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -144,7 +178,7 @@ public sealed class RabbitMqDeliveryTests
             ["UserName"] = broker.UserName,
             ["Password"] = broker.Password,
             ["VirtualHost"] = broker.VirtualHost,
-            ["QueueName"] = _queue,
+            ["QueueName"] = queue,
             ["ExchangeName"] = _exchange,
             ["DeadLetterExchange"] = $"{_exchange}.dlx",
             ["MaxDeliveryAttempts"] = maxDeliveryAttempts.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -155,14 +189,16 @@ public sealed class RabbitMqDeliveryTests
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Error));
         services.AddRabbitMQEventBus(configuration);
-        services.AddIntegrationEventHandler<RetryProbeIntegrationEvent, RetryProbeHandler>();
-        _provider = services.BuildServiceProvider();
+        if (subscribe)
+            services.AddIntegrationEventHandler<RetryProbeIntegrationEvent, RetryProbeHandler>();
+        var provider = services.BuildServiceProvider();
+        _providers.Add(provider);
 
-        foreach (var service in _provider.GetServices<IHostedService>())
+        foreach (var service in provider.GetServices<IHostedService>())
             await service.StartAsync(CancellationToken.None);
-        // 消费者是在后台线程建立的，等队列真正出现再发消息。
-        await WaitUntilAsync(async () => await QueueExistsAsync(_queue), "消费者队列应当被声明");
-        return _provider;
+        // 消费者是在后台线程建立的，等队列真正出现再发消息（主队列在死信拓扑之后声明）。
+        await WaitUntilAsync(async () => await QueueExistsAsync(queue), "消费者队列应当被声明");
+        return provider;
     }
 
     /// <summary>
@@ -238,10 +274,12 @@ public sealed class RabbitMqDeliveryTests
         {
             await using var connection = await ConnectAsync();
             await using var channel = await connection.CreateChannelAsync();
-            foreach (var queue in new[] { _queue, $"{_queue}.retry", $"{_queue}.dlq" })
+            foreach (var service in new[] { _queue, _otherQueue })
+            foreach (var queue in new[] { service, $"{service}.retry", $"{service}.dlq" })
                 await channel.QueueDeleteAsync(queue, ifUnused: false, ifEmpty: false);
             await channel.ExchangeDeleteAsync(_exchange);
             await channel.ExchangeDeleteAsync($"{_exchange}.dlx");
+            await channel.ExchangeDeleteAsync($"{_exchange}.dlx.routed");
         }
         catch (Exception)
         {

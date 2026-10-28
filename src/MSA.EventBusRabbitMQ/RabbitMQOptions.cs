@@ -31,10 +31,22 @@ public class RabbitMQOptions
 
     public bool DurableQueue { get; set; } = true;
 
-    /// <summary>死信交换机：处理失败(Nack且不重入队)的消息最终进入这里，供人工排查或重放</summary>
+    /// <summary>
+    /// 死信交换机（fanout，各服务共用）：主队列的 x-dead-letter-exchange 指向它，处理失败(Nack且不重入队)的消息进入这里。
+    /// 已部署的主队列参数和交换机类型都改不了，所以它只负责把消息转给 <see cref="DeadLetterRoutingExchange"/>，不直接绑死信队列。
+    /// </summary>
     public string DeadLetterExchange { get; set; } = "msa.commerce.events.dlx";
 
-    /// <summary>消费失败后的最大投递次数（含首次）。用尽后消息进入死信队列。</summary>
+    /// <summary>
+    /// 死信路由交换机（direct），绑定在 <see cref="DeadLetterExchange"/> 后面；各服务的死信队列按自己的 QueueName 绑定到这里。
+    /// 进死信的消息都经过重试队列，RoutingKey 已被改写成 QueueName，因此只会落进所属服务的死信队列。
+    /// </summary>
+    public string DeadLetterRoutingExchange => $"{DeadLetterExchange}.routed";
+
+    /// <summary>
+    /// 消费失败后的最大投递次数（含首次）。用尽后消息进入死信队列。至少为 2：
+    /// 首次投递的 RoutingKey 是事件名，只有经过一次重试队列才会变成 QueueName，死信才能按服务路由。
+    /// </summary>
     public int MaxDeliveryAttempts { get; set; } = 5;
 
     /// <summary>两次投递之间的等待时间，由重试队列的 TTL 实现。</summary>
