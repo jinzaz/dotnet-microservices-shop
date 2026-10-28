@@ -164,6 +164,25 @@ public sealed class InventoryReservation : AggregateRoot<Guid>
         Version++;
         return true;
     }
+
+    /// <summary>
+    /// 预占已被释放、订单却已付款时补扣成功后调用。已提交状态不带释放时间和原因（见 CK 约束），
+    /// 释放与补扣的经过保留在库存流水里。
+    /// </summary>
+    public bool TryCommitAfterRelease(DateTimeOffset committedOnUtc)
+    {
+        if (Status != ReservationStatus.Released)
+            return false;
+        if (committedOnUtc < CreatedOnUtc)
+            throw new ArgumentOutOfRangeException(nameof(committedOnUtc));
+        Status = ReservationStatus.Committed;
+        UpdatedOnUtc = committedOnUtc;
+        CommittedOnUtc = committedOnUtc;
+        ReleasedOnUtc = null;
+        TerminalReason = null;
+        Version++;
+        return true;
+    }
 }
 
 public sealed class InventoryReservationLine

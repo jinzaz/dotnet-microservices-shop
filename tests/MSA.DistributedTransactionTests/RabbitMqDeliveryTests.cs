@@ -55,6 +55,51 @@ public sealed class RetryProbeHandler : IIntegrationEventHandler<RetryProbeInteg
     }
 }
 
+public sealed class ConcurrencyProbeIntegrationEvent : IntegrationEvent;
+
+/// <summary>每条消息都等到 <see cref="Expected"/> 条同时在处理（或超时）才返回，记录同时处理的峰值。</summary>
+public sealed class ConcurrencyProbeHandler : IIntegrationEventHandler<ConcurrencyProbeIntegrationEvent>
+{
+    private static int _inFlight;
+    private static int _peak;
+    private static int _handled;
+    private static TaskCompletionSource _allInFlight = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public static int Expected { get; private set; }
+
+    public static int Peak => Volatile.Read(ref _peak);
+
+    public static int Handled => Volatile.Read(ref _handled);
+
+    public static void Arm(int expected)
+    {
+        Expected = expected;
+        _inFlight = _peak = _handled = 0;
+        _allInFlight = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    public async Task HandleAsync(ConcurrencyProbeIntegrationEvent integrationEvent, CancellationToken cancellationToken = default)
+    {
+        var inFlight = Interlocked.Increment(ref _inFlight);
+        int peak;
+        while (inFlight > (peak = Volatile.Read(ref _peak)) && Interlocked.CompareExchange(ref _peak, inFlight, peak) != peak)
+        {
+        }
+        if (inFlight >= Expected)
+            _allInFlight.TrySetResult();
+        try
+        {
+            // 串行消费时永远等不齐，超时后照常完成，由断言里的峰值暴露问题。
+            await _allInFlight.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+        }
+        Interlocked.Decrement(ref _inFlight);
+        Interlocked.Increment(ref _handled);
+    }
+}
+
 /// <summary>
 /// 需要真实 RabbitMQ 的投递测试：重试队列回流与死信重放都是 broker 行为，只有连上 broker 才测得到。
 /// 队列、交换机都带 test 前缀并在结束后删除，不会影响现有环境。没有配置 broker 时用例标记为 Inconclusive。
@@ -155,6 +200,21 @@ public sealed class RabbitMqDeliveryTests
         Assert.AreEqual(0u, await QueueDepthAsync($"{_otherQueue}.dlq"), "其他服务的死信队列不应收到副本。");
     }
 
+    /// <summary>配置了 ConsumerDispatchConcurrency 后，同一队列的消息会被同时处理，而不是一条一条串行。</summary>
+    [TestMethod]
+    public async Task ConsumerDispatchConcurrencyHandlesMessagesInParallel()
+    {
+        const int concurrency = 4;
+        ConcurrencyProbeHandler.Arm(concurrency);
+        var provider = await StartBusAsync(maxDeliveryAttempts: 2, retryDelay: TimeSpan.FromSeconds(1), concurrency: concurrency);
+
+        for (var i = 0; i < concurrency; i++)
+            await PublishAsync(provider, new ConcurrencyProbeIntegrationEvent());
+
+        await WaitUntilAsync(() => Task.FromResult(ConcurrencyProbeHandler.Handled == concurrency), "所有消息都应处理完");
+        Assert.AreEqual(concurrency, ConcurrencyProbeHandler.Peak, "消息应当同时处理。");
+    }
+
     private async Task DeclareLegacyDeadLetterTopologyAsync(params string[] queues)
     {
         await using var connection = await ConnectAsync();
@@ -167,8 +227,9 @@ public sealed class RabbitMqDeliveryTests
         }
     }
 
-    private async Task<ServiceProvider> StartBusAsync(int maxDeliveryAttempts, TimeSpan retryDelay, string? queue = null, bool subscribe = true)
+    private async Task<ServiceProvider> StartBusAsync(int maxDeliveryAttempts, TimeSpan retryDelay, string? queue = null, bool subscribe = true, int concurrency = 1)
     {
+        var dispatch = concurrency.ToString(System.Globalization.CultureInfo.InvariantCulture);
         queue ??= _queue;
         var broker = TestEnvironment.RabbitMq!.Value;
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -183,14 +244,18 @@ public sealed class RabbitMqDeliveryTests
             ["DeadLetterExchange"] = $"{_exchange}.dlx",
             ["MaxDeliveryAttempts"] = maxDeliveryAttempts.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["RetryDelay"] = retryDelay.ToString(),
-            ["PrefetchCount"] = "1",
+            ["PrefetchCount"] = dispatch,
+            ["ConsumerDispatchConcurrency"] = dispatch,
         }).Build();
 
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Error));
         services.AddRabbitMQEventBus(configuration);
         if (subscribe)
+        {
             services.AddIntegrationEventHandler<RetryProbeIntegrationEvent, RetryProbeHandler>();
+            services.AddIntegrationEventHandler<ConcurrencyProbeIntegrationEvent, ConcurrencyProbeHandler>();
+        }
         var provider = services.BuildServiceProvider();
         _providers.Add(provider);
 
@@ -205,7 +270,10 @@ public sealed class RabbitMqDeliveryTests
     /// 绑定是在消费者启动的最后一步建立的，AMQP 又没有「绑定是否存在」的查询。
     /// 发布用的是 mandatory，路由不到会抛异常，因此这里重试到绑定生效为止。
     /// </summary>
-    private static async Task PublishAsync(ServiceProvider provider, string marker)
+    private static Task PublishAsync(ServiceProvider provider, string marker) =>
+        PublishAsync(provider, new RetryProbeIntegrationEvent { Marker = marker });
+
+    private static async Task PublishAsync(ServiceProvider provider, IntegrationEvent integrationEvent)
     {
         var bus = provider.GetRequiredService<IEventBus>();
         var started = Stopwatch.StartNew();
@@ -213,7 +281,7 @@ public sealed class RabbitMqDeliveryTests
         {
             try
             {
-                await bus.PublishAsync(new RetryProbeIntegrationEvent { Marker = marker });
+                await bus.PublishAsync(integrationEvent);
                 return;
             }
             catch (Exception) when (started.Elapsed < TimeSpan.FromSeconds(20))
