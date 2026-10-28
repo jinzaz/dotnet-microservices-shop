@@ -5,7 +5,10 @@
 - Prometheus：指标
 - Tempo：链路（一次请求经过网关、BFF、各服务、数据库、消息队列的完整调用树）
 - Loki：日志
-- Grafana：统一查看，链路 ↔ 日志可以互相跳转
+- Grafana：统一查看，链路 ↔ 日志可以互相跳转；链路能跳到所在服务的 HTTP 指标，指标上的 exemplar 点能跳回链路
+
+Prometheus 抓 Collector 时 `honor_labels: true`：服务名（`service.name`，即程序集名，如 `MSA.OrderService`）在 `job` 标签上。
+RabbitMQ 另抓 `/metrics/detailed` 的队列指标（`rabbitmq_detailed_queue_*`，带 `queue` 标签）。
 
 ## 网络
 与 MSA 服务共用 `dotnet-infra_backend`（Collector 收数据、Prometheus 抓 RabbitMQ）和
@@ -57,7 +60,7 @@ Prometheus / Tempo / Loki
 | Prometheus | 512m | 7d 或 2GB | `PROMETHEUS_RETENTION`、`PROMETHEUS_RETENTION_SIZE` |
 | Tempo | 384m | 72h | `TEMPO_RETENTION` |
 | Loki | 384m | 168h | `LOKI_RETENTION`（24h 的整数倍） |
-| Grafana | 256m | — | |
+| Grafana | 512m | — | 13.x 空闲约 200MiB，不要再压回 256m |
 
 所有 Go 组件都设置了 GOMEMLIMIT（Prometheus 3 与 Tempo 按容器上限自动设置），
 内存快到上限时先加紧 GC，而不是直接被 OOM 杀掉。

@@ -26,6 +26,20 @@
     <File Path="docker/elasticsearch/Dockerfile" />
     <File Path="docker/elasticsearch/README.md" />
   </Folder>
+  <Folder Name="/0.Root/docker/monitor/">
+    <File Path="docker/monitor/.env.example" />
+    <File Path="docker/monitor/docker-compose.yml" />
+    <File Path="docker/monitor/loki.yaml" />
+    <File Path="docker/monitor/otel-collector.yaml" />
+    <File Path="docker/monitor/prometheus.yml" />
+    <File Path="docker/monitor/README.md" />
+    <File Path="docker/monitor/tempo.yaml" />
+  </Folder>
+  <Folder Name="/0.Root/docker/monitor/grafana/">
+    <File Path="docker/monitor/grafana/provisioning/dashboards/dashboards.yml" />
+    <File Path="docker/monitor/grafana/provisioning/dashboards/msa/order-flow.json" />
+    <File Path="docker/monitor/grafana/provisioning/datasources/datasources.yml" />
+  </Folder>
   <Folder Name="/0.Root/docker/nginx/">
     <File Path="docker/nginx/cert-reload.sh" />
     <File Path="docker/nginx/msa.conf" />

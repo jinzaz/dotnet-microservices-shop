@@ -5,6 +5,9 @@ global:
 
 scrape_configs:
   - job_name: otel-collector
+    # Collector 按 service.name / service.instance.id 填好了 job / instance；不保留的话会被改名成
+    # exported_job / exported_instance，按 job 选服务的社区看板（如 19924）就对不上。
+    honor_labels: true
     static_configs:
       - targets:
           - otel-collector:8889
@@ -17,6 +20,15 @@ scrape_configs:
   # RabbitMQ 自带的 Prometheus 插件（官方镜像默认启用 rabbitmq_prometheus），端口 15692。
   # 容器名与 docker/.env 的 INFRA_RABBITMQ_HOST 一致；RabbitMQ 在另一台机器上时改成 <内网 IP>:15692 并在安全组放行。
   - job_name: rabbitmq
+    static_configs:
+      - targets: ["base-rabbitmq:15692"]
+
+  # /metrics 只有全节点聚合值；按队列看堆积（含 .retry 与死信队列）要抓 detailed 端点，
+  # 指标名带 rabbitmq_detailed_ 前缀，例如 sum by (queue) (rabbitmq_detailed_queue_messages_ready)。
+  - job_name: rabbitmq-queues
+    metrics_path: /metrics/detailed
+    params:
+      family: [queue_coarse_metrics]
     static_configs:
       - targets: ["base-rabbitmq:15692"]
 

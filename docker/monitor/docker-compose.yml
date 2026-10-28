@@ -39,6 +39,8 @@ services:
       # 按时间和大小两个条件保留，先到哪个就按哪个删最老的块：小磁盘不会被指标撑满。
       - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-7d}
       - --storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-2GB}
+      # 保存指标上附带的 exemplar（trace_id），Grafana 里能从延迟图上的点跳到对应链路。
+      - --enable-feature=exemplar-storage
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -84,9 +86,11 @@ services:
   grafana:
     image: grafana/grafana:${GRAFANA_VERSION:-latest}
     restart: unless-stopped
-    mem_limit: ${GRAFANA_MEM_LIMIT:-256m}
+    # Grafana 13 空闲就要约 200MiB（统一存储、搜索索引，外加每个数据源插件一个进程）；
+    # 256m / 200MiB 时堆一直贴着 GOMEMLIMIT，GC 不停跑，页面请求要十几秒到一分多钟。
+    mem_limit: ${GRAFANA_MEM_LIMIT:-512m}
     environment:
-      GOMEMLIMIT: ${GRAFANA_GOMEMLIMIT:-200MiB}
+      GOMEMLIMIT: ${GRAFANA_GOMEMLIMIT:-400MiB}
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me}
       GF_USERS_ALLOW_SIGN_UP: "false"
@@ -94,6 +98,10 @@ services:
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      # Grafana 13 起 Prometheus、Loki 等数据源插件与主程序解耦，启动后后台会从 grafana.com 下载新版替换自带的：
+      # 替换期间（或下载失败、新插件起不来时）插件处于未注册状态，界面上就"找不到数据源"。
+      # 关掉后只用镜像自带的版本，随 GRAFANA_VERSION 一起升级；缺的插件（如 Drilldown 应用）仍会尝试安装。
+      GF_PLUGINS_PREINSTALL_AUTO_UPDATE: "false"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro

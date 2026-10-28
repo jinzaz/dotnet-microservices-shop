@@ -1,0 +1,12 @@
+apiVersion: 1
+
+# 预置看板：msa/ 下的 JSON 启动时自动加载到 Grafana 的 MSA 文件夹。
+# 允许在界面上改并保存，但文件一变（重新部署）就会被文件内容覆盖；想保留界面上的修改，
+# 用看板的 Export → JSON 覆盖回仓库里的文件。
+providers:
+  - name: msa
+    folder: MSA
+    type: file
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/msa
