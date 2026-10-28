@@ -53,6 +53,9 @@ export const options = {
   thresholds: {
     checks: ['rate>0.99'],
     'http_req_duration{expected_response:true}': ['p(95)<500', 'p(99)<1000'],
+    // 不是真正的阈值（永远通过），只为让结束汇总按状态码列出请求数；status 0 是超时或连接错误。
+    ...Object.fromEntries([0, 202, 400, 409, 429, 500, 502, 503, 504]
+      .map(status => [`http_reqs{status:${status}}`, ['count>=0']])),
   },
 };
 

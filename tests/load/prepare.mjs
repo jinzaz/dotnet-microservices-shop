@@ -3,7 +3,7 @@
 //
 //   SHOP_URL=https://shop.example.com IDENTITY_URL=https://identity.example.com LT_PASSWORD=... node prepare.mjs
 //
-// 可选：LT_USERS（默认 1000）、LT_CONCURRENCY（默认 4）、LT_PREFIX（默认 lt）、LT_SKIP_REGISTER=1。
+// 可选：LT_USERS（默认 1000）、LT_CONCURRENCY（默认 8）、LT_PREFIX（默认 lt）、LT_SKIP_REGISTER=1。
 // 注册和登录都要算一次密码哈希（PBKDF2，故意做得很慢），认证中心 CPU 会被打满；并发别超过服务器核数，
 // 否则请求排队超时。有失败就直接重跑：已注册的账号注册接口照样返回成功，接着登录。
 // 自签名证书：加 NODE_TLS_REJECT_UNAUTHORIZED=0。
@@ -14,7 +14,7 @@ const shop = required('SHOP_URL').replace(/\/$/, '');
 const identity = required('IDENTITY_URL').replace(/\/$/, '');
 const password = required('LT_PASSWORD');
 const users = Number(env.LT_USERS ?? 1000);
-const concurrency = Number(env.LT_CONCURRENCY ?? 4);
+const concurrency = Number(env.LT_CONCURRENCY ?? 12);
 const prefix = env.LT_PREFIX ?? 'lt';
 const skipRegister = env.LT_SKIP_REGISTER === '1';
 
@@ -64,7 +64,7 @@ async function send(jar, url, { method = 'GET', headers = {}, body } = {}) {
   } catch (error) {
     // fetch 只报 "fetch failed"，真正原因（连接超时、被重置、DNS…）在 cause 里。
     const cause = error.cause ? `${error.cause.code ?? ''} ${error.cause.message ?? ''}`.trim() : error.message;
-    throw new Error(`${method} ${new URL(url).pathname} 网络错误：${cause}`);
+    throw Object.assign(new Error(`${method} ${new URL(url).pathname} 网络错误：${cause}`), { network: true });
   }
   jar.store(url, response);
   return response;
@@ -143,11 +143,18 @@ const started = Date.now();
 async function worker() {
   while (next <= users) {
     const index = next++;
-    try {
-      sessions.push(await prepareUser(index));
-    } catch (error) {
-      failures.push(index);
-      console.error(`#${index} ${error.message}`);
+    // 网络错误（比如 nginx 用满 keepalive_requests 后发 GOAWAY 轮换 HTTP/2 连接）整个用户从头重来：
+    // 注册对已存在的账号照样返回成功，授权码是新换的，重来是安全的。HTTP 状态码错误不重试。
+    for (let attempt = 1; ; attempt++) {
+      try {
+        sessions.push(await prepareUser(index));
+        break;
+      } catch (error) {
+        if (error.network && attempt < 3) continue;
+        failures.push(index);
+        console.error(`#${index} ${error.message}`);
+        break;
+      }
     }
     const done = sessions.length + failures.length;
     if (done % 100 === 0) console.log(`${done}/${users}  ${((Date.now() - started) / 1000).toFixed(0)}s`);

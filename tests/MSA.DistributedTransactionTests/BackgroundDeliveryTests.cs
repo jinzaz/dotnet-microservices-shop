@@ -75,6 +75,24 @@ public sealed class BackgroundDeliveryTests
         });
     }
 
+    /// <summary>取满一批说明还有积压，发布器立刻取下一批，不等下一个轮询周期。</summary>
+    [TestMethod]
+    public async Task OutboxProcessorDrainsABacklogWithoutWaitingForTheNextTick()
+    {
+        var bus = new FakeEventBus();
+        for (var i = 0; i < 5; i++)
+            await AddPendingAsync($"acct-backlog-{i}");
+        // 轮询间隔远大于等待超时：只有连续取批才能在超时内发完。
+        await using var provider = BuildProvider(bus, configureOutbox: options =>
+        {
+            options.BatchSize = 2;
+            options.PollingInterval = TimeSpan.FromHours(1);
+        });
+
+        await RunHostedServicesAsync(provider, () =>
+            WaitUntilAsync(() => bus.Published.Count == 5, "积压的消息应当在同一轮里连续发完"));
+    }
+
     /// <summary>到期的 Saga 会被超时服务接管处理，处理完成后超时被清除，不会反复触发。</summary>
     [TestMethod]
     public async Task SagaTimeoutServiceRunsTheHandlerAndClearsTheTimeout()
@@ -173,7 +191,8 @@ public sealed class BackgroundDeliveryTests
     private ServiceProvider BuildProvider(
         FakeEventBus bus,
         ISagaTimeoutHandler? timeoutHandler = null,
-        Action<ServiceCollection>? configure = null)
+        Action<ServiceCollection>? configure = null,
+        Action<OutboxProcessorOptions>? configureOutbox = null)
     {
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Warning));
@@ -184,6 +203,7 @@ public sealed class BackgroundDeliveryTests
         {
             options.PollingInterval = TimeSpan.FromMilliseconds(50);
             options.LockDuration = TimeSpan.FromSeconds(5);
+            configureOutbox?.Invoke(options);
         });
         services.AddSaga<LedgerDbContext>(options =>
         {

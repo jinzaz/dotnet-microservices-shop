@@ -17,7 +17,9 @@ internal sealed class OutboxProcessorService(IServiceScopeFactory scopes, TimePr
         {
             try
             {
-                await ProcessBatchAsync(stoppingToken);
+                // 取满一批说明还有积压，立刻取下一批；取不满再等下一个周期。发布失败的消息会被推迟到
+                // NextAttemptOnUtc 之后，不会在本轮被重新领取，所以不会空转。
+                while (await ProcessBatchAsync(stoppingToken) == options.Value.BatchSize) { }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -29,12 +31,12 @@ internal sealed class OutboxProcessorService(IServiceScopeFactory scopes, TimePr
             }
         } while (await timer.WaitForNextTickAsync(stoppingToken));
     }
-    private async Task ProcessBatchAsync(CancellationToken cancellationToken)
+    private async Task<int> ProcessBatchAsync(CancellationToken cancellationToken)
     {
         using var scope = scopes.CreateScope(); var store = scope.ServiceProvider.GetRequiredService<IOutboxStore>(); var bus = scope.ServiceProvider.GetRequiredService<IEventBus>(); var lockId = Guid.NewGuid();
         IReadOnlyList<OutboxMessage> messages;
         try { messages = await store.ClaimPendingAsync(lockId, options.Value.BatchSize, options.Value.MaxRetries, clock.GetUtcNow(), options.Value.LockDuration, cancellationToken); }
-        catch (DbUpdateConcurrencyException) { logger.LogDebug("Another worker claimed this outbox batch."); return; }
+        catch (DbUpdateConcurrencyException) { logger.LogDebug("Another worker claimed this outbox batch."); return 0; }
         foreach (var message in messages)
         {
             try
@@ -61,5 +63,6 @@ internal sealed class OutboxProcessorService(IServiceScopeFactory scopes, TimePr
             }
             await store.SaveChangesAsync(cancellationToken);
         }
+        return messages.Count;
     }
 }
