@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/auth/AuthProvider';
 import { useBasket } from '../../features/basket/basket-store';
 import { suggestProducts } from '../../features/catalog/search-api';
+import { NotificationBell } from '../../features/notifications/NotificationBell';
 import { isDemoMode } from '../config/api';
 import { Icon } from '../ui/Icon';
 import { useDebounced } from '../utils/use-debounced';
@@ -119,6 +120,7 @@ export function SiteHeader() {
           >
             <Icon name={searchOpen ? 'close' : 'search'} />
           </button>
+          {user?.subject ? <NotificationBell userId={user.subject} /> : null}
           {hasAccountAccess ? (
             <Link className="header-action" to={`/account${suffix}`} title={user?.email ?? undefined}>
               <Icon name="user" />

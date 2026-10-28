@@ -23,6 +23,8 @@ public static class ServiceCollectionExtensions
             .Validate(options => !string.IsNullOrWhiteSpace(options.HostName), "RabbitMQ:HostName is required.")
             .Validate(options => !string.IsNullOrWhiteSpace(options.QueueName),
                 "RabbitMQ:QueueName is required and must be unique per service; a shared queue makes services steal each other's events.")
+            .Validate(options => options.MaxDeliveryAttempts >= 2,
+                "RabbitMQ:MaxDeliveryAttempts must be at least 2; dead letters are routed by QueueName, which a message only carries after one pass through the retry queue.")
             .ValidateOnStart();
 
         services.AddSingleton<IConnectionFactory>(sp =>

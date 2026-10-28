@@ -121,6 +121,9 @@ internal sealed class OrderSubmittedHandler(
     {
         if (integrationEvent.Items.Count == 0)
             return ReservationAttempt.Rejected("An inventory request requires at least one item.");
+        // 积压后晚到的下单消息：订单侧早已超时取消，此时预占只会马上被释放，白白占住刚补的库存。
+        if (integrationEvent.PaymentDueOnUtc <= clock.GetUtcNow())
+            return ReservationAttempt.Rejected("Order payment deadline has passed.");
 
         var requested = integrationEvent.Items
             .GroupBy(item => new
@@ -234,7 +237,11 @@ internal sealed class OrderSubmittedHandler(
                     line.OfferId);
             }),
             occurredOnUtc,
-            ResolveExpiry(integrationEvent.PaymentDueOnUtc, occurredOnUtc, lifetime));
+            ResolveExpiry(
+                integrationEvent.PaymentDueOnUtc,
+                occurredOnUtc,
+                lifetime,
+                reservationOptions.Value.ExpiryGracePeriod));
         Db.Reservations.Add(reservation);
         return ReservationAttempt.Accepted(reservation);
     }
@@ -270,9 +277,10 @@ internal sealed class OrderSubmittedHandler(
     private static DateTimeOffset ResolveExpiry(
         DateTimeOffset? requestedExpiry,
         DateTimeOffset now,
-        TimeSpan fallbackLifetime) =>
+        TimeSpan fallbackLifetime,
+        TimeSpan gracePeriod) =>
         requestedExpiry.HasValue && requestedExpiry.Value > now
-            ? requestedExpiry.Value
+            ? requestedExpiry.Value.Add(gracePeriod)
             : now.Add(fallbackLifetime);
 
     private sealed record RequestedLine(string Sku, int Quantity, Guid? OfferId);

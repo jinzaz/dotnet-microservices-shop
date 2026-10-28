@@ -8,6 +8,12 @@ datasources:
     url: http://prometheus:9090
     isDefault: true
     editable: true
+    jsonData:
+      # 指标上的 exemplar 带 trace_id（SDK TraceBased 过滤 + Collector OpenMetrics + Prometheus exemplar-storage），
+      # 点延迟图上的 exemplar 点直接打开 Tempo。链路被尾部采样丢掉时同样打不开。
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
 
   - name: Tempo
     uid: tempo
@@ -28,10 +34,22 @@ datasources:
         customQuery: true
         # 预置文件会展开 $VAR / ${VAR} 环境变量，Grafana 自己的模板变量要写成 $$ 转义。
         query: '{$${__tags}} | trace_id="$${__trace.traceId}"'
+      # 从 span 跳到所在服务的 HTTP 指标。Tempo 没开 metrics_generator（没有 span 指标），所以写成 SDK 自带的
+      # http_server_request_duration_seconds；Prometheus 抓 Collector 时 honor_labels，服务名在 job 标签上。
       tracesToMetrics:
         datasourceUid: prometheus
-        spanStartTimeShift: "-1m"
-        spanEndTimeShift: "1m"
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        tags:
+          - key: service.name
+            value: job
+        queries:
+          - name: 请求速率
+            query: 'sum by (http_route) (rate(http_server_request_duration_seconds_count{$${__tags}, http_route!="/health"}[2m]))'
+          - name: P95 延迟
+            query: 'histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{$${__tags}, http_route!="/health"}[2m])))'
+          - name: 5xx 错误率
+            query: 'sum(rate(http_server_request_duration_seconds_count{$${__tags}, http_response_status_code=~"5.."}[2m])) / sum(rate(http_server_request_duration_seconds_count{$${__tags}}[2m]))'
 
   - name: Loki
     uid: loki

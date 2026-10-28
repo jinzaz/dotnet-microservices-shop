@@ -48,6 +48,7 @@ builder.Services.AddOptions<InventoryReservationOptions>()
     .Bind(builder.Configuration.GetSection(InventoryReservationOptions.SectionName))
     .Validate(options => options.RegularLifetime > TimeSpan.Zero, "RegularLifetime must be positive.")
     .Validate(options => options.OfferLifetime > TimeSpan.Zero, "OfferLifetime must be positive.")
+    .Validate(options => options.ExpiryGracePeriod > TimeSpan.Zero, "ExpiryGracePeriod must be positive.")
     .ValidateOnStart();
 
 builder.Services.AddOptions<InventoryAllocationOptions>()

@@ -1,0 +1,5 @@
+# 含可直接登录的会话 Cookie
+sessions.json
+# k6 报告
+report-*.html
+*.json

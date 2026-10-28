@@ -52,6 +52,8 @@ exporters:
     endpoint: 0.0.0.0:8889
     # 一个时间序列这么久没有新数据就不再暴露（服务下线、容器重建换了实例 ID 后不留僵尸序列）。
     metric_expiration: 5m
+    # 按 OpenMetrics 格式暴露，exemplar（直方图上附带的 trace_id）才会被 Prometheus 抓到。
+    enable_open_metrics: true
 
   # Logs -> Loki native OTLP endpoint
   otlphttp/loki:

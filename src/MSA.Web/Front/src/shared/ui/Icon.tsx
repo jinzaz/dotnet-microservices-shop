@@ -44,7 +44,8 @@ export type IconName =
   | 'qr-code'
   | 'clock'
   | 'help-circle'
-  | 'alert-circle';
+  | 'alert-circle'
+  | 'bell';
 
 const paths: Record<IconName, ReactNode> = {
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
@@ -90,6 +91,7 @@ const paths: Record<IconName, ReactNode> = {
   'qr-code': <><path d="M3 9V3h6M15 3h6v6M21 15v6h-6M9 21H3v-6" /><path d="M7 7h.01M17 7h.01M7 17h.01M14 13h3v3h-3zM18 18h.01" /></>,
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   'help-circle': <><circle cx="12" cy="12" r="9" /><path d="M9.8 9a2.3 2.3 0 1 1 3.6 1.9c-.9.6-1.4 1-1.4 2.1M12 17h.01" /></>,
+  bell: <><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9Z" /><path d="M10 20.5a2.2 2.2 0 0 0 4 0" /></>,
   'alert-circle': <><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 17h.01" /></>,
 };
 

@@ -57,6 +57,8 @@ public static class ObservabilityExtensions
                 .AddHttpClientInstrumentation(options => options.RecordException = true)
                 .AddSource(TracingSources))
             .WithMetrics(metrics => metrics
+                // SDK 默认不记 exemplar；按当前链路记下 trace_id，Grafana 能从指标点跳到对应链路。
+                .SetExemplarFilter(ExemplarFilterType.TraceBased)
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
                 .AddMeter(Meters));

@@ -1,6 +1,11 @@
+using System.Reflection;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Moq;
 using MSA.Contracts;
+using MSA.EventBusOutbox;
 using MSA.InventoryService.Application;
 using MSA.InventoryService.Domain;
 using MSA.InventoryService.Infrastructure;
@@ -135,10 +140,68 @@ public sealed class InventoryApplicationTests
             result.Errors.Select(error => error.PropertyName).ToArray());
     }
 
+    [TestMethod]
+    public async Task OrderSubmitted_PastPaymentDeadline_IsRejectedWithoutTouchingStock()
+    {
+        await using var db = NewInventoryDb();
+        var submitted = Submitted(Guid.NewGuid(), [new("SKU-1", 2, 10m)], paymentDueOnUtc: Now);
+
+        await HandleSubmittedAsync(db, submitted);
+
+        var decision = await db.RequestDecisions.SingleAsync(TestContext.CancellationToken);
+        Assert.IsFalse(decision.IsAccepted);
+        Assert.AreEqual("Order payment deadline has passed.", decision.RejectionReason);
+        Assert.AreEqual(0, await db.Reservations.CountAsync(TestContext.CancellationToken));
+        Assert.AreEqual(0, (await db.StockItems.SingleAsync(TestContext.CancellationToken)).Reserved);
+        var published = await db.OutboxMessages.SingleAsync(TestContext.CancellationToken);
+        StringAssert.Contains(published.EventType, nameof(InventoryRejectedIntegrationEvent));
+    }
+
+    [TestMethod]
+    public async Task OrderSubmitted_ReservationOutlivesThePaymentDeadlineByTheGracePeriod()
+    {
+        await using var db = NewInventoryDb();
+        var submitted = Submitted(Guid.NewGuid(), [new("SKU-1", 2, 10m)]);
+
+        await HandleSubmittedAsync(db, submitted);
+
+        var reservation = await db.Reservations.SingleAsync(TestContext.CancellationToken);
+        Assert.AreEqual(submitted.PaymentDueOnUtc!.Value.AddMinutes(30), reservation.ExpiresOnUtc);
+        Assert.AreEqual(2, (await db.StockItems.SingleAsync(TestContext.CancellationToken)).Reserved);
+    }
+
+    private InventoryDbContext NewInventoryDb()
+    {
+        var db = new InventoryDbContext(
+            new DbContextOptionsBuilder<InventoryDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
+            Mock.Of<IMediator>());
+        db.StockItems.Add(new StockItem(Guid.NewGuid(), "SKU-1", 5));
+        db.SaveChanges();
+        return db;
+    }
+
+    /// <summary>
+    /// 直接调用 HandleCoreAsync：外层 HandleAsync 的事务与 Inbox 去重依赖 Postgres（INSERT ... ON CONFLICT），
+    /// InMemory 跑不了；预占与拒绝的判断都在 HandleCoreAsync 里。
+    /// </summary>
+    private async Task HandleSubmittedAsync(InventoryDbContext db, OrderSubmittedIntegrationEvent submitted)
+    {
+        var handler = new OrderSubmittedHandler(
+            db,
+            db,
+            Mock.Of<IInventoryTransactionLock>(),
+            Options.Create(new InventoryReservationOptions()),
+            new TestClock(Now));
+        var handleCore = typeof(OrderSubmittedHandler).GetMethod("HandleCoreAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        await (Task)handleCore.Invoke(handler, [submitted, TestContext.CancellationToken])!;
+        await db.SaveChangesAsync(TestContext.CancellationToken);
+    }
+
     private static OrderSubmittedIntegrationEvent Submitted(
         Guid orderId,
         IReadOnlyList<OrderItemContract> items,
-        decimal amount = 20m) => new()
+        decimal amount = 20m,
+        DateTimeOffset? paymentDueOnUtc = null) => new()
     {
         OrderId = orderId,
         UserId = "buyer-1",
@@ -146,6 +209,6 @@ public sealed class InventoryApplicationTests
         Amount = amount,
         Currency = "CNY",
         PaymentMethod = "Alipay",
-        PaymentDueOnUtc = Now.AddMinutes(15)
+        PaymentDueOnUtc = paymentDueOnUtc ?? Now.AddMinutes(15)
     };
 }

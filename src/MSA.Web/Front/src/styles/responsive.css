@@ -710,3 +710,13 @@
     position: static;
   }
 }
+
+@media (max-width: 560px) {
+  .notification-panel {
+    position: fixed;
+    top: calc(var(--header-height) + 8px);
+    right: 16px;
+    left: 16px;
+    width: auto;
+  }
+}

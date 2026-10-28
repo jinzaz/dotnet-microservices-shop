@@ -1,0 +1,192 @@
+{
+  "uid": "msa-order-flow",
+  "title": "下单链路",
+  "tags": ["msa", "load-test"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "editable": true,
+  "time": { "from": "now-15m", "to": "now" },
+  "refresh": "10s",
+  "templating": {
+    "list": [
+      {
+        "name": "job",
+        "label": "服务",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(http_server_request_duration_seconds_count, job)",
+        "query": { "query": "label_values(http_server_request_duration_seconds_count, job)", "refId": "job" },
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "入口与调用链（BFF → 网关 → 订单服务）", "collapsed": false, "panels": [], "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+    {
+      "type": "timeseries", "title": "POST 请求速率（每一跳）",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{job}}",
+          "expr": "sum by (job) (rate(http_server_request_duration_seconds_count{job=~\"MSA.BFF.Web|MSA.ApiGateway|MSA.OrderService\", http_request_method=\"POST\"}[$__rate_interval]))" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "POST P95 延迟（点 exemplar 跳链路）",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{job}}", "exemplar": true,
+          "expr": "histogram_quantile(0.95, sum by (le, job) (rate(http_server_request_duration_seconds_bucket{job=~\"MSA.BFF.Web|MSA.ApiGateway|MSA.OrderService\", http_request_method=\"POST\"}[$__rate_interval])))" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "BFF 状态码（202 / 409 / 429 / 5xx）",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "stacking": { "mode": "normal" }, "fillOpacity": 30 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{http_response_status_code}}",
+          "expr": "sum by (http_response_status_code) (rate(http_server_request_duration_seconds_count{job=\"MSA.BFF.Web\", http_route!=\"/health\"}[$__rate_interval]))" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "订单服务调下游 P95（gRPC：目录 / 库存 / 用户）",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{server_address}}", "exemplar": true,
+          "expr": "histogram_quantile(0.95, sum by (le, server_address) (rate(http_client_request_duration_seconds_bucket{job=\"MSA.OrderService\"}[$__rate_interval])))" }
+      ]
+    },
+    {
+      "type": "table", "title": "慢链路（BFF 发起、超过 500ms）",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "targets": [
+        { "refId": "A", "queryType": "traceql", "tableType": "traces", "limit": 20,
+          "query": "{ trace:rootService = \"MSA.BFF.Web\" && trace:duration > 500ms }" }
+      ]
+    },
+
+    { "type": "row", "title": "服务资源（按上方「服务」变量过滤）", "collapsed": false, "panels": [], "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 } },
+    {
+      "type": "timeseries", "title": "CPU（占用核数，按服务堆叠）",
+      "description": "1 = 占满 1 个核。堆叠总高接近整机核数（max(dotnet_process_cpu_count)）就是 CPU 打满；PG、RabbitMQ、ES 等非 .NET 容器不在这里，用 docker stats 看。",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "stacking": { "mode": "normal" }, "fillOpacity": 30 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{job}}",
+          "expr": "sum by (job) (rate(dotnet_process_cpu_time_seconds_total{job=~\"$job\"}[$__rate_interval]))" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "内存（工作集）",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{job}}",
+          "expr": "max by (job) (dotnet_process_memory_working_set_bytes{job=~\"$job\"})" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "线程池排队（持续 > 0 即饥饿）",
+      "description": ".NET 把 dotnet.thread_pool.queue.length 声明成 counter，导出后带 _total 后缀，但值是当前排队数，直接看值，不要套 rate。",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{job}}",
+          "expr": "max by (job) (dotnet_thread_pool_queue_length_total{job=~\"$job\"})" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "GC 暂停占比",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{job}}",
+          "expr": "sum by (job) (rate(dotnet_gc_pause_time_seconds_total{job=~\"$job\"}[$__rate_interval]))" }
+      ]
+    },
+
+    { "type": "row", "title": "数据库与消息", "collapsed": false, "panels": [], "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 } },
+    {
+      "type": "timeseries", "title": "PG 连接池：已用（上限 15）",
+      "description": "Npgsql 10 的 db.client.connection.count，按 db_client_connection_state=used 取。",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{job}}",
+          "expr": "sum by (job) (db_client_connection_count{db_client_connection_state=\"used\", job=~\"$job\"})" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "PG 连接池：排队等连接",
+      "description": "db.client.connection.npgsql.pending_requests 是普通 UpDownCounter，从没有请求排过队时不会导出，这时显示无数据是正常的。",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{job}}",
+          "expr": "sum by (job) (db_client_connection_npgsql_pending_requests{job=~\"$job\"})" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "RabbitMQ 队列堆积 Top 10（ready）",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{queue}}",
+          "expr": "topk(10, sum by (queue) (rabbitmq_detailed_queue_messages_ready))" },
+        { "refId": "B", "legendFormat": "{{queue}} unacked",
+          "expr": "topk(10, sum by (queue) (rabbitmq_detailed_queue_messages_unacked)) > 0" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "RabbitMQ 发布 / 确认速率",
+      "description": "发布速率被压成一条平线、而下单 RPS 更高时，多半是 Outbox 在积压（每服务约 50 条 / 2 秒）。",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "发布", "expr": "sum(rate(rabbitmq_global_messages_received_total[$__rate_interval]))" },
+        { "refId": "B", "legendFormat": "确认", "expr": "sum(rate(rabbitmq_global_messages_acknowledged_total[$__rate_interval]))" }
+      ]
+    },
+
+    { "type": "row", "title": "日志", "collapsed": false, "panels": [], "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 } },
+    {
+      "type": "timeseries", "title": "错误日志数（每分钟）",
+      "gridPos": { "h": 10, "w": 8, "x": 0, "y": 36 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "queryType": "range", "legendFormat": "{{service_name}}",
+          "expr": "sum by (service_name) (count_over_time({service_name=~\"MSA.+\"} | detected_level=~\"error|critical|fatal\" [1m]))" }
+      ]
+    },
+    {
+      "type": "logs", "title": "错误日志（展开一条点「查看链路」）",
+      "gridPos": { "h": 10, "w": 16, "x": 8, "y": 36 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+      "targets": [
+        { "refId": "A", "queryType": "range",
+          "expr": "{service_name=~\"MSA.+\"} | detected_level=~\"error|critical|fatal\"" }
+      ]
+    }
+  ]
+}
