@@ -1,4 +1,8 @@
 using System.Text.Json;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
 using MSA.EventBusOutbox;
@@ -8,6 +12,8 @@ using MSA.OrderService.Application.CreateOrder;
 using MSA.OrderService.Application.ManageFulfillment;
 using MSA.OrderService.Application.Pricing;
 using MSA.OrderService.Domain;
+using MSA.OrderService.Infrastructure;
+using MSA.OrderService.Integration;
 using MSA.Saga;
 
 namespace MSA.CommerceTests;
@@ -243,6 +249,61 @@ public sealed class OrderApplicationTests
         outbox.Verify(value => value.Add(It.IsAny<OutboxMessage>()), Times.Exactly(3));
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             handler.Handle(new CancelOrderCommand(paid.Id, "buyer-1", null), CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task SagaTimeout_RedeliveryBacksOffPerAttemptAndResetsOnNewState()
+    {
+        var order = ConfirmedOrder();
+        await using var db = new OrderDbContext(
+            new DbContextOptionsBuilder<OrderDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
+            Mock.Of<IMediator>());
+        db.Orders.Add(order);
+        await db.SaveChangesAsync();
+        var saga = SagaState.Start(order.Id, OrderFulfillmentSagaData.SagaType, OrderFulfillmentSagaData.AwaitingInventoryCommit,
+            JsonSerializer.Serialize(OrderFulfillmentSagaData.Start(order)), Now);
+        var outbox = new Mock<IOutboxStore>();
+        var clock = new TestClock(Now);
+        var handler = new OrderSagaTimeoutHandler(db, outbox.Object,
+            new OrderCancellationWorkflow(outbox.Object, Mock.Of<ICouponRedemptionStore>()),
+            Options.Create(new OrderSagaOptions()), clock, NullLogger<OrderSagaTimeoutHandler>.Instance);
+
+        async Task<double> NextDelayMinutesAsync()
+        {
+            await handler.HandleTimeoutAsync(saga, CancellationToken.None);
+            var delay = (saga.TimeoutOnUtc!.Value - clock.UtcNow).TotalMinutes;
+            clock.UtcNow = saga.TimeoutOnUtc.Value;
+            return delay;
+        }
+
+        CollectionAssert.AreEqual(
+            new[] { 10d, 20d, 40d, 60d, 60d },
+            new[] { await NextDelayMinutesAsync(), await NextDelayMinutesAsync(), await NextDelayMinutesAsync(),
+                await NextDelayMinutesAsync(), await NextDelayMinutesAsync() });
+        outbox.Verify(value => value.Add(It.IsAny<OutboxMessage>()), Times.Exactly(5));
+
+        // 进入新状态后计数重新开始，不沿用上一个状态的退避。
+        saga.BeginCompensation(OrderFulfillmentSagaData.CompensatingRefund, saga.Data, clock.UtcNow);
+        Assert.AreEqual(10d, await NextDelayMinutesAsync());
+    }
+
+    [TestMethod]
+    public async Task FulfillmentStatusChange_PublishesOnlyStatusesWithSubscribers()
+    {
+        var outbox = new Mock<IOutboxStore>();
+        var published = new List<string>();
+        outbox.Setup(value => value.Add(It.IsAny<OutboxMessage>()))
+            .Callback<OutboxMessage>(message => published.Add(
+                JsonSerializer.Deserialize<JsonElement>(message.Payload).GetProperty("Status").GetString()!));
+        var handler = new OrderFulfillmentDomainEventHandler(outbox.Object);
+
+        foreach (var status in Enum.GetValues<OrderFulfillmentStatus>())
+        {
+            await handler.Handle(new OrderFulfillmentStatusChangedDomainEvent(
+                Guid.NewGuid(), "buyer-1", null, status, null, null, null, Now), CancellationToken.None);
+        }
+
+        CollectionAssert.AreEquivalent(new[] { "Shipped", "Delivered", "ReturnedToSender" }, published);
     }
 
     private static PricingItem Item(decimal price, int quantity) =>

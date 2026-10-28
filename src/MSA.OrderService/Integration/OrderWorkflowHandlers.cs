@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using MSA.Persistence.Postgres;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MSA.Contracts;
 using MSA.EventBus.Abstractions;
 using MSA.EventBusOutbox;
@@ -774,7 +775,9 @@ internal sealed class OrderSagaTimeoutHandler(
     OrderDbContext db,
     IOutboxStore outbox,
     OrderCancellationWorkflow cancellation,
-    TimeProvider clock) : ISagaTimeoutHandler
+    IOptions<OrderSagaOptions> options,
+    TimeProvider clock,
+    ILogger<OrderSagaTimeoutHandler> logger) : ISagaTimeoutHandler
 {
     public string SagaType => OrderFulfillmentSagaData.SagaType;
 
@@ -791,18 +794,38 @@ internal sealed class OrderSagaTimeoutHandler(
                 OrderId = order.Id,
                 ReservationId = commitReservationId
             });
-            saga.ScheduleTimeout(now.AddMinutes(5), now);
+            ScheduleRedelivery(saga, now);
             return;
         }
 
         if (saga.Status == SagaStatus.Compensating)
         {
             cancellation.RepublishOutstandingCompensations(order, OrderFulfillmentSagaData.Parse(saga.Data), saga.State);
-            saga.ScheduleTimeout(now.AddMinutes(5), now);
+            ScheduleRedelivery(saga, now);
             return;
         }
 
         await cancellation.CancelAsync(order, saga, "Order workflow timed out.", "system", now, cancellationToken);
+    }
+
+    /// <summary>
+    /// 重发按次数指数退避：Outbox 积压时回执本来就回不来，固定间隔重发只会把积压越堆越多。
+    /// </summary>
+    private void ScheduleRedelivery(SagaState saga, DateTimeOffset now)
+    {
+        var data = OrderFulfillmentSagaData.Parse(saga.Data);
+        var redeliveries = data.RedeliveriesIn(saga.State) + 1;
+        saga.TransitionTo(
+            saga.State,
+            JsonSerializer.Serialize(data with { RedeliveryState = saga.State, Redeliveries = redeliveries }),
+            now);
+        saga.ScheduleTimeout(now.Add(options.Value.RedeliveryDelay(redeliveries)), now);
+        if (redeliveries >= options.Value.RedeliveryErrorThreshold)
+        {
+            logger.LogError(
+                "Order {OrderId} saga is still {SagaState} after {Redeliveries} redeliveries; it keeps retrying but needs attention.",
+                saga.CorrelationId, saga.State, redeliveries);
+        }
     }
 }
 

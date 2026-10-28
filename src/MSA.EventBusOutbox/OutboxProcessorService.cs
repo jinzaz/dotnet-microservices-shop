@@ -37,13 +37,17 @@ internal sealed class OutboxProcessorService(IServiceScopeFactory scopes, TimePr
         IReadOnlyList<OutboxMessage> messages;
         try { messages = await store.ClaimPendingAsync(lockId, options.Value.BatchSize, options.Value.MaxRetries, clock.GetUtcNow(), options.Value.LockDuration, cancellationToken); }
         catch (DbUpdateConcurrencyException) { logger.LogDebug("Another worker claimed this outbox batch."); return 0; }
-        foreach (var message in messages)
+        // 一批内并发发布、各自等 broker 确认，最后统一保存一次。每条消息只改自己的实体，不碰 DbContext，
+        // 所以并发是安全的；只有确认成功的才标记已发布，失败的各自按退避重试，保持至少投递一次。
+        // 统一保存失败（例如租约过期被别的实例接管）时整批都不落库，租约到期后会被重发，消费端靠 Inbox 去重。
+        var parallelism = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, options.Value.PublishConcurrency), CancellationToken = cancellationToken };
+        await Parallel.ForEachAsync(messages, parallelism, async (message, token) =>
         {
             try
             {
                 var type = Type.GetType(message.EventType) ?? throw new InvalidOperationException($"Unknown event type '{message.EventType}'.");
                 var value = JsonSerializer.Deserialize(message.Payload, type) as IntegrationEvent ?? throw new JsonException("Invalid integration event payload.");
-                await bus.PublishAsync(value, cancellationToken); message.MarkPublished(lockId, clock.GetUtcNow());
+                await bus.PublishAsync(value, token); message.MarkPublished(lockId, clock.GetUtcNow());
             }
             catch (Exception exception)
             {
@@ -61,8 +65,8 @@ internal sealed class OutboxProcessorService(IServiceScopeFactory scopes, TimePr
                     logger.LogError(exception, "Failed to publish outbox message {MessageId}", message.Id);
                 }
             }
-            await store.SaveChangesAsync(cancellationToken);
-        }
+        });
+        await store.SaveChangesAsync(cancellationToken);
         return messages.Count;
     }
 }
