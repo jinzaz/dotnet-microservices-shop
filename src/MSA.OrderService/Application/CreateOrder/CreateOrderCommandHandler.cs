@@ -30,6 +30,7 @@ internal sealed class CreateOrderCommandHandler(
 {
     public async Task<Guid> Handle(CreateOrderCommand request, CancellationToken cancellationToken)
     {
+        // 开事务之前：所有 gRPC 和不需要加锁的只读计算。这里的查询按条借还连接，远程调用期间不占连接池。
         var idempotencyKey = request.IdempotencyKey.Trim();
         var couponCodes = request.CouponCodes ?? [];
         var walletCouponIds = request.WalletCouponIds ?? [];
@@ -44,6 +45,10 @@ internal sealed class CreateOrderCommandHandler(
             request.SourceBasketId,
             request.SourceBasketVersion,
             walletCouponIds);
+        // 客户端重试多半已经成单：不加锁先查一次，命中就省掉后面的远程确认。加锁后还要再查一次。
+        if (await FindExistingAsync(request, idempotencyKey, fingerprint, cancellationToken) is Guid submittedId)
+            return submittedId;
+
         // Wallet coupons lock on the same digest key as typed codes, so both paths share one per-user quota lock.
         var walletDigests = walletCouponIds.Count == 0
             ? []
@@ -72,51 +77,6 @@ internal sealed class CreateOrderCommandHandler(
         }
         lockKeys.AddRange(couponDigests.Select(digest =>
             OrderSubmissionLockKeys.CouponUser(digest, request.UserId)));
-
-        // 同时锁住下单键、购物车版本和券用户配额，覆盖所有可能形成重复订单或超卖的业务键。
-        await submissionLock.AcquireAsync(
-            lockKeys,
-            cancellationToken);
-
-        var existing = await db.Orders
-            .AsNoTracking()
-            .Where(order => order.UserId == request.UserId && order.IdempotencyKey == idempotencyKey)
-            .Select(order => new { order.Id, order.RequestFingerprint })
-            .SingleOrDefaultAsync(cancellationToken);
-        if (existing is not null)
-        {
-            if (!string.IsNullOrEmpty(existing.RequestFingerprint)
-                && !string.Equals(existing.RequestFingerprint, fingerprint, StringComparison.Ordinal))
-            {
-                throw new InvalidOperationException("The idempotency key is already bound to a different order request.");
-            }
-            return existing.Id;
-        }
-
-        if (request.SourceBasketId is Guid basketId
-            && request.SourceBasketVersion is long basketVersion)
-        {
-            var existingBasketCheckout = await db.Orders
-                .AsNoTracking()
-                .Where(order =>
-                    order.UserId == request.UserId
-                    && order.SourceBasketId == basketId
-                    && order.SourceBasketVersion == basketVersion)
-                .Select(order => new { order.Id, order.RequestFingerprint })
-                .SingleOrDefaultAsync(cancellationToken);
-            if (existingBasketCheckout is not null)
-            {
-                if (!string.Equals(
-                        existingBasketCheckout.RequestFingerprint,
-                        fingerprint,
-                        StringComparison.Ordinal))
-                {
-                    throw new InvalidOperationException(
-                        "The basket version is already bound to a different order request.");
-                }
-                return existingBasketCheckout.Id;
-            }
-        }
 
         var requestedItems = request.Items
             .Select(item => new CreateOrderItem(item.Sku.Trim().ToUpperInvariant(), item.Quantity, item.OfferId))
@@ -177,58 +137,130 @@ internal sealed class CreateOrderCommandHandler(
             cancellationToken);
         await ConfirmCouponsAsync(price.Coupons, request.UserId, cancellationToken);
 
-        var orderId = Guid.NewGuid();
-        var order = new Order(
-            orderId,
-            request.UserId,
-            idempotencyKey,
-            fingerprint,
-            request.PaymentMethod,
-            shippingAddress,
-            pricingItems.Select((item, index) =>
+        // 事务里只留必须串行的部分：加锁 → 复查幂等键与购物车版本 → 预留券 → 写订单、Saga、Outbox → 提交。
+        return await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            var transaction = await db.BeginTransactionAsync(cancellationToken);
+            try
             {
-                var requestItem = requestedItems.Single(value => value.Sku == item.Product.Sku);
-                return new OrderLine(
-                    item.Product.ProductId,
-                    item.Product.VariantId,
-                    requestItem.OfferId,
-                    item.Product.Sku,
-                    item.Product.ProductName,
-                    item.Product.VariantName,
-                    item.Product.AttributesJson,
-                    item.Quantity,
-                    item.Product.Price,
-                    price.LineDiscounts[index]);
-            }),
-            price.Discounts,
-            currencies[0],
-            request.SourceBasketId,
-            request.SourceBasketVersion,
-            Guid.NewGuid(),
-            price.SnapshotHash,
-            paymentDueOnUtc,
-            now);
-        orders.Add(order);
+                // 同时锁住下单键、购物车版本和券用户配额，覆盖所有可能形成重复订单或超卖的业务键。
+                await submissionLock.AcquireAsync(lockKeys, cancellationToken);
+                // 快查之后可能有同键请求先成了单，以锁内这次为准。
+                var orderId = await FindExistingAsync(request, idempotencyKey, fingerprint, cancellationToken)
+                    ?? await SubmitAsync();
+                await db.CommitTransactionAsync(transaction, cancellationToken);
+                return orderId;
+            }
+            catch
+            {
+                await db.RollbackTransactionAsync(cancellationToken);
+                throw;
+            }
+        });
 
-        await couponRedemptions.ReserveAsync(
-            order.Id,
-            order.UserId,
-            price.Coupons,
-            paymentDueOnUtc,
-            now,
-            cancellationToken);
+        async Task<Guid> SubmitAsync()
+        {
+            var order = new Order(
+                Guid.NewGuid(),
+                request.UserId,
+                idempotencyKey,
+                fingerprint,
+                request.PaymentMethod,
+                shippingAddress,
+                pricingItems.Select((item, index) =>
+                {
+                    var requestItem = requestedItems.Single(value => value.Sku == item.Product.Sku);
+                    return new OrderLine(
+                        item.Product.ProductId,
+                        item.Product.VariantId,
+                        requestItem.OfferId,
+                        item.Product.Sku,
+                        item.Product.ProductName,
+                        item.Product.VariantName,
+                        item.Product.AttributesJson,
+                        item.Quantity,
+                        item.Product.Price,
+                        price.LineDiscounts[index]);
+                }),
+                price.Discounts,
+                currencies[0],
+                request.SourceBasketId,
+                request.SourceBasketVersion,
+                Guid.NewGuid(),
+                price.SnapshotHash,
+                paymentDueOnUtc,
+                now);
+            orders.Add(order);
 
-        // 订单、券配额、Saga 和 Outbox 由事务行为一次提交，避免任一跨服务步骤脱离本地事实。
-        PublishOrderSubmitted(order);
-        var saga = SagaState.Start(
-            order.Id,
-            OrderFulfillmentSagaData.SagaType,
-            OrderFulfillmentSagaData.AwaitingInventory,
-            JsonSerializer.Serialize(OrderFulfillmentSagaData.Start(order)),
-            now);
-        saga.ScheduleTimeout(paymentDueOnUtc, now);
-        sagas.Add(saga);
-        return order.Id;
+            await couponRedemptions.ReserveAsync(
+                order.Id,
+                order.UserId,
+                price.Coupons,
+                paymentDueOnUtc,
+                now,
+                cancellationToken);
+
+            // 订单、券配额、Saga 和 Outbox 一次提交，避免任一跨服务步骤脱离本地事实。
+            PublishOrderSubmitted(order);
+            var saga = SagaState.Start(
+                order.Id,
+                OrderFulfillmentSagaData.SagaType,
+                OrderFulfillmentSagaData.AwaitingInventory,
+                JsonSerializer.Serialize(OrderFulfillmentSagaData.Start(order)),
+                now);
+            saga.ScheduleTimeout(paymentDueOnUtc, now);
+            sagas.Add(saga);
+            return order.Id;
+        }
+    }
+
+    /// <summary>
+    /// 同一个幂等键或同一版购物车已经成单：请求相同就返回那张单，不同就是冲突。
+    /// </summary>
+    private async Task<Guid?> FindExistingAsync(
+        CreateOrderCommand request,
+        string idempotencyKey,
+        string fingerprint,
+        CancellationToken cancellationToken)
+    {
+        var existing = await db.Orders
+            .AsNoTracking()
+            .Where(order => order.UserId == request.UserId && order.IdempotencyKey == idempotencyKey)
+            .Select(order => new { order.Id, order.RequestFingerprint })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (existing is not null)
+        {
+            if (!string.IsNullOrEmpty(existing.RequestFingerprint)
+                && !string.Equals(existing.RequestFingerprint, fingerprint, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("The idempotency key is already bound to a different order request.");
+            }
+            return existing.Id;
+        }
+
+        if (request.SourceBasketId is not Guid basketId
+            || request.SourceBasketVersion is not long basketVersion)
+            return null;
+
+        var existingBasketCheckout = await db.Orders
+            .AsNoTracking()
+            .Where(order =>
+                order.UserId == request.UserId
+                && order.SourceBasketId == basketId
+                && order.SourceBasketVersion == basketVersion)
+            .Select(order => new { order.Id, order.RequestFingerprint })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (existingBasketCheckout is null)
+            return null;
+        if (!string.Equals(
+                existingBasketCheckout.RequestFingerprint,
+                fingerprint,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The basket version is already bound to a different order request.");
+        }
+        return existingBasketCheckout.Id;
     }
 
     /// <summary>
@@ -385,4 +417,14 @@ public sealed class OrderCheckoutOptions
     /// 如果更看重下单成功率，可以关掉它退回按投影定价。
     /// </summary>
     public bool RequireRealtimePriceConfirmation { get; set; } = true;
+
+    /// <summary>
+    /// 全局同时处理的下单请求上限（不分用户）。必须明显小于订单服务的连接池上限 <c>INFRA_POSTGRES_MAX_POOL_SIZE</c>：
+    /// 同一个池还要给 Outbox 发布器、RabbitMQ 消费者和查询接口用，下单把池占满它们就一起积压。
+    /// 不配时取连接池上限的 60%（池 40 → 24）。Docker 里用 <c>OrderCheckout__MaxConcurrentSubmissions</c> 覆盖。
+    /// </summary>
+    public int? MaxConcurrentSubmissions { get; set; }
+
+    /// <summary>超过并发上限后最多排队多少个下单请求；队满立即返回 429。</summary>
+    public int SubmissionQueueLimit { get; set; } = 200;
 }

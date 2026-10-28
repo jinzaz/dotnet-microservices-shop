@@ -40,4 +40,4 @@ public sealed record CreateOrderCommand(
     IReadOnlyList<string>? CouponCodes = null,
     Guid? SourceBasketId = null,
     long? SourceBasketVersion = null,
-    IReadOnlyList<Guid>? WalletCouponIds = null) : ICommand<Guid>;
+    IReadOnlyList<Guid>? WalletCouponIds = null) : ICommand<Guid>, ISelfTransactedCommand;
