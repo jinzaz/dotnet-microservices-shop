@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net.Sockets;
@@ -20,7 +21,7 @@ namespace MSA.EventBusRabbitMQ;
 
 /// <summary>
 /// 基于 RabbitMQ 的 IEventBus 实现。
-/// - 发布：声明 Exchange/死信队列后 BasicPublish，routing key = 事件类型名
+/// - 发布：从长期复用的 channel 池借 channel 后 BasicPublish 并等 broker 确认，routing key = 事件类型名
 /// - 订阅：为每个订阅事件类型将 QueueName 绑定到 routing key，并启动一个共享的消费者
 /// - 失败处理：先经重试队列延迟重投，用尽后 Nack(requeue:false)，消息按 QueueName 进入本服务的死信队列
 /// </summary>
@@ -41,6 +42,13 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
 
     private IChannel? _consumerChannel;
 
+    // 发布 channel 池：长期存活，借出期间只归一个发布者用，和消费 channel 互不相干。
+    // 7.x 的 BasicPublishAsync 本身允许并发，但独占使用让 broker 关掉某个 channel 时只影响上面那一条在途消息，
+    // 坏 channel 也能直接丢弃，不必顾及别的使用者。
+    private readonly ConcurrentBag<IChannel> _publishChannels = [];
+    private readonly SemaphoreSlim _publishSlots;
+    private volatile bool _disposed;
+
     public RabbitMQEventBus(
         IRabbitMQPersistentConnection persistentConnection,
         ILogger<RabbitMQEventBus> logger,
@@ -57,82 +65,150 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
         _pipeline = CreateResiliencePipeline(options.Value.RetryCount);
         _propagator = rabbitMQTelemetry.Propagator;
         _activitySource = rabbitMQTelemetry.ActivitySource;
-
+        _publishSlots = new SemaphoreSlim(_options.PublishChannelCount, _options.PublishChannelCount);
     }
 
     public async Task PublishAsync(IntegrationEvent @event, CancellationToken cancellationToken = default)
     {
+        // 连接重连有自己的重试，放在下面的发布重试之外，免得两层退避相乘。
         if (!_persistentConnection.IsConnected) await _persistentConnection.TryConnectAsync(cancellationToken);
-
-        // 每次发布用独立 channel，并发发布互不干扰，各自等 broker 确认（publisherConfirmationTracking）。
-        // 发布只需要主交换机；队列、重试和死信拓扑在 StartAsync 里声明一次，不必每条消息多走一串 AMQP 往返。
-        await using var channel = await _persistentConnection.CreateChannelAsync(cancellationToken);
-        await channel.ExchangeDeclareAsync(_options.ExchangeName, _options.ExchangeType, durable: true, cancellationToken: cancellationToken);
 
         var routingKey = @event.EventType;
         var body = SerializeMessage(@event);
 
         var activityName = $"{routingKey} publish";
 
-        await _pipeline.Execute(async () =>
+        await _pipeline.ExecuteAsync(async token =>
         {
-            // 按消息语义约定标成 Producer/Consumer，链路视图里才会把发布和消费连成一条异步调用。
-            using var activity = _activitySource.StartActivity(activityName, ActivityKind.Producer);
-
-            // Depending on Sampling (and whether a listener is registered or not), the activity above may not be created.
-            // If it is created, then propagate its context. If it is not created, the propagate the Current context, if any.
-
-            ActivityContext contextToInject = default;
-
-            if (activity != null)
-            {
-                contextToInject = activity.Context;
-            }
-            else if (Activity.Current != null)
-            {
-                contextToInject = Activity.Current.Context;
-            }
-
-            var properties = new BasicProperties()
-            {
-                DeliveryMode = DeliveryModes.Persistent,
-                // 事件名随消息走：重试回流与死信重放都据此还原事件类型。
-                Headers = new Dictionary<string, object?> { [EventNameHeader] = routingKey }
-            };
-
-            static void InjectTraceContextIntoBasicProperties(IBasicProperties props, string key, string value)
-            {
-                props.Headers ??= new Dictionary<string, object?>();
-                props.Headers[key] = value;
-            }
-
-            _propagator.Inject(new PropagationContext(contextToInject, Baggage.Current), properties, InjectTraceContextIntoBasicProperties);
-
-            SetActivityContext(activity, routingKey, "publish");
-
-            if (_logger.IsEnabled(LogLevel.Trace))
-            {
-                _logger.LogTrace("Publishing event to RabbitMQ: {EventId}", @event.Id);
-            }
-
+            // 每次尝试都重新借 channel：上一次失败时坏掉的 channel 已被丢弃，这次拿到的是好的或新建的。
+            await _publishSlots.WaitAsync(token);
             try
             {
-
-                await channel.BasicPublishAsync(
-                    exchange: _options.ExchangeName,
-                    routingKey: routingKey,
-                    mandatory: true,
-                    basicProperties: properties,
-                    body: body,
-                    cancellationToken: cancellationToken);
+                var channel = await RentPublishChannelAsync(token);
+                var reusable = false;
+                try
+                {
+                    await PublishOnChannelAsync(channel, @event.Id, routingKey, activityName, body, token);
+                    reusable = true;
+                }
+                catch (PublishException)
+                {
+                    // 退回（mandatory 没有队列接收）和 nack 只是这条消息失败，channel 仍然可用；
+                    // 其他异常说明 channel 状态不可信，丢弃重建。
+                    reusable = true;
+                    throw;
+                }
+                finally
+                {
+                    await ReturnPublishChannelAsync(channel, reusable);
+                }
             }
-            catch (Exception ex)
+            finally
             {
-                activity?.SetExceptionTags(ex);
-                throw;
+                _publishSlots.Release();
             }
+        }, cancellationToken);
+    }
 
-        });
+    private async Task PublishOnChannelAsync(IChannel channel, Guid eventId, string routingKey, string activityName, byte[] body, CancellationToken cancellationToken)
+    {
+        // 按消息语义约定标成 Producer/Consumer，链路视图里才会把发布和消费连成一条异步调用。
+        using var activity = _activitySource.StartActivity(activityName, ActivityKind.Producer);
+
+        // Depending on Sampling (and whether a listener is registered or not), the activity above may not be created.
+        // If it is created, then propagate its context. If it is not created, the propagate the Current context, if any.
+
+        ActivityContext contextToInject = default;
+
+        if (activity != null)
+        {
+            contextToInject = activity.Context;
+        }
+        else if (Activity.Current != null)
+        {
+            contextToInject = Activity.Current.Context;
+        }
+
+        var properties = new BasicProperties()
+        {
+            DeliveryMode = DeliveryModes.Persistent,
+            // 事件名随消息走：重试回流与死信重放都据此还原事件类型。
+            Headers = new Dictionary<string, object?> { [EventNameHeader] = routingKey }
+        };
+
+        static void InjectTraceContextIntoBasicProperties(IBasicProperties props, string key, string value)
+        {
+            props.Headers ??= new Dictionary<string, object?>();
+            props.Headers[key] = value;
+        }
+
+        _propagator.Inject(new PropagationContext(contextToInject, Baggage.Current), properties, InjectTraceContextIntoBasicProperties);
+
+        SetActivityContext(activity, routingKey, "publish");
+
+        if (_logger.IsEnabled(LogLevel.Trace))
+        {
+            _logger.LogTrace("Publishing event to RabbitMQ: {EventId}", eventId);
+        }
+
+        try
+        {
+            await channel.BasicPublishAsync(
+                exchange: _options.ExchangeName,
+                routingKey: routingKey,
+                mandatory: true,
+                basicProperties: properties,
+                body: body,
+                cancellationToken: cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            activity?.SetExceptionTags(ex);
+            throw;
+        }
+    }
+
+    private async Task<IChannel> RentPublishChannelAsync(CancellationToken cancellationToken)
+    {
+        while (_publishChannels.TryTake(out var pooled))
+        {
+            // 自动恢复中或已被 broker 关闭的 channel 不再复用。
+            if (pooled.IsOpen) return pooled;
+            await DiscardPublishChannelAsync(pooled);
+        }
+
+        var channel = await _persistentConnection.CreateChannelAsync(cancellationToken);
+        try
+        {
+            // 发布只需要主交换机，每个 channel 声明一次；队列、重试和死信拓扑在 StartAsync 里声明。
+            await channel.ExchangeDeclareAsync(_options.ExchangeName, _options.ExchangeType, durable: true, cancellationToken: cancellationToken);
+            return channel;
+        }
+        catch
+        {
+            await DiscardPublishChannelAsync(channel);
+            throw;
+        }
+    }
+
+    private async ValueTask ReturnPublishChannelAsync(IChannel channel, bool reusable)
+    {
+        if (reusable && channel.IsOpen && !_disposed)
+            _publishChannels.Add(channel);
+        else
+            await DiscardPublishChannelAsync(channel);
+    }
+
+    private async ValueTask DiscardPublishChannelAsync(IChannel channel)
+    {
+        try
+        {
+            await channel.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Disposing a broken RabbitMQ publish channel failed");
+        }
     }
 
     private static void SetActivityContext(Activity? activity, string routingKey, string operation)
@@ -432,32 +508,40 @@ public class RabbitMQEventBus : IEventBus, IAsyncDisposable, IHostedService
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
 
         if (_consumerChannel is not null)
             await _consumerChannel.DisposeAsync();
 
+        // 在途的发布归还时看到 _disposed 会自己释放 channel。
+        while (_publishChannels.TryTake(out var channel))
+            await DiscardPublishChannelAsync(channel);
     }
 
 
 
     private static ResiliencePipeline CreateResiliencePipeline(int retryCount)
     {
+        // 只重试连接、channel 这类瞬时错误（channel 被 broker 关闭、连接恢复中都是 OperationInterruptedException），
+        // 下一次尝试会借到新的 channel。PublishException（mandatory 退回、broker nack）是这条消息本身的问题，直接抛给 Outbox 退避。
+        // 进程内只做秒级的短重试（默认 5 次合计约 5 秒），更长的等待交给 Outbox，免得占着发布槽位、两层退避叠加。
         // See https://www.pollydocs.org/strategies/retry.html
         var retryOptions = new RetryStrategyOptions
         {
-            ShouldHandle = new PredicateBuilder().Handle<BrokerUnreachableException>().Handle<SocketException>(),
+            ShouldHandle = new PredicateBuilder()
+                .Handle<BrokerUnreachableException>()
+                .Handle<SocketException>()
+                .Handle<OperationInterruptedException>(),
             MaxRetryAttempts = retryCount,
-            DelayGenerator = (context) => ValueTask.FromResult(GenerateDelay(context.AttemptNumber))
+            BackoffType = DelayBackoffType.Exponential,
+            Delay = TimeSpan.FromMilliseconds(200),
+            MaxDelay = TimeSpan.FromSeconds(2),
+            UseJitter = true
         };
 
         return new ResiliencePipelineBuilder()
             .AddRetry(retryOptions)
             .Build();
-
-        static TimeSpan? GenerateDelay(int attempt)
-        {
-            return TimeSpan.FromSeconds(Math.Pow(2, attempt));
-        }
     }
 
 

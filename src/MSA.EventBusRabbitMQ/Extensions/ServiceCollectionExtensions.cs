@@ -27,6 +27,7 @@ public static class ServiceCollectionExtensions
                 "RabbitMQ:MaxDeliveryAttempts must be at least 2; dead letters are routed by QueueName, which a message only carries after one pass through the retry queue.")
             .Validate(options => options.ConsumerDispatchConcurrency >= 1 && options.PrefetchCount >= options.ConsumerDispatchConcurrency,
                 "RabbitMQ:ConsumerDispatchConcurrency must be at least 1 and not exceed RabbitMQ:PrefetchCount; otherwise the extra workers never receive a message.")
+            .Validate(options => options.PublishChannelCount >= 1, "RabbitMQ:PublishChannelCount must be at least 1.")
             .ValidateOnStart();
 
         services.AddSingleton<IConnectionFactory>(sp =>

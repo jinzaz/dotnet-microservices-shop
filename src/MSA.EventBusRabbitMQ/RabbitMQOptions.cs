@@ -26,6 +26,11 @@ public class RabbitMQOptions
     /// <summary>发布失败时的重试次数</summary>
     public int RetryCount { get; set; } = 5;
 
+    /// <summary>
+    /// 长期复用的发布 channel 数，也是同时在途的发布上限；默认与 Outbox:PublishConcurrency 一致，调整时两边一起改。
+    /// </summary>
+    public int PublishChannelCount { get; set; } = 16;
+
     /// <summary>消费端预取数量（已投递未确认的上限），必须不小于 <see cref="ConsumerDispatchConcurrency"/></summary>
     public ushort PrefetchCount { get; set; } = 10;
 
