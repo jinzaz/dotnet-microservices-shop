@@ -21,6 +21,7 @@ const OrderDetailPage = lazy(() => import('../pages/OrderDetailPage'));
 const AfterSalesApplyPage = lazy(() => import('../pages/AfterSalesApplyPage'));
 const AfterSalesListPage = lazy(() => import('../pages/AfterSalesListPage'));
 const AfterSalesDetailPage = lazy(() => import('../pages/AfterSalesDetailPage'));
+const NotificationsPage = lazy(() => import('../pages/NotificationsPage'));
 const NotFoundPage = lazy(() => import('../pages/NotFoundPage'));
 
 function RouteFallback() {
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="/orders/:orderId/after-sales/new" element={<RequireAuth><AfterSalesApplyPage /></RequireAuth>} />
           <Route path="/after-sales" element={<RequireAuth><AfterSalesListPage /></RequireAuth>} />
           <Route path="/after-sales/:afterSalesId" element={<RequireAuth><AfterSalesDetailPage /></RequireAuth>} />
+          <Route path="/notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
