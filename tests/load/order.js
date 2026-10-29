@@ -15,11 +15,19 @@ import { uuidv4 } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js';
 
 const shop = (__ENV.SHOP_URL ?? '').replace(/\/$/, '');
 const scenario = __ENV.SCENARIO ?? 'order';
-const skus = (__ENV.SKUS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+// 没传 -e SKUS 时读同目录的 skus.txt（一行一个，不入库）。SKU 要多一些：库存服务按 SKU 加锁，只有一两个 SKU 时预占全部串行。
+function readSkuFile() {
+  try {
+    return open('./skus.txt');
+  } catch {
+    return '';
+  }
+}
+const skus = (__ENV.SKUS ?? readSkuFile()).split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
 const sessions = new SharedArray('sessions', () => JSON.parse(open('./sessions.json')));
 
 if (!shop) throw new Error('缺少 -e SHOP_URL=...');
-if (scenario === 'flash' ? !__ENV.FLASH_SKU : skus.length === 0) throw new Error('缺少 -e SKUS=... 或 -e FLASH_SKU=...');
+if (scenario === 'flash' ? !__ENV.FLASH_SKU : skus.length === 0) throw new Error('缺少 -e SKUS=...（或 skus.txt）或 -e FLASH_SKU=...');
 
 // 下单接口按用户限流：突发 5 次，之后每秒 2 次。order 场景轮流使用用户，速率超过「用户数 × 2」就会出现 429。
 const warmup = scenario === 'order' && __ENV.WARMUP !== '0';

@@ -10,13 +10,18 @@ services:
     image: ${MSA_IMAGE_REGISTRY:-harbor.local/msa-shop}/order-service:${MSA_IMAGE_TAG:-latest}
     pull_policy: ${MSA_PULL_POLICY:-missing}
     container_name: msa-order
-    mem_limit: ${MSA_MEM_LIMIT_LARGE:-448m}
+    # mem_limit: ${MSA_MEM_LIMIT_LARGE:-448m}
+    mem_limit: 1g
     environment:
       ServiceAuthentication__ClientId: "MSA_Svc_Order"
       Kestrel__Endpoints__Http__Url: "http://+:8080"
       Kestrel__Endpoints__Http__Protocols: Http1
       Kestrel__Endpoints__Grpc__Url: "http://+:8081"
       Kestrel__Endpoints__Grpc__Protocols: Http2
+      DOTNET_GCgen0size: "0x4000000"
+      Outbox__BatchSize: 500
+      # 同时处理的下单请求上限（默认取连接池上限的 60%），超出的排队（OrderCheckout__SubmissionQueueLimit，默认 200），队满返回 429。
+      OrderCheckout__MaxConcurrentSubmissions: "24"
       MSA_SERVICE_AUTHORITY: "${MSA_SERVICE_AUTHORITY}"
       MSA_CLIENT_SECRET_MSA_SVC_ORDER: "${MSA_CLIENT_SECRET_MSA_SVC_ORDER}"
       # 售后凭证（私有桶）：订单服务签发浏览器直传 / 读取地址，并回查对象是否已上传，所以同样要能访问这个公网地址。
@@ -26,6 +31,7 @@ services:
       INFRA_OSS_REGION: "${INFRA_OSS_REGION:-us-east-1}"
       INFRA_OSS_FORCE_PATH_STYLE: "${INFRA_OSS_FORCE_PATH_STYLE:-true}"
       INFRA_OSS_REFERER: "${INFRA_OSS_REFERER:-}"
+      INFRA_POSTGRES_MAX_POOL_SIZE: 40
     networks:
       - backend
 

@@ -3,3 +3,5 @@ sessions.json
 # k6 报告
 report-*.html
 *.json
+# 压测用的 SKU 列表（环境相关，一行一个）
+skus.txt
