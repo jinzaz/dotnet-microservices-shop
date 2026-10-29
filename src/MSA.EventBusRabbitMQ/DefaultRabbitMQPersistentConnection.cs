@@ -34,9 +34,11 @@ public sealed class DefaultRabbitMQPersistentConnection : IRabbitMQPersistentCon
         if (!IsConnected)
             throw new InvalidOperationException("当前没有可用的 RabbitMQ 连接来创建 Channel");
 
+        // 构造函数的消费并发参数有自己的默认值 1，不会回落到连接工厂的设置，必须显式传入。
         var options = new CreateChannelOptions(
             publisherConfirmationsEnabled: true,
-            publisherConfirmationTrackingEnabled: true);
+            publisherConfirmationTrackingEnabled: true,
+            consumerDispatchConcurrency: _connectionFactory.ConsumerDispatchConcurrency);
         return await _connection!.CreateChannelAsync(options, cancellationToken);
     }
 

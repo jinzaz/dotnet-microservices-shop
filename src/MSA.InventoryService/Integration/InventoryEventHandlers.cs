@@ -402,7 +402,19 @@ internal sealed class CommitInventoryHandler(
             case ReservationStatus.Committed:
                 break;
             default:
-                throw new InvalidOperationException("Released inventory cannot be committed.");
+                // 消息积压时 CommitInventory 可能晚于预占过期清理到达，而订单已付款确认：
+                // 能补扣就补扣，补不了就通知订单侧转人工。抛异常只会让消息进死信、Saga 无限重发。
+                if (await TryDeductReleasedAsync(reservation, cancellationToken) is { } rejection)
+                {
+                    Publish(new InventoryCommitRejectedIntegrationEvent
+                    {
+                        OrderId = integrationEvent.OrderId,
+                        ReservationId = integrationEvent.ReservationId,
+                        Reason = rejection
+                    });
+                    return;
+                }
+                break;
         }
 
         Publish(new InventoryCommittedIntegrationEvent
@@ -441,6 +453,40 @@ internal sealed class CommitInventoryHandler(
                 "Reserved inventory committed after payment.",
                 now));
         }
+    }
+
+    /// <summary>按当前可用库存补扣已释放的预占；返回拒绝原因，成功时返回 null。</summary>
+    private async Task<string?> TryDeductReleasedAsync(
+        InventoryReservation reservation,
+        CancellationToken cancellationToken)
+    {
+        // 配额释放后数量可能已回到配额池或普通库存，补扣口径（是否占配额、是否计入限购）还没定，先交人工处理。
+        if (reservation.HasAllocations)
+            return "Offer reservation was released before commit; manual handling required.";
+
+        var (stock, _) = await InventoryReservationBalances.LockAsync(
+            Db, transactionLock, reservation, cancellationToken);
+        if (reservation.Lines.Any(line => !stock.TryGetValue(line.Sku, out var item) || item.Available < line.Quantity))
+            return "Insufficient inventory to deduct a released reservation.";
+
+        var now = clock.GetUtcNow();
+        foreach (var line in reservation.Lines)
+        {
+            var item = stock[line.Sku];
+            item.Reserve(line.Quantity);
+            item.Commit(line.Quantity);
+            Db.StockMovements.Add(StockMovement.Record(
+                item,
+                StockMovementType.InventoryCommitted,
+                -line.Quantity,
+                0,
+                StockMovementReferenceType.Reservation,
+                reservation.Id,
+                "预占释放后补扣：released reservation deducted after payment.",
+                now));
+        }
+        reservation.TryCommitAfterRelease(now);
+        return null;
     }
 }
 

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
 using MSA.Contracts;
+using MSA.EventBus.Abstractions;
 using MSA.EventBusOutbox;
 using MSA.InventoryService.Application;
 using MSA.InventoryService.Domain;
@@ -170,6 +171,64 @@ public sealed class InventoryApplicationTests
         Assert.AreEqual(2, (await db.StockItems.SingleAsync(TestContext.CancellationToken)).Reserved);
     }
 
+    [TestMethod]
+    public async Task CommitInventory_ReleasedReservation_DeductsAvailableStockAndCommits()
+    {
+        await using var db = NewInventoryDb();
+        var submitted = Submitted(Guid.NewGuid(), [new("SKU-1", 2, 10m)]);
+        await HandleSubmittedAsync(db, submitted);
+        var reservationId = (await db.Reservations.SingleAsync(TestContext.CancellationToken)).Id;
+        await ReleaseAsync(db, submitted.OrderId, reservationId);
+
+        await CommitAsync(db, submitted.OrderId, reservationId);
+
+        var stock = await db.StockItems.SingleAsync(TestContext.CancellationToken);
+        Assert.AreEqual(3, stock.OnHand);
+        Assert.AreEqual(0, stock.Reserved);
+        var reservation = await db.Reservations.SingleAsync(TestContext.CancellationToken);
+        Assert.AreEqual(ReservationStatus.Committed, reservation.Status);
+        Assert.IsNull(reservation.ReleasedOnUtc);
+        var deducted = await db.StockMovements.SingleAsync(value => value.Type == StockMovementType.InventoryCommitted, TestContext.CancellationToken);
+        Assert.AreEqual(-2, deducted.OnHandDelta);
+        Assert.AreEqual(0, deducted.ReservedDelta);
+        StringAssert.Contains(deducted.Reason, "预占释放后补扣");
+        Assert.IsTrue(await db.OutboxMessages.AnyAsync(value => value.EventType.Contains(nameof(InventoryCommittedIntegrationEvent)), TestContext.CancellationToken));
+    }
+
+    [TestMethod]
+    public async Task CommitInventory_ReleasedReservationWithoutStock_PublishesRejectionInsteadOfThrowing()
+    {
+        await using var db = NewInventoryDb();
+        var submitted = Submitted(Guid.NewGuid(), [new("SKU-1", 2, 10m)]);
+        await HandleSubmittedAsync(db, submitted);
+        var reservationId = (await db.Reservations.SingleAsync(TestContext.CancellationToken)).Id;
+        await ReleaseAsync(db, submitted.OrderId, reservationId);
+        // 释放出来的库存已被别的订单占走，只剩 1 件。
+        await HandleSubmittedAsync(db, Submitted(Guid.NewGuid(), [new("SKU-1", 4, 10m)]));
+
+        await CommitAsync(db, submitted.OrderId, reservationId);
+
+        var stock = await db.StockItems.SingleAsync(TestContext.CancellationToken);
+        Assert.AreEqual(5, stock.OnHand);
+        Assert.AreEqual(4, stock.Reserved);
+        Assert.AreEqual(ReservationStatus.Released, (await db.Reservations.SingleAsync(value => value.Id == reservationId, TestContext.CancellationToken)).Status);
+        var rejected = await db.OutboxMessages.SingleAsync(value => value.EventType.Contains(nameof(InventoryCommitRejectedIntegrationEvent)), TestContext.CancellationToken);
+        StringAssert.Contains(rejected.Payload, reservationId.ToString());
+        Assert.IsFalse(await db.OutboxMessages.AnyAsync(value => value.EventType.Contains(nameof(InventoryCommittedIntegrationEvent)), TestContext.CancellationToken));
+    }
+
+    private Task ReleaseAsync(InventoryDbContext db, Guid orderId, Guid reservationId) =>
+        HandleCoreAsync(
+            db,
+            new ReleaseInventoryHandler(db, db, Mock.Of<IInventoryTransactionLock>(), new TestClock(Now.AddMinutes(1))),
+            new ReleaseInventoryIntegrationEvent { OrderId = orderId, ReservationId = reservationId, Reason = "Reservation expired." });
+
+    private Task CommitAsync(InventoryDbContext db, Guid orderId, Guid reservationId) =>
+        HandleCoreAsync(
+            db,
+            new CommitInventoryHandler(db, db, Mock.Of<IInventoryTransactionLock>(), new TestClock(Now.AddMinutes(2))),
+            new CommitInventoryIntegrationEvent { OrderId = orderId, ReservationId = reservationId });
+
     private InventoryDbContext NewInventoryDb()
     {
         var db = new InventoryDbContext(
@@ -184,17 +243,23 @@ public sealed class InventoryApplicationTests
     /// 直接调用 HandleCoreAsync：外层 HandleAsync 的事务与 Inbox 去重依赖 Postgres（INSERT ... ON CONFLICT），
     /// InMemory 跑不了；预占与拒绝的判断都在 HandleCoreAsync 里。
     /// </summary>
-    private async Task HandleSubmittedAsync(InventoryDbContext db, OrderSubmittedIntegrationEvent submitted)
+    private Task HandleSubmittedAsync(InventoryDbContext db, OrderSubmittedIntegrationEvent submitted) =>
+        HandleCoreAsync(
+            db,
+            new OrderSubmittedHandler(
+                db,
+                db,
+                Mock.Of<IInventoryTransactionLock>(),
+                Options.Create(new InventoryReservationOptions()),
+                new TestClock(Now)),
+            submitted);
+
+    private async Task HandleCoreAsync(InventoryDbContext db, object handler, IntegrationEvent integrationEvent)
     {
-        var handler = new OrderSubmittedHandler(
-            db,
-            db,
-            Mock.Of<IInventoryTransactionLock>(),
-            Options.Create(new InventoryReservationOptions()),
-            new TestClock(Now));
-        var handleCore = typeof(OrderSubmittedHandler).GetMethod("HandleCoreAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        await (Task)handleCore.Invoke(handler, [submitted, TestContext.CancellationToken])!;
+        var handleCore = handler.GetType().GetMethod("HandleCoreAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        await (Task)handleCore.Invoke(handler, [integrationEvent, TestContext.CancellationToken])!;
         await db.SaveChangesAsync(TestContext.CancellationToken);
+        db.ChangeTracker.Clear();
     }
 
     private static OrderSubmittedIntegrationEvent Submitted(

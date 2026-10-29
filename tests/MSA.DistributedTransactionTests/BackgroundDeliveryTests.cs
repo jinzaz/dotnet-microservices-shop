@@ -93,6 +93,38 @@ public sealed class BackgroundDeliveryTests
             WaitUntilAsync(() => bus.Published.Count == 5, "积压的消息应当在同一轮里连续发完"));
     }
 
+    /// <summary>一批并发发布时部分失败：只有失败的那几条按退避重试，确认成功的不会被重复发布。</summary>
+    [TestMethod]
+    public async Task OutboxProcessorRetriesOnlyTheFailedMessagesOfAConcurrentBatch()
+    {
+        var bus = new FakeEventBus
+        {
+            FailOnceWhen = value => value is LedgerEntryRecordedIntegrationEvent { Account: "acct-batch-1" or "acct-batch-3" }
+        };
+        for (var i = 0; i < 4; i++)
+            await AddPendingAsync($"acct-batch-{i}");
+        await using var provider = BuildProvider(bus, configureOutbox: options => options.PublishConcurrency = 4);
+
+        await RunHostedServicesAsync(provider, async () =>
+        {
+            await WaitUntilAsync(async () =>
+            {
+                await using var pending = NewContext();
+                return await pending.OutboxMessages.AllAsync(message => message.Status == OutboxStatus.Published);
+            }, "失败的消息重试后也应当发布");
+
+            await using var verify = NewContext();
+            var retries = (await verify.OutboxMessages.ToListAsync())
+                .Select(message => (Account: ((LedgerEntryRecordedIntegrationEvent)System.Text.Json.JsonSerializer.Deserialize(
+                    message.Payload, Type.GetType(message.EventType)!)!).Account, message.RetryCount))
+                .OrderBy(value => value.Account)
+                .ToArray();
+            CollectionAssert.AreEqual(new[] { 0, 1, 0, 1 }, retries.Select(value => value.RetryCount).ToArray(), "只有失败的两条记录了重试。");
+            var published = bus.Published.Cast<LedgerEntryRecordedIntegrationEvent>().Select(value => value.Account).Order().ToArray();
+            CollectionAssert.AreEqual(new[] { "acct-batch-0", "acct-batch-1", "acct-batch-2", "acct-batch-3" }, published, "确认成功的消息不应被重复发布。");
+        });
+    }
+
     /// <summary>到期的 Saga 会被超时服务接管处理，处理完成后超时被清除，不会反复触发。</summary>
     [TestMethod]
     public async Task SagaTimeoutServiceRunsTheHandlerAndClearsTheTimeout()
@@ -196,6 +228,8 @@ public sealed class BackgroundDeliveryTests
     {
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Warning));
+        // 宿主里总有 IConfiguration；AddOutbox 会绑定其中的 Outbox 配置节。
+        services.AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
         services.AddSingleton<IMediator>(Mock.Of<IMediator>());
         services.AddSingleton<IEventBus>(bus);
         _harness.AddContext(services);

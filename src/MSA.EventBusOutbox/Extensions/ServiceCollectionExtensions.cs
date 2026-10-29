@@ -7,7 +7,8 @@ public static class ServiceCollectionExtensions
     {
         services.AddScoped<IOutboxStore>(sp => sp.GetRequiredService<TStore>());
         services.TryAddTimeProvider();
-        services.AddOptions<OutboxProcessorOptions>().Configure(options => configure?.Invoke(options));
+        // 配置节 Outbox（环境变量 Outbox__PublishConcurrency 等）先绑定，代码里的委托再覆盖。
+        services.AddOptions<OutboxProcessorOptions>().BindConfiguration(OutboxProcessorOptions.SectionName).Configure(options => configure?.Invoke(options));
         services.AddHostedService<OutboxProcessorService>(); return services;
     }
     private static void TryAddTimeProvider(this IServiceCollection services)

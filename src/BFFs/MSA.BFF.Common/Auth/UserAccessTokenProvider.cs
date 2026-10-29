@@ -11,8 +11,15 @@ internal sealed class UserAccessTokenProvider(
     OpenIddictClientService client,
     RedisTicketStore tickets)
 {
-    // ponytail: one process-wide lock; use a distributed per-session lock when multiple BFF replicas refresh concurrently.
-    private static readonly SemaphoreSlim RefreshLock = new(1, 1);
+    // 按会话分段加锁：同一会话的刷新必须串行（刷新令牌会轮换，并发刷新会让后一次拿着已作废的令牌失败），
+    // 不同会话互不阻塞。原来是一把全进程锁，认证中心刷新一次约 300ms，全站每秒只能刷 3 个令牌，
+    // 令牌集中过期时请求在锁前排队二十多秒。
+    // ponytail: 进程内锁；多个 BFF 副本同时刷新同一会话时需要按会话的分布式锁。
+    private static readonly SemaphoreSlim[] RefreshLocks =
+        Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+
+    private static SemaphoreSlim RefreshLockFor(string sessionKey) =>
+        RefreshLocks[(int)((uint)StringComparer.Ordinal.GetHashCode(sessionKey) % (uint)RefreshLocks.Length)];
 
     internal async Task<string?> GetAccessTokenAsync(
         HttpContext context,
@@ -57,7 +64,8 @@ internal sealed class UserAccessTokenProvider(
         string sessionKey,
         CancellationToken cancellationToken)
     {
-        await RefreshLock.WaitAsync(cancellationToken);
+        var refreshLock = RefreshLockFor(sessionKey);
+        await refreshLock.WaitAsync(cancellationToken);
         try
         {
             var ticket = await tickets.RetrieveAsync(sessionKey, cancellationToken);
@@ -131,7 +139,7 @@ internal sealed class UserAccessTokenProvider(
         }
         finally
         {
-            RefreshLock.Release();
+            refreshLock.Release();
         }
     }
 

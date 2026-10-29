@@ -51,6 +51,10 @@ function isWaitingForPayment(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
 }
 
+function isPastDue(dueOnUtc: string | undefined): boolean {
+  return Boolean(dueOnUtc) && Date.now() > new Date(dueOnUtc!).getTime();
+}
+
 function paymentStatusCopy(status: PaymentStatus | undefined, channel: PaymentChannel) {
   if (channel === 'Balance' && status === 'Failed') {
     return { title: '余额不足', detail: '账户余额不足以支付本订单，订单将自动取消，请重新下单并选择其他支付方式。' };
@@ -87,13 +91,21 @@ export default function PaymentPage() {
     enabled: Boolean(orderId && !demoMode),
     staleTime: 15_000,
     retry: 1,
+    // 库存确认中要跟着订单状态走：库存拒绝、超时取消都要能及时显示出来，而不是一直转圈。
+    refetchInterval: (query) => {
+      const current = query.state.data;
+      return current?.status === 'Submitted' && !isPastDue(current.paymentDueOnUtc) ? 3_000 : false;
+    },
   });
+  const orderStatus = orderQuery.data?.status;
   const paymentQuery = useQuery({
     queryKey: ['payment', 'order', orderId],
     queryFn: () => getPaymentByOrder(orderId),
-    enabled: Boolean(orderId && !demoMode),
+    // 支付单在库存预占成功、订单进入待支付后才创建：之前查只会拿到 404，取消的订单永远不会有支付单。
+    enabled: Boolean(orderId && !demoMode && (orderStatus === 'AwaitingPayment' || orderStatus === 'Confirmed')),
     retry: false,
     refetchInterval: (query) => {
+      if (orderStatus !== 'AwaitingPayment' || isPastDue(orderQuery.data?.paymentDueOnUtc)) return false;
       const status = query.state.data?.status;
       return !status || status === 'Pending' || status === 'Cancelling' ? 3_000 : false;
     },
@@ -147,7 +159,8 @@ export default function PaymentPage() {
       setDemoRevision((current) => current + 1);
       setFeedback('支付二维码与状态已刷新。');
     } else {
-      const result = await paymentQuery.refetch();
+      // 订单状态也要刷新：库存确认中时还没有支付单，订单可能已经被取消。
+      const [, result] = await Promise.all([orderQuery.refetch(), paymentQuery.refetch()]);
       setFeedback(result.data?.status === 'Succeeded' ? '' : '支付状态已刷新，暂未收到成功通知。');
     }
     setChecking(false);

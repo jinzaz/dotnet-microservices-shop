@@ -9,7 +9,7 @@ public sealed class TransactionBehavior<TRequest, TResponse>(MSADbContext dbCont
 {
     public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
     {
-        if (request is not ICommand)
+        if (request is not ICommand or ISelfTransactedCommand)
             return await next();
         if (dbContext.HasActiveTransaction)
             return await next();

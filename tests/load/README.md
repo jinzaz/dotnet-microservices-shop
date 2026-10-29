@@ -67,6 +67,11 @@ k6 run -e SHOP_URL=https://shop.example.com -e SCENARIO=flash -e FLASH_SKU=SKU-F
 k6 run -e SHOP_URL=https://shop.example.com -e SCENARIO=idempotency -e SKUS=SKU-A order.js
 ```
 
+- **SKU 列表**：不传 `-e SKUS=...` 时读同目录的 `skus.txt`（一行一个，不入库），每次下单随机挑一个。SKU 要多（20 个以上）且每个备足库存：库存服务按 SKU 加咨询锁，只有一两个 SKU 时预占和提交全部串行，消费并发开多少都没用。还要按商品价格估算余额够不够（每人欢迎余额 9999）。
+- **普通下单默认先预热**：前 3 分钟（`WARMUP_DURATION`）每个用户 GET 一次自己的订单列表，让 BFF 把过期的令牌刷新掉，不下单；预热窗口结束后才开始阶梯下单。access token 只有 15 分钟，`prepare.mjs` 登录 2000 人要十几分钟，不预热的话压测开头会撞上集中刷新，前一两分钟的延迟会被拉高。
+  - 阈值和结束汇总里的状态码计数只统计下单阶段（`scenario:order`）；但网页面板和 HTML 报告的曲线包含预热，开头 3 分钟是 GET 流量。
+  - 预热成功率低于 99% 会在汇总里标红，多半是会话过期（BFF 返回 401），重新跑 `prepare.mjs`（加 `LT_SKIP_REGISTER=1`）。
+  - `-e WARMUP=0` 跳过预热；`-e WARMUP_VUS=20` 调预热并发，太高会把认证中心压住。
 - 压测过程中可以打开 `http://localhost:5665` 看实时曲线，结束后生成离线 HTML 报告（`report-*.html`，不入库）。
 - 秒杀按活动价下单就加 `-e OFFER_ID=<活动 Id>`，这时库存从活动的分配池里扣，`verify.sql` 第 6 条要改查 `inventory_allocations`。
 - 自签名证书加 `-e INSECURE=1`。

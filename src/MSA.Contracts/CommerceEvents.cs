@@ -65,6 +65,14 @@ public sealed class InventoryCommittedIntegrationEvent : IntegrationEvent
     public required Guid ReservationId { get; init; }
 }
 
+/// <summary>预占在提交前已被释放、且无法补扣（库存不足或秒杀配额）：订单已付款，需要人工退款或补货。</summary>
+public sealed class InventoryCommitRejectedIntegrationEvent : IntegrationEvent
+{
+    public required Guid OrderId { get; init; }
+    public required Guid ReservationId { get; init; }
+    public required string Reason { get; init; }
+}
+
 public sealed class PaymentRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid OrderId { get; init; }

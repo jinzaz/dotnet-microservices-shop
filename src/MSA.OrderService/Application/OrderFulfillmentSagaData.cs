@@ -21,7 +21,9 @@ internal sealed record OrderFulfillmentSagaData(
     bool InventoryCompensated = false,
     bool RequiresPaymentCompensation = false,
     bool PaymentCompensated = false,
-    string? FailureReason = null)
+    string? FailureReason = null,
+    string? RedeliveryState = null,
+    int Redeliveries = 0)
 {
     public const string SagaType = "OrderFulfillment";
     public const string AwaitingInventory = "AwaitingInventory";
@@ -35,6 +37,12 @@ internal sealed record OrderFulfillmentSagaData(
         (!RequiresInventoryCompensation || InventoryCompensated)
         && (!RequiresPaymentCompensation || PaymentCompensated);
 
+    /// <summary>
+    /// 当前状态下已经重发了几次。计数挂在状态名上：<see cref="RedeliveryState"/> 不是当前状态时视为 0，
+    /// 进入新状态不需要在每个转移点手动清零。
+    /// </summary>
+    public int RedeliveriesIn(string state) => RedeliveryState == state ? Redeliveries : 0;
+
     public static OrderFulfillmentSagaData Start(Order order) =>
         new(
             1,
@@ -47,4 +55,27 @@ internal sealed record OrderFulfillmentSagaData(
     public static OrderFulfillmentSagaData Parse(string json) =>
         JsonSerializer.Deserialize<OrderFulfillmentSagaData>(json)
         ?? throw new InvalidOperationException("Order fulfillment saga data is invalid.");
+}
+
+public sealed class OrderSagaOptions
+{
+    public const string SectionName = "OrderSaga";
+
+    /// <summary>超时重发（CommitInventory 和各类补偿）的退避基数：第 n 次重发后等 Base × 2^n。</summary>
+    public TimeSpan RedeliveryBaseDelay { get; set; } = TimeSpan.FromMinutes(5);
+
+    public TimeSpan RedeliveryMaxDelay { get; set; } = TimeSpan.FromMinutes(60);
+
+    /// <summary>重发达到这个次数后每次都记 Error，但仍按上限间隔继续重发：补偿必须最终完成。</summary>
+    public int RedeliveryErrorThreshold { get; set; } = 8;
+
+    public TimeSpan RedeliveryDelay(int redeliveries) =>
+        TimeSpan.FromTicks((long)Math.Min(
+            RedeliveryBaseDelay.Ticks * Math.Pow(2, redeliveries),
+            RedeliveryMaxDelay.Ticks));
+
+    public static bool IsValid(OrderSagaOptions options) =>
+        options.RedeliveryBaseDelay >= TimeSpan.FromSeconds(1)
+        && options.RedeliveryMaxDelay >= options.RedeliveryBaseDelay
+        && options.RedeliveryErrorThreshold >= 1;
 }

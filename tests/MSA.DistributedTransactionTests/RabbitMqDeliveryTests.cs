@@ -1,11 +1,14 @@
 using System.Diagnostics;
+using System.Net.Sockets;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MSA.EventBus.Abstractions;
 using MSA.EventBus.DependencyInjection;
+using MSA.EventBusRabbitMQ;
 using RabbitMQ.Client;
+using RabbitMQ.Client.Exceptions;
 
 namespace MSA.DistributedTransactionTests;
 
@@ -53,6 +56,85 @@ public sealed class RetryProbeHandler : IIntegrationEventHandler<RetryProbeInteg
             return Task.CompletedTask;
         }
     }
+}
+
+public sealed class ConcurrencyProbeIntegrationEvent : IntegrationEvent;
+
+/// <summary>每条消息都等到 <see cref="Expected"/> 条同时在处理（或超时）才返回，记录同时处理的峰值。</summary>
+public sealed class ConcurrencyProbeHandler : IIntegrationEventHandler<ConcurrencyProbeIntegrationEvent>
+{
+    private static int _inFlight;
+    private static int _peak;
+    private static int _handled;
+    private static TaskCompletionSource _allInFlight = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public static int Expected { get; private set; }
+
+    public static int Peak => Volatile.Read(ref _peak);
+
+    public static int Handled => Volatile.Read(ref _handled);
+
+    public static void Arm(int expected)
+    {
+        Expected = expected;
+        _inFlight = _peak = _handled = 0;
+        _allInFlight = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    public async Task HandleAsync(ConcurrencyProbeIntegrationEvent integrationEvent, CancellationToken cancellationToken = default)
+    {
+        var inFlight = Interlocked.Increment(ref _inFlight);
+        int peak;
+        while (inFlight > (peak = Volatile.Read(ref _peak)) && Interlocked.CompareExchange(ref _peak, inFlight, peak) != peak)
+        {
+        }
+        if (inFlight >= Expected)
+            _allInFlight.TrySetResult();
+        try
+        {
+            // 串行消费时永远等不齐，超时后照常完成，由断言里的峰值暴露问题。
+            await _allInFlight.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+        }
+        Interlocked.Decrement(ref _inFlight);
+        Interlocked.Increment(ref _handled);
+    }
+}
+
+/// <summary>没有任何服务订阅，mandatory 发布一定被 broker 退回。</summary>
+public sealed class UnroutableProbeIntegrationEvent : IntegrationEvent;
+
+/// <summary>包一层真实连接：统计 channel 创建次数，并能让下一次创建抛出瞬时网络异常。</summary>
+public sealed class CountingConnection(IRabbitMQPersistentConnection inner) : IRabbitMQPersistentConnection
+{
+    private int _created;
+    private int _failNextCreate;
+
+    public int Created => Volatile.Read(ref _created);
+
+    public IChannel? LastCreated { get; private set; }
+
+    public bool FailurePending => Volatile.Read(ref _failNextCreate) == 1;
+
+    public void FailNextCreate() => Interlocked.Exchange(ref _failNextCreate, 1);
+
+    public bool IsConnected => inner.IsConnected;
+
+    public Task<bool> TryConnectAsync(CancellationToken cancellationToken = default) => inner.TryConnectAsync(cancellationToken);
+
+    public async Task<IChannel> CreateChannelAsync(CancellationToken cancellationToken = default)
+    {
+        if (Interlocked.Exchange(ref _failNextCreate, 0) == 1)
+            throw new SocketException((int)SocketError.ConnectionReset);
+        var channel = await inner.CreateChannelAsync(cancellationToken);
+        LastCreated = channel;
+        Interlocked.Increment(ref _created);
+        return channel;
+    }
+
+    public ValueTask DisposeAsync() => inner.DisposeAsync();
 }
 
 /// <summary>
@@ -155,6 +237,111 @@ public sealed class RabbitMqDeliveryTests
         Assert.AreEqual(0u, await QueueDepthAsync($"{_otherQueue}.dlq"), "其他服务的死信队列不应收到副本。");
     }
 
+    /// <summary>配置了 ConsumerDispatchConcurrency 后，同一队列的消息会被同时处理，而不是一条一条串行。</summary>
+    [TestMethod]
+    public async Task ConsumerDispatchConcurrencyHandlesMessagesInParallel()
+    {
+        const int concurrency = 4;
+        ConcurrencyProbeHandler.Arm(concurrency);
+        var provider = await StartBusAsync(maxDeliveryAttempts: 2, retryDelay: TimeSpan.FromSeconds(1), concurrency: concurrency);
+
+        for (var i = 0; i < concurrency; i++)
+            await PublishAsync(provider, new ConcurrencyProbeIntegrationEvent());
+
+        await WaitUntilAsync(() => Task.FromResult(ConcurrencyProbeHandler.Handled == concurrency), "所有消息都应处理完");
+        Assert.AreEqual(concurrency, ConcurrencyProbeHandler.Peak, "消息应当同时处理。");
+    }
+
+    /// <summary>发布 channel 长期复用：连续发布不会每条消息新开 channel，并发发布最多用到 PublishChannelCount 个。</summary>
+    [TestMethod]
+    public async Task PublishingReusesPooledChannels()
+    {
+        const int channels = 4;
+        RetryProbeHandler.Arm(0);
+        var provider = await StartBusAsync(maxDeliveryAttempts: 2, retryDelay: TimeSpan.FromSeconds(1), publishChannels: channels);
+        var connection = (CountingConnection)provider.GetRequiredService<IRabbitMQPersistentConnection>();
+        var bus = provider.GetRequiredService<IEventBus>();
+        await PublishAsync(provider, "warm-up");
+        var baseline = connection.Created;
+
+        for (var i = 0; i < 20; i++)
+            await bus.PublishAsync(new RetryProbeIntegrationEvent { Marker = $"sequential-{i}" });
+        Assert.AreEqual(baseline, connection.Created, "顺序发布应当一直复用同一个 channel。");
+
+        await Task.WhenAll(Enumerable.Range(0, 100).Select(i => bus.PublishAsync(new RetryProbeIntegrationEvent { Marker = $"parallel-{i}" })));
+        Assert.IsLessThanOrEqualTo(baseline + channels - 1, connection.Created, "并发发布最多建满 PublishChannelCount 个 channel。");
+    }
+
+    /// <summary>broker 关掉池里的 channel 后，下一次发布丢弃它并新建一个，发布照常成功。</summary>
+    [TestMethod]
+    public async Task APooledChannelClosedByTheBrokerIsReplaced()
+    {
+        RetryProbeHandler.Arm(0);
+        var provider = await StartBusAsync(maxDeliveryAttempts: 2, retryDelay: TimeSpan.FromSeconds(1), publishChannels: 1);
+        var connection = (CountingConnection)provider.GetRequiredService<IRabbitMQPersistentConnection>();
+        await PublishAsync(provider, "warm-up");
+        var created = connection.Created;
+
+        await CloseByBrokerAsync(connection.LastCreated!);
+        await provider.GetRequiredService<IEventBus>().PublishAsync(new RetryProbeIntegrationEvent { Marker = "after-close" });
+
+        Assert.AreEqual(created + 1, connection.Created, "关闭的 channel 应当被丢弃并重建一次。");
+    }
+
+    /// <summary>建 channel 时的瞬时网络错误在进程内重试，不必等 Outbox 的下一轮。</summary>
+    [TestMethod]
+    public async Task ATransientChannelFailureIsRetried()
+    {
+        RetryProbeHandler.Arm(0);
+        var provider = await StartBusAsync(maxDeliveryAttempts: 2, retryDelay: TimeSpan.FromSeconds(1), publishChannels: 1);
+        var connection = (CountingConnection)provider.GetRequiredService<IRabbitMQPersistentConnection>();
+        await PublishAsync(provider, "warm-up");
+
+        // 池里唯一的 channel 被关掉，下一次发布必须新建，而新建的第一次会失败。
+        await CloseByBrokerAsync(connection.LastCreated!);
+        connection.FailNextCreate();
+        await provider.GetRequiredService<IEventBus>().PublishAsync(new RetryProbeIntegrationEvent { Marker = "after-transient" });
+
+        Assert.IsFalse(connection.FailurePending, "注入的失败应当已经发生过。");
+    }
+
+    /// <summary>mandatory 退回是业务性失败：只尝试一次就抛给调用方（Outbox 退避），channel 照常留在池里。</summary>
+    [TestMethod]
+    public async Task AMandatoryReturnIsNotRetried()
+    {
+        RetryProbeHandler.Arm(0);
+        var provider = await StartBusAsync(maxDeliveryAttempts: 2, retryDelay: TimeSpan.FromSeconds(1), publishChannels: 1);
+        var connection = (CountingConnection)provider.GetRequiredService<IRabbitMQPersistentConnection>();
+        await PublishAsync(provider, "warm-up");
+        var created = connection.Created;
+
+        var attempts = 0;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == MSA.EventBusRabbitMQ.RabbitMQTelemetry.ActivitySourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStarted = activity =>
+            {
+                if (activity.OperationName == $"{nameof(UnroutableProbeIntegrationEvent)} publish")
+                    Interlocked.Increment(ref attempts);
+            }
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        var error = await Assert.ThrowsAsync<PublishException>(() => provider.GetRequiredService<IEventBus>().PublishAsync(new UnroutableProbeIntegrationEvent()));
+
+        Assert.IsTrue(error.IsReturn, "没有队列接收时应当被 broker 退回。");
+        Assert.AreEqual(1, attempts, "退回不应在进程内重试。");
+        Assert.AreEqual(created, connection.Created, "退回后 channel 仍可用，不应重建。");
+    }
+
+    /// <summary>用一个不存在的交换机做被动声明，broker 以 404 关闭这个 channel。</summary>
+    private static async Task CloseByBrokerAsync(IChannel channel)
+    {
+        await Assert.ThrowsAsync<OperationInterruptedException>(() => channel.ExchangeDeclarePassiveAsync($"missing-{Guid.NewGuid():N}"));
+        await WaitUntilAsync(() => Task.FromResult(!channel.IsOpen), "broker 应当关闭这个 channel");
+    }
+
     private async Task DeclareLegacyDeadLetterTopologyAsync(params string[] queues)
     {
         await using var connection = await ConnectAsync();
@@ -167,8 +354,9 @@ public sealed class RabbitMqDeliveryTests
         }
     }
 
-    private async Task<ServiceProvider> StartBusAsync(int maxDeliveryAttempts, TimeSpan retryDelay, string? queue = null, bool subscribe = true)
+    private async Task<ServiceProvider> StartBusAsync(int maxDeliveryAttempts, TimeSpan retryDelay, string? queue = null, bool subscribe = true, int concurrency = 1, int publishChannels = 16)
     {
+        var dispatch = concurrency.ToString(System.Globalization.CultureInfo.InvariantCulture);
         queue ??= _queue;
         var broker = TestEnvironment.RabbitMq!.Value;
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -183,14 +371,21 @@ public sealed class RabbitMqDeliveryTests
             ["DeadLetterExchange"] = $"{_exchange}.dlx",
             ["MaxDeliveryAttempts"] = maxDeliveryAttempts.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["RetryDelay"] = retryDelay.ToString(),
-            ["PrefetchCount"] = "1",
+            ["PrefetchCount"] = dispatch,
+            ["ConsumerDispatchConcurrency"] = dispatch,
+            ["PublishChannelCount"] = publishChannels.ToString(System.Globalization.CultureInfo.InvariantCulture),
         }).Build();
 
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Error));
         services.AddRabbitMQEventBus(configuration);
+        services.AddSingleton<IRabbitMQPersistentConnection>(sp => new CountingConnection(new DefaultRabbitMQPersistentConnection(
+            sp.GetRequiredService<IConnectionFactory>(), sp.GetRequiredService<ILogger<DefaultRabbitMQPersistentConnection>>())));
         if (subscribe)
+        {
             services.AddIntegrationEventHandler<RetryProbeIntegrationEvent, RetryProbeHandler>();
+            services.AddIntegrationEventHandler<ConcurrencyProbeIntegrationEvent, ConcurrencyProbeHandler>();
+        }
         var provider = services.BuildServiceProvider();
         _providers.Add(provider);
 
@@ -205,7 +400,10 @@ public sealed class RabbitMqDeliveryTests
     /// 绑定是在消费者启动的最后一步建立的，AMQP 又没有「绑定是否存在」的查询。
     /// 发布用的是 mandatory，路由不到会抛异常，因此这里重试到绑定生效为止。
     /// </summary>
-    private static async Task PublishAsync(ServiceProvider provider, string marker)
+    private static Task PublishAsync(ServiceProvider provider, string marker) =>
+        PublishAsync(provider, new RetryProbeIntegrationEvent { Marker = marker });
+
+    private static async Task PublishAsync(ServiceProvider provider, IntegrationEvent integrationEvent)
     {
         var bus = provider.GetRequiredService<IEventBus>();
         var started = Stopwatch.StartNew();
@@ -213,7 +411,7 @@ public sealed class RabbitMqDeliveryTests
         {
             try
             {
-                await bus.PublishAsync(new RetryProbeIntegrationEvent { Marker = marker });
+                await bus.PublishAsync(integrationEvent);
                 return;
             }
             catch (Exception) when (started.Elapsed < TimeSpan.FromSeconds(20))
